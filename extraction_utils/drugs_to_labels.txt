@@ -1,0 +1,7 @@
+20231107 control 0
+20231108 valinomycin 1
+20231109 tiron 2
+20231113 mitomycin 3
+20231114 myls22 4
+20231115 rotenone 5
+20231116 mdivi1 6
