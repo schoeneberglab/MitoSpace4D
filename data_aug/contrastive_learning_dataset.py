@@ -67,7 +67,8 @@ class ContrastiveLearningDataset:
 
     def get_dataset(self, name: str, n_views: int, flag: str = 'train', seed: int = None,
                     pick_labels: List = None, samples_per_drug: int = None,
-                    transform=None) -> torch.utils.data.Dataset:
+                    transform=None,
+                    timesteps=None, zstacks=None) -> torch.utils.data.Dataset:
         valid_datasets = {'mitospace': lambda: MitoSpaceDataset(self.root_folder,
                                                                 transform=ContrastiveLearningViewGenerator(
                                                                     self.get_transforms(
@@ -75,7 +76,8 @@ class ContrastiveLearningDataset:
                                                                     n_views) if transform is None else transform,
                                                                 flag=flag,
                                                                 seed=seed, pick_labels=pick_labels,
-                                                                samples_per_drug=samples_per_drug),
+                                                                samples_per_drug=samples_per_drug,
+                                                                timesteps=timesteps, zstacks=zstacks),
                           'stl10': lambda: datasets.STL10(self.root_folder, split=flag,
                                                           transform=ContrastiveLearningViewGenerator(
                                                               self.get_simclr_pipeline_transform(96),

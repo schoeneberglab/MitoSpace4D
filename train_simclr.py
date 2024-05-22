@@ -4,7 +4,7 @@ import torch.backends.cudnn as cudnn
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision import models
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
-from simclr.resnet_simclr import ResNetSimCLR, ResNetSimCLRv2
+from simclr.models import ResNetSimCLR3D
 from simclr.simclr import SimCLRRunner
 from torchsummary import summary
 import pytorch_lightning as pl
@@ -42,27 +42,32 @@ def main():
     dataset = ContrastiveLearningDataset(cfg['data_params']['data_path'], cfg)
 
     train_dataset = dataset.get_dataset(cfg['data_params']['dataset_name'],
-                                                    cfg['training']['n_views'],
-                                                    flag='train', seed=None,
-                                                    pick_labels=None,
-                                                    samples_per_drug=cfg['data_params']['samples_per_drug'])
+                                        cfg['training']['n_views'],
+                                        flag='train', seed=None,
+                                        pick_labels=None,
+                                        samples_per_drug=cfg['data_params']['samples_per_drug'],
+                                        timesteps=cfg['data_params']['timesteps'],
+                                        zstacks=cfg['data_params']['zstacks'])
     val_dataset = dataset.get_dataset(cfg['data_params']['dataset_name'],
-                                                  cfg['training']['n_views'],
-                                                  flag='val', seed=None,
-                                                  pick_labels=None,
-                                                  samples_per_drug=cfg['data_params']['samples_per_drug'])
+                                      cfg['training']['n_views'],
+                                      flag='val', seed=None,
+                                      pick_labels=None,
+                                      samples_per_drug=cfg['data_params']['samples_per_drug'],
+                                      timesteps=cfg['data_params']['timesteps'],
+                                      zstacks=cfg['data_params']['zstacks'])
 
     datamodule = MitoSpaceDataModule(train_datasets=[train_dataset],
                                      val_datasets=[val_dataset],
                                      batch_size=cfg['training']['batch_size'],
                                      num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True)
 
-    model = ResNetSimCLR(base_model=cfg['model_params']['arch'],
-                         out_dim=cfg['model_params']['out_dim'],
-                         pretrained=cfg['model_params']['pretrained'],
-                         in_channels=cfg['model_params']['in_channels'])
+    model = ResNetSimCLR3D(base_model=cfg['model_params']['arch'],
+                           out_dim=cfg['model_params']['out_dim'],
+                           pretrained=cfg['model_params']['pretrained'],
+                           in_channels=cfg['model_params']['num_z'])
 
-    print(summary(model.to('cuda'), (cfg["model_params"]["in_channels"],
+    print(summary(model.to('cuda'), (cfg["model_params"]["timesteps"],
+                                     cfg["model_params"]["num_z"],
                                      cfg['data_params']['patch_size'], cfg['data_params']['patch_size'])))
 
     tb_logger = pl_loggers.TensorBoardLogger(
@@ -89,16 +94,19 @@ def main():
 
     trainer = pl.Trainer(
         max_epochs=cfg["training"]["max_epochs"],
-        accelerator=cfg["device"],
+        accelerator=cfg["gpu"]["accelerator"],
         log_every_n_steps=13,
         logger=tb_logger,
         callbacks=[ckpt_callback],
         precision=16,  # mixed precision training
+        devices=cfg["gpu"]["num_gpus"],
+        strategy=cfg["gpu"]["strategy"],
+        sync_batchnorm=True
     )
     trainer.fit(
         model=train_runner,
         datamodule=datamodule,
-        ckpt_path="/home/dhruvagarwal/projects/MitoSpace/runs/lightning_logs/20240503_noNorm_moreStrongAug_MixedPrec_cosineLR_1000epochs_normalizedFeats512dims/checkpoints/last-v1.ckpt"
+        # ckpt_path="/home/dhruvagarwal/projects/MitoSpace/runs/lightning_logs/20240503_noNorm_moreStrongAug_MixedPrec_cosineLR_1000epochs_normalizedFeats512dims/checkpoints/last-v1.ckpt"
         # use this to load optimizer as well as model states
     )
 

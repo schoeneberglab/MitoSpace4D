@@ -70,17 +70,14 @@ class RandomBrightness(object):
                 sigma = self.spread
 
                 # Create Gaussian mask
-                gaussian_mask = create_gaussian_mask((h, w), center, sigma)
+                gaussian_mask = create_gaussian_mask((h, w), center, sigma).astype(np.float32)
+                gaussian_mask = torch.from_numpy(gaussian_mask)
 
-                for idx in self.apply_idx:
-                    # min_ = sample[idx].min()
-                    # max_ = sample[idx].max()
-
-                    sample[idx] = sample[idx] * gaussian_mask
-                    # new_min_ = sample[idx].min()
-                    # new_max_ = sample[idx].max()
-
-                    # sample[idx] = (sample[idx] - new_min_) / (new_max_ - new_min_) * (max_ - min_) + min_
+                if self.apply_idx == [-1]:
+                    sample = sample * gaussian_mask
+                else:
+                    for idx in self.apply_idx:
+                        sample[idx] = sample[idx] * gaussian_mask
 
             elif self.method == "random_pixels":
                 # make a smooth brightness mask with random pixel locations in 2D

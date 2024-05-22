@@ -1,5 +1,11 @@
-experiment_name: 20240503_noNorm_moreStrongAug_MixedPrec_cosineLR_1000epochs_normalizedFeats512dims
+experiment_name: debug
 data_params:
+  timesteps:
+    start: 0
+    end: 20
+  zstacks:
+    start: 20
+    end: 80
   dataset_name: mitospace
   data_path: /home/dhruvagarwal/projects/MitoSpace4D/data
   patch_size: 256
@@ -9,13 +15,13 @@ data_params:
         p: 0.5
         size: 256
         scale: [0.35, 1.0]
-        empty_area_check_idx: 1
+        empty_area_check_idx: 1  # not relevant here? check this once
       Brightness:
         p: 0.5
         method: random_gaussian
         factor: 1
         spread: 400
-        apply_idx: [1]
+        apply_idx: [-1]  # apply to all channels
       HorizontalFlip:
         p: 0.5
       VerticalFlip:
@@ -45,7 +51,8 @@ model_params:
   arch: resnet18
   pretrained: false
   out_dim: 512
-  in_channels: 2
+  num_z: 60
+  timesteps: 30
 training:
   loss:
     name: InfoNCELoss
@@ -54,7 +61,7 @@ training:
   max_epochs: 2000
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 4
+  batch_size: 6
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
@@ -66,7 +73,10 @@ training:
   weight_decay: 0.00001
   workers: 1
   n_views: 2
-device: cuda
+gpu:
+  num_gpus: -1
+  accelerator: gpu
+  strategy: ddp
 evaluate:
   top_ns: [1, 3]
   dataset: Cal27

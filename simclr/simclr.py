@@ -10,13 +10,13 @@ import pytorch_lightning as pl
 from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
 
-from simclr.resnet_simclr import ResNetSimCLR
+from simclr.models import ResNetSimCLR3D
 
 torch.manual_seed(0)
 
 
 def load_resnet_model(cfg, ckpt_path, device='cuda', eval_mode=True):
-    model = ResNetSimCLR(base_model=cfg['model_params']['arch'],
+    model = ResNetSimCLR3D(base_model=cfg['model_params']['arch'],
                          out_dim=cfg['model_params']['out_dim'],
                          pretrained=cfg['model_params']['pretrained'],
                          in_channels=cfg["model_params"]["in_channels"]).to(device)
@@ -110,10 +110,9 @@ class SimCLRRunner(pl.LightningModule):
 
         Assumptions for the batch:
             1. The batch should contain the images and the classes
-            2. The images are a list of size 2, where the first element is the normal image and the second is the augmented image
+            2. The images are a list of size 2, where the first element is the augmentation-1 image and the second is the augmentation-2 image
             3. The classes are the labels for the images
-            4. Mitotracker channel is the second channel and TMRM is the first channel, and that there are only 2 channels
-            5. batch contains more than 1 sample; otherwise the random index selection will get stuck in an infinite loop
+            4. batch contains more than 1 sample; otherwise the random index selection will get stuck in an infinite loop
         """
 
         if isinstance(batch, Dict):
@@ -128,49 +127,39 @@ class SimCLRRunner(pl.LightningModule):
         else:
             images, classes = batch
 
-        # just using the same index for the cases when we have only one channel
-        mito_idx = 1 if images[0].shape[1] > 1 else 0
-        tmrm_idx = 0
+        # for now we only have either MitoTracker or TMRM channel
+        # pick random time and random z
+        num_timesteps = images[0].shape[0]
+        num_z = images[0].shape[1]
+
+        random_timestep = torch.randint(high=num_timesteps, size=(1,))[0]
+        random_z = torch.randint(high=num_z, size=(1,))[0]
 
         #  random positive pair
         idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
-        pos1_mito = images[0][idx][mito_idx]  # normal
-        pos2_mito = images[1][idx][mito_idx]  # aug
-        pos1_tmrm = images[0][idx][tmrm_idx]  # normal
-        pos2_tmrm = images[1][idx][tmrm_idx]  # aug
+        pos1_mito = images[0][idx, random_timestep, random_z]  # aug-1
+        pos2_mito = images[1][idx][random_timestep, random_z]  # aug-2
 
         #  random negative pair
-        neg1_mito = images[0][idx][mito_idx]  # normal
+        neg1_mito = images[0][idx][random_timestep, random_z]  # normal
         neg_idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
         while neg_idx == idx:
             neg_idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
-        neg2_mito = images[1][neg_idx][mito_idx]  # aug
-        neg1_tmrm = images[0][idx][tmrm_idx]  # normal
-        neg2_tmrm = images[1][neg_idx][tmrm_idx]  # aug
+        neg2_mito = images[1][neg_idx][random_timestep, random_z]  # aug
 
         # concat positive and negative pairs
         sep = 10
         pos_mito_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        pos_mito_pair[:, :images[0].shape[2]] = pos1_mito
-        pos_mito_pair[:, images[0].shape[2] + 10:images[0].shape[2] * 2 + sep] = pos2_mito
-
-        pos_tmrm_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        pos_tmrm_pair[:, :images[0].shape[2]] = pos1_tmrm
-        pos_tmrm_pair[:, images[0].shape[2] + 10:images[0].shape[2] * 2 + sep] = pos2_tmrm
+        pos_mito_pair[:, :images[0].shape[3]] = pos1_mito
+        pos_mito_pair[:, images[0].shape[3] + 10:images[0].shape[3] * 2 + sep] = pos2_mito
 
         neg_mito_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        neg_mito_pair[:, :images[0].shape[2]] = neg1_mito
-        neg_mito_pair[:, images[0].shape[2] + 10:images[0].shape[2] * 2 + sep] = neg2_mito
-
-        neg_tmrm_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        neg_tmrm_pair[:, :images[0].shape[2]] = neg1_tmrm
-        neg_tmrm_pair[:, images[0].shape[2] + 10:images[0].shape[2] * 2 + sep] = neg2_tmrm
+        neg_mito_pair[:, :images[0].shape[3]] = neg1_mito
+        neg_mito_pair[:, images[0].shape[3] + 10:images[0].shape[3] * 2 + sep] = neg2_mito
 
         # plot images
         self.plot_img(f"{key}/Positive MitoTracker", pos_mito_pair)
-        self.plot_img(f"{key}/Positive TMRM", pos_tmrm_pair)
         self.plot_img(f"{key}/Negative MitoTracker", neg_mito_pair)
-        self.plot_img(f"{key}/Negative TMRM", neg_tmrm_pair)
 
     def log_mitospace(self, batch):
         if isinstance(batch, Dict):
@@ -191,8 +180,14 @@ class SimCLRRunner(pl.LightningModule):
         embds = embds[:embds.shape[0] // 2]  # taking only one view
         labels = classes.cpu().numpy()
         labels = list(labels)
+
+        num_timesteps = images[0].shape[0]
+        num_z = images[0].shape[1]
+        random_timestep = torch.randint(high=num_timesteps, size=(1,))[0]
+        random_z = torch.randint(high=num_z, size=(1,))[0]
+
         images = images[0].cpu()  # taking only one view
-        images = images[:, 1:2, :, :]  # taking only mitotracker channel
+        images = images[:, random_timestep, random_z, :, :].unsqueeze(1)  # taking a random timestep and random z
         images = (images + 1) / 2.
 
         self.logger.experiment.add_embedding(mat=embds.detach().cpu(),

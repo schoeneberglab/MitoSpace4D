@@ -7,7 +7,7 @@ from sklearn.metrics import davies_bouldin_score, calinski_harabasz_score, confu
 import torch.nn.functional as F
 
 from data_aug.mitospace_dataset import *
-from simclr.resnet_simclr import *
+from simclr.models import *
 import argparse
 from utils.utils import *
 from data_aug.dataset_utils import get_mitospace_data_loaders
@@ -259,7 +259,7 @@ def l2_distance(eval_embeddings, train_embeddings):
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace/"
+    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
 
     model = ResNetSimCLR(base_model=cfg['model_params']['arch'], out_dim=cfg['model_params']['out_dim'],
                          in_channels=cfg["model_params"]["in_channels"]).to(device)

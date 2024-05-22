@@ -36,9 +36,12 @@ class MitoSpaceDataModule(pl.LightningDataModule):
 
 class MitoSpaceDataset(Dataset):
     def __init__(self, root_dir: str, transform: Union[Compose, torchvision.transforms] = None, flag: str = 'train',
-                 seed: int = None, pick_labels: List = None, samples_per_drug: int = None) -> None:
+                 seed: int = None, pick_labels: List = None, samples_per_drug: int = None,
+                 timesteps=None, zstacks=None) -> None:
         self.root_dir = root_dir
         self.transform = transform
+        self.timesteps = timesteps
+        self.zstacks = zstacks
 
         self.seed = 1123 if seed is None else seed
 
@@ -133,7 +136,11 @@ class MitoSpaceDataset(Dataset):
         img_name = self.filenames[idx]
         image = np.load(img_name).astype(np.float32)
 
-        # image = image.transpose(0, 2, 3, 1)  # transpose just to make it HWZ
+        # filter the timesteps and zstacks: remove later timesteps which have bleached mitochondria, remove the zstacks
+        # at the extremes which usually do not contain much mitochondria
+        image = image[self.timesteps['start']: self.timesteps['end'],
+                      self.zstacks['start']: self.zstacks['end'],
+                      ...]
 
         label = self.labels[idx]
 

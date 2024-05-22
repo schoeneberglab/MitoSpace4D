@@ -7,7 +7,7 @@ from sklearn.metrics import davies_bouldin_score, calinski_harabasz_score, confu
 import torch.nn.functional as F
 
 from data_aug.mitospace_dataset import *
-from simclr.resnet_simclr import *
+from simclr.models import *
 import argparse
 from utils.utils import *
 from data_aug.dataset_utils import get_mitospace_data_loaders

@@ -8,8 +8,6 @@ import umap
 import argparse
 import os.path as osp
 
-from data_aug.mitospace_dataset import MitoSpaceDataset
-from simclr.resnet_simclr import ResNetSimCLR
 from simclr.simclr import load_resnet_model
 import time
 from utils.vis import make_mitospace
