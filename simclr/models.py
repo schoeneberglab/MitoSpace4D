@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 class ResNetSimCLR3D(nn.Module):
-    def __init__(self, base_model: str, out_dim: int, in_channels: int = 100, pretrained: bool = False):
+    def __init__(self, out_dim: int, in_channels: int = 100, pretrained: bool = False):
         super(ResNetSimCLR3D, self).__init__()
 
         self.pre = nn.Conv3d(in_channels, 3, kernel_size=3, stride=1)

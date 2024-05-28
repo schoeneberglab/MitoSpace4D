@@ -39,6 +39,8 @@ def main():
         args.device = torch.device('cpu')
         args.gpu_index = -1
 
+    torch.set_float32_matmul_precision('medium')
+
     dataset = ContrastiveLearningDataset(cfg['data_params']['data_path'], cfg)
 
     train_dataset = dataset.get_dataset(cfg['data_params']['dataset_name'],
@@ -61,8 +63,7 @@ def main():
                                      batch_size=cfg['training']['batch_size'],
                                      num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True)
 
-    model = ResNetSimCLR3D(base_model=cfg['model_params']['arch'],
-                           out_dim=cfg['model_params']['out_dim'],
+    model = ResNetSimCLR3D(out_dim=cfg['model_params']['out_dim'],
                            pretrained=cfg['model_params']['pretrained'],
                            in_channels=cfg['model_params']['num_z'])
 
@@ -98,10 +99,11 @@ def main():
         log_every_n_steps=13,
         logger=tb_logger,
         callbacks=[ckpt_callback],
-        precision=16,  # mixed precision training
+        precision=16,  # mixed precision training,
+        num_nodes=cfg["gpu"]["num_nodes"],
         devices=cfg["gpu"]["num_gpus"],
-        strategy=cfg["gpu"]["strategy"],
-        sync_batchnorm=True
+        sync_batchnorm=True,
+        strategy=cfg["gpu"]["strategy"]
     )
     trainer.fit(
         model=train_runner,

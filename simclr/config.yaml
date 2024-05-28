@@ -1,4 +1,4 @@
-experiment_name: debug
+experiment_name: firstrun
 data_params:
   timesteps:
     start: 0
@@ -7,7 +7,7 @@ data_params:
     start: 20
     end: 80
   dataset_name: mitospace
-  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data
+  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/2023_data
   patch_size: 256
   samples_per_drug: None
   transforms:
@@ -15,7 +15,7 @@ data_params:
         p: 0.5
         size: 256
         scale: [0.35, 1.0]
-        empty_area_check_idx: 1  # not relevant here? check this once
+        empty_area_check_idx: 1  # not relevant for 4D? check this once
       Brightness:
         p: 0.5
         method: random_gaussian
@@ -46,7 +46,7 @@ data_params:
         translate: [0.1, 0.2]
   filters: null
 logging_params:
-  save_path: /home/dhruvagarwal/projects/MitoSpace/runs/
+  save_path: /home/dhruvagarwal/projects/MitoSpace4D/runs/
 model_params:
   arch: resnet18
   pretrained: false
@@ -58,10 +58,10 @@ training:
     name: InfoNCELoss
     use_normalization: True
     temperature: 0.07
-  max_epochs: 2000
+  max_epochs: 50
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 6
+  batch_size: 4
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
@@ -69,14 +69,15 @@ training:
     save_top_k: 1
     save_last: True
   continue_from_ckpt_wo_opt: None
-  lr: 0.00005
+  lr: 0.0003
   weight_decay: 0.00001
-  workers: 1
+  workers: 4
   n_views: 2
 gpu:
   num_gpus: -1
   accelerator: gpu
   strategy: ddp
+  num_nodes: 1
 evaluate:
   top_ns: [1, 3]
   dataset: Cal27

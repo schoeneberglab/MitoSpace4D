@@ -275,7 +275,7 @@ class SimCLRRunner(pl.LightningModule):
             self.additional_log(batch, "Train")
             self.val_draw = True
 
-        if self.global_step % self.projector_period == 0:
+        if self.global_step % self.projector_period == 0 and self.global_step != 0:
             self.log_mitospace(batch)
 
         return loss[0]

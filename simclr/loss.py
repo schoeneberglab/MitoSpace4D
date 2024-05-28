@@ -4,10 +4,12 @@ import torch.nn.functional as F
 from utils.utils import accuracy
 from torch import Tensor
 from typing import Tuple
-
+import torch.distributed as dist
+import diffdist
 
 class InfoNCELoss(nn.Module):
-    def __init__(self, temperature: float = 0.07, use_normalization: bool = True, device: str = 'cuda') -> None:
+    def __init__(self, temperature: float = 0.07, use_normalization: bool = True, device: str = 'cuda',
+                 n_views: int = 2, distributed: bool = True) -> None:
         """
         Initialize the loss function for InfoNCE loss.
         """
@@ -16,6 +18,8 @@ class InfoNCELoss(nn.Module):
         self.normalize = use_normalization
         self.device = device
         self.cross_entropy = nn.CrossEntropyLoss()
+        self.n_views = n_views
+        self.distributed = distributed
 
     def forward(self, features: Tensor, bs: int, n_views: int) -> Tuple[Tensor, Tuple[float, float]]:
         """
@@ -31,6 +35,16 @@ class InfoNCELoss(nn.Module):
 
         if self.normalize:
             features = F.normalize(features, dim=1)
+
+        if self.distributed:
+            features_list = [torch.zeros_like(features) for _ in range(dist.get_world_size())]
+            features_list = diffdist.functional.all_gather(features_list, features)
+            features_list = [chunk for x in features_list for chunk in x.chunk(self.n_views)]
+            features_sorted = []
+            for m in range(self.n_views):
+                for i in range(dist.get_world_size()):
+                    features_sorted.append(features_list[i * self.n_views + m])
+            features = torch.cat(features_sorted, dim=0)
 
         similarity_matrix = torch.matmul(features, features.T)
 

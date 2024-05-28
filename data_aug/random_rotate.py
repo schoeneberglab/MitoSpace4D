@@ -110,12 +110,13 @@ class RandomRotation(torch.nn.Module):
             return img
         fill = self.fill
         time, z, _, _ = img.size()
-        if isinstance(img, Tensor):
-            random_z = random.randint(0, z - 1)
+        #if isinstance(img, Tensor):
+            #random_z = random.randint(0, z - 1)
 
             # we multiply by 1 because right now we only we have either mitotrack or tmrm; if we have more channels (
             # both Mitotracker and TMRM), we need to change this to 2 and have separate fill values for each channel
-            fill = [float(torch.quantile(img[:, random_z], 0.05))] * 1
+            #fill = [float(torch.quantile(img[:, random_z], 0.05))] * 1
+        fill = 0.
         angle = self.get_params(self.degrees)
 
         try:

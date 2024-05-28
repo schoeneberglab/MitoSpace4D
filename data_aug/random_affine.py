@@ -170,15 +170,16 @@ class RandomAffine(torch.nn.Module):
             return img
         fill = self.fill
         time, z, height, width = img.size()
-        if isinstance(img, Tensor):
-            random_z = random.randint(0, z - 1)
+        #if isinstance(img, Tensor):
+            #random_z = random.randint(0, z - 1)
 
             # we multiply by 1 because right now we only we have either mitotrack or tmrm; if we have more channels (
             # both Mitotracker and TMRM), we need to change this to 2 and have separate fill values for each channel
-            if isinstance(fill, (int, float)):
-                fill = [float(torch.quantile(img[:, random_z], 0.15))] * 1
-            else:
-                fill = [float(torch.quantile(img[:, random_z], 0.15))] * 1
+            #if isinstance(fill, (int, float)):
+            #    fill = [float(torch.quantile(img[:, random_z], 0.15))] * 1
+            #else:
+            #    fill = [float(torch.quantile(img[:, random_z], 0.15))] * 1
+        fill = 0
 
         img_size = [width, height]  # flip for keeping BC on get_params call
 

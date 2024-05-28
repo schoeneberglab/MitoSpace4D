@@ -136,9 +136,10 @@ class MitoSpaceDataset(Dataset):
 
         # filter the timesteps and zstacks: remove later timesteps which have bleached mitochondria, remove the zstacks
         # at the extremes which usually do not contain much mitochondria
-        image = image[self.timesteps['start']: self.timesteps['end'],
-                self.zstacks['start']: self.zstacks['end'],
-                ...]
+        # image = image[self.timesteps['start']: self.timesteps['end'],
+        #        self.zstacks['start']: self.zstacks['end'],
+        #        ...]
+        image = image / 65535.
 
         label = self.labels[idx]
 
