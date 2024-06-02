@@ -166,10 +166,16 @@ class RandomAffine(torch.nn.Module):
         Returns:
             PIL Image or Tensor: Affine transformed image.
         """
+        if isinstance(img, np.ndarray):
+            img = torch.from_numpy(img)
         if np.random.uniform() > self.p:
             return img
         fill = self.fill
-        time, z, height, width = img.size()
+
+        if len(img.size()) == 4:
+            time, z, height, width = img.size()
+        else:
+            bs, time, z, height, width = img.size()
         #if isinstance(img, Tensor):
             #random_z = random.randint(0, z - 1)
 
@@ -186,7 +192,13 @@ class RandomAffine(torch.nn.Module):
         ret = self.get_params(self.degrees, self.translate, self.scale, self.shear, img_size)
 
         try:
-            return F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=self.center)
+            # compress dimensions if more than 4
+            if len(img.size()) == 4:
+                return F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=self.center)
+            elif len(img.size()) == 5:
+                img = img.view(-1, height, width)
+                img = F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=self.center)
+                return img.view(bs, time, z, height, width)
         except:
             return img
 

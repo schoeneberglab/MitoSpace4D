@@ -30,8 +30,6 @@ class InfoNCELoss(nn.Module):
 
         returns: Tuple of ( loss and Tuple (top-1 accuracy, top-5 accuracy) )
         """
-        labels = torch.cat([torch.arange(bs) for _ in range(n_views)], dim=0)
-        labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
 
         if self.normalize:
             features = F.normalize(features, dim=1)
@@ -45,6 +43,10 @@ class InfoNCELoss(nn.Module):
                 for i in range(dist.get_world_size()):
                     features_sorted.append(features_list[i * self.n_views + m])
             features = torch.cat(features_sorted, dim=0)
+            bs = features.shape[0] // self.n_views
+
+        labels = torch.cat([torch.arange(bs) for _ in range(n_views)], dim=0)
+        labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
 
         similarity_matrix = torch.matmul(features, features.T)
 

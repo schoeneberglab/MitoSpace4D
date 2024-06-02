@@ -67,6 +67,8 @@ class MitoSpaceDataset(Dataset):
 
         self.data = list(zip(self.all_filenames, self.all_labels))
 
+        self.data = self.data * 200  # mimic the original dataset
+
         random.seed(self.seed)
         shuffle(self.data)
 
@@ -132,25 +134,19 @@ class MitoSpaceDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
         img_name = self.filenames[idx]
-        image = np.load(img_name).astype(np.float32)
+        image = np.load(img_name, mmap_mode='r').astype(np.float32)
 
-        # filter the timesteps and zstacks: remove later timesteps which have bleached mitochondria, remove the zstacks
-        # at the extremes which usually do not contain much mitochondria
-        # image = image[self.timesteps['start']: self.timesteps['end'],
-        #        self.zstacks['start']: self.zstacks['end'],
-        #        ...]
         image = image / 65535.
 
         label = self.labels[idx]
 
-        if self.transform:
-            image = self.transform(image)  # image: [time, H, W, Z]
-            image = minus_one_to_one_normalization(image)
-            image = idxs_to_keep(image, idxs=None)
-
-        else:
-            image = image.transpose(2, 0, 1)  # make it CHW
-            image = minus_one_to_one_normalization(image)
-            image = idxs_to_keep(image, idxs=None)
+        # if self.transform:
+        #     image = self.transform(image)  # image: [time, H, W, Z]
+        #     image = minus_one_to_one_normalization(image)
+        #     image = idxs_to_keep(image, idxs=None)
+        #
+        # else:
+        #     image = minus_one_to_one_normalization(image)
+        #     image = idxs_to_keep(image, idxs=None)
 
         return {"images": image, "classes": label}

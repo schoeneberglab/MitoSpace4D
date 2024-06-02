@@ -5,46 +5,6 @@ from torchvision.transforms import transforms
 from scipy.ndimage import convolve, gaussian_filter
 
 
-# class GaussianBlur(object):
-#     """blur a single image on CPU"""
-#     def __init__(self, p, n_channels, kernel_size):
-#         self.p = p
-#         self.n_channels = n_channels
-#         radias = kernel_size // 2
-#         kernel_size = radias * 2 + 1
-#         self.blur_h = nn.Conv2d(self.n_channels, self.n_channels, kernel_size=(kernel_size, 1),
-#                                 stride=1, padding=0, bias=False, groups=self.n_channels)
-#         self.blur_v = nn.Conv2d(self.n_channels, self.n_channels, kernel_size=(1, kernel_size),
-#                                 stride=1, padding=0, bias=False, groups=self.n_channels)
-#         self.k = kernel_size
-#         self.r = radias
-#
-#         self.blur = nn.Sequential(
-#             nn.ReflectionPad2d(radias),
-#             self.blur_h,
-#             self.blur_v
-#         )
-#
-#         self.pil_to_tensor = transforms.ToTensor()
-#         self.tensor_to_pil = transforms.ToPILImage()
-#
-#     def __call__(self, sample):
-#         if np.random.random() < self.p:
-#             sigma = np.random.uniform(0.1, 2.0)
-#             x = np.arange(-self.r, self.r + 1)
-#             x = np.exp(-np.power(x, 2) / (2 * sigma * sigma))
-#             x = x / x.sum()
-#             x = torch.from_numpy(x).view(1, -1).repeat(self.n_channels, 1)
-#
-#             self.blur_h.weight.data.copy_(x.view(self.n_channels, 1, self.k, 1))
-#             self.blur_v.weight.data.copy_(x.view(self.n_channels, 1, 1, self.k))
-#
-#             with torch.no_grad():
-#                 sample = self.blur(sample)
-#                 sample = sample.squeeze()
-#
-#         return sample
-
 class GaussianBlur(object):
     """blur a single image on CPU"""
 
@@ -87,4 +47,52 @@ class GaussianBlur(object):
 
             sample = torch.from_numpy(blurred_image)
 
+        return sample
+
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+
+class GaussianBlurGPU(nn.Module):
+    """Apply Gaussian blur to a batch of images on GPU"""
+
+    def __init__(self, p, n_channels, kernel_size, sigma):
+        super(GaussianBlurGPU, self).__init__()
+        self.p = p
+        self.n_channels = n_channels
+        self.kernel_size = kernel_size
+        self.sigma_range = (0.5, sigma)
+        self.radius = kernel_size // 2
+
+    def create_gaussian_kernel(self, sigma):
+        # Create a 2D Gaussian kernel
+        x = torch.arange(-self.radius, self.radius + 1, dtype=torch.float32)
+        y = torch.arange(-self.radius, self.radius + 1, dtype=torch.float32)
+        x, y = torch.meshgrid(x, y)
+        kernel = torch.exp(-(x ** 2 + y ** 2) / (2 * (sigma ** 2)))
+        kernel = kernel / kernel.sum()
+        return kernel
+
+    def apply_kernel(self, img, kernel):
+        # Apply Gaussian kernel to the image
+        kernel = kernel.expand(1, *kernel.shape).to(img.device)
+        img = F.conv2d(img.unsqueeze(1), kernel.unsqueeze(1), padding=self.radius, stride=(1, 1))
+        return img
+
+    def forward(self, sample):
+        if torch.rand(1).item() < self.p:
+            sigma = torch.FloatTensor(1).uniform_(*self.sigma_range).item()
+            kernel = self.create_gaussian_kernel(sigma).to(sample.device)
+            kernel /= kernel.sum()  # Normalize the kernel
+
+            batch_size, time, z, height, width = sample.size()
+            sample = sample.view(-1, height, width)
+
+            blurred_images = self.apply_kernel(sample, kernel)
+
+            blurred_images = blurred_images.view(batch_size, time, z, height, width)
+
+            return blurred_images
         return sample

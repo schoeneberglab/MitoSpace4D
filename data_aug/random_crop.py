@@ -154,24 +154,42 @@ class RandomResizedCrop(torch.nn.Module):
             PIL Image or Tensor: Randomly cropped and resized image.
         """
 
-        # if image is a numpy array, convert it to a tensor
         if isinstance(img, np.ndarray):
             img = torch.from_numpy(img)
 
         if np.random.uniform() > self.p:
             # Have added the below function for consistency.
             # F.resize won't change the image if the size is the same; No harm in applying the below function.
-            return F.resize(img, self.size, self.interpolation, antialias=self.antialias)
+            if len(img.size()) == 4:
+                return F.resize(img, self.size, self.interpolation, antialias=self.antialias)
+            else:
+                bs, time, z, height, width = img.size()
+                img = img.view(-1, img.size(2), img.size(3), img.size(4))
+                img = F.resize(img, self.size, self.interpolation, antialias=self.antialias)
+                return img.view(bs, time, z, height, width)
 
         i, j, h, w = self.get_params(img, self.scale, self.ratio)
-        resized_crop = F.resized_crop(img, i, j, h, w, self.size, self.interpolation, antialias=self.antialias)
+
+        if len(img.size()) == 4:
+            resized_crop = F.resized_crop(img, i, j, h, w, self.size, self.interpolation, antialias=self.antialias)
+        else:
+            bs, time, z, height, width = img.size()
+            img = img.view(-1, img.size(2), img.size(3), img.size(4))
+            resized_crop = F.resized_crop(img, i, j, h, w, self.size, self.interpolation, antialias=self.antialias)
+            resized_crop = resized_crop.view(bs, time, z, height, width)
 
         min_pixel_value = resized_crop[self.empty_area_check_idx].min() * 1.2
         # if 80% of the pixels are minimum pixel value, return the original image
         num_empty_pixels = (resized_crop[self.empty_area_check_idx] <= min_pixel_value).sum()
 
         if num_empty_pixels >= 0.8 * resized_crop[self.empty_area_check_idx].flatten().size()[0]:
-            return F.resize(img, self.size, self.interpolation, antialias=self.antialias)
+            if len(img.size()) == 4:
+                return F.resize(img, self.size, self.interpolation, antialias=self.antialias)
+            else:
+                bs, time, z, height, width = img.size()
+                img = img.view(-1, img.size(2), img.size(3), img.size(4))
+                img = F.resize(img, self.size, self.interpolation, antialias=self.antialias)
+                return img.view(bs, time, z, height, width)
 
         return resized_crop
 

@@ -4,6 +4,9 @@ from torch import nn
 from torchvision.transforms import transforms
 import matplotlib.pyplot as plt
 
+import torch
+from torch import nn
+
 
 class RandomExchangeFlip(object):
     """
@@ -24,3 +27,27 @@ class RandomExchangeFlip(object):
             return sample
         else:
             return sample
+
+
+class RandomExchangeFlipGPU(nn.Module):
+    """
+    Randomly flip and exchange parts of the image along the horizontal and vertical axes.
+
+    Args:
+        p (float): Probability of applying the horizontal flip. Vertical flip is applied with p/2.
+    """
+
+    def __init__(self, p=0.5):
+        super(RandomExchangeFlipGPU, self).__init__()
+        self.p = p
+
+    def forward(self, sample):
+        if torch.rand(1).item() < self.p:
+            # Horizontal flip
+            sample = torch.cat((sample[..., sample.shape[-2] // 2:, :], sample[..., :sample.shape[-2] // 2, :]), dim=-2)
+
+        if torch.rand(1).item() < self.p / 2:
+            # Vertical flip
+            sample = torch.cat((sample[..., sample.shape[-1] // 2:], sample[..., :sample.shape[-1] // 2]), dim=-1)
+
+        return sample

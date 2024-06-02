@@ -1,4 +1,4 @@
-experiment_name: firstrun
+experiment_name: secondrun
 data_params:
   timesteps:
     start: 0
@@ -27,7 +27,7 @@ data_params:
       VerticalFlip:
         p: 0.5
       GaussianBlur:
-        p: 0.5
+        p: -1
         n_channels: 2
         kernel_size: 25
         sigma: 2
@@ -51,8 +51,9 @@ model_params:
   arch: resnet18
   pretrained: false
   out_dim: 512
+  in_channels: 1
   num_z: 60
-  timesteps: 30
+  timesteps: 20
 training:
   loss:
     name: InfoNCELoss
@@ -61,7 +62,7 @@ training:
   max_epochs: 50
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 4
+  batch_size: 7
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
@@ -71,9 +72,10 @@ training:
   continue_from_ckpt_wo_opt: None
   lr: 0.0003
   weight_decay: 0.00001
-  workers: 4
+  workers: 10
   n_views: 2
-gpu:
+distributed:
+  flag: True
   num_gpus: -1
   accelerator: gpu
   strategy: ddp

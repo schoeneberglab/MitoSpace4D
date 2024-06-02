@@ -29,3 +29,30 @@ class RandomGaussianNoise(object):
             sample = sample + noise
 
         return sample
+
+
+class RandomGaussianNoiseGPU(nn.Module):
+    """
+    Apply random Gaussian noise to a batch of images.
+
+    Args:
+        mu (list): Mean of the Gaussian noise for each channel.
+        scale (float): Scale of the Gaussian noise.
+        p (float): Probability of applying the noise.
+    """
+
+    def __init__(self, mu=[0.04, 0.04], scale=0.05, p=0.5):
+        super(RandomGaussianNoiseGPU, self).__init__()
+        self.mu = mu
+        self.scale = scale
+        self.p = p
+
+    def forward(self, sample):
+        if torch.rand(1).item() <= self.p:
+            noise = torch.normal(mean=torch.tensor(self.mu[0], device=sample.device),
+                                 std=torch.tensor(self.mu[0] * 0.2, device=sample.device),
+                                 size=sample.shape).float().to(sample.device)
+            noise = noise * (self.scale * sample.max())
+            sample = sample + noise
+
+        return sample

@@ -106,10 +106,14 @@ class RandomRotation(torch.nn.Module):
 		Returns:
 			PIL Image or Tensor: Rotated image.
 		"""
+
+        if isinstance(img, np.ndarray):
+            img = torch.from_numpy(img)
+
         if np.random.uniform() > self.p:
             return img
+
         fill = self.fill
-        time, z, _, _ = img.size()
         #if isinstance(img, Tensor):
             #random_z = random.randint(0, z - 1)
 
@@ -120,7 +124,13 @@ class RandomRotation(torch.nn.Module):
         angle = self.get_params(self.degrees)
 
         try:
-            return F.rotate(img, angle, self.interpolation, self.expand, self.center, fill)
+            if len(img.size()) == 4:
+                return F.rotate(img, angle, self.interpolation, self.expand, self.center, fill)
+            else:
+                bs, time, z, height, width = img.size()
+                img = img.view(-1, z, height, width)
+                img = F.rotate(img, angle, self.interpolation, self.expand, self.center, fill)
+                return img.view(bs, time, z, height, width)
         except:
             return img
 
