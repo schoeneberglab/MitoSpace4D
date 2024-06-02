@@ -205,6 +205,7 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
             im, lbl = batch
         else:
             im, lbl = batch["images"], batch["classes"]
+            im = minus_one_to_one_normalization(im)
 
         if messup_tmrm:
             tmrm_idx = 0
@@ -261,11 +262,11 @@ if __name__ == "__main__":
     cfg = load_config(args.config)
     proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
 
-    model = ResNetSimCLR3D(out_dim=cfg['model_params']['out_dim'],
-                           pretrained=cfg['model_params']['pretrained'],
-                           in_channels=cfg['model_params']['num_z']).to(device)
+    model = MitoSpace4D(
+        in_channels=cfg['model_params']['in_channels'],
+        out_dim=cfg['model_params']['out_dim']).to(device)
 
-    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/best_model.ckpt"
+    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=46-step=5875-val_loss=0.00.ckpt"
     top_ns = cfg["evaluate"]["top_ns"]
     dataset_name = cfg["evaluate"]["dataset"]
 

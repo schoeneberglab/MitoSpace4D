@@ -20,6 +20,7 @@ from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
 
 from simclr.models import Small3DResNetLSTM
+from utils.utils import minus_one_to_one_normalization
 
 torch.manual_seed(0)
 
@@ -265,6 +266,8 @@ class SimCLRRunner(pl.LightningModule):
                 images_aug1 = aug(images_aug1)
                 images_aug2 = aug(images_aug2)
 
+        images_aug1 = minus_one_to_one_normalization(images_aug1)
+        images_aug2 = minus_one_to_one_normalization(images_aug2)
         batch = {"images": torch.stack([images_aug1, images_aug2]), "classes": batch["classes"]}
         return batch
 

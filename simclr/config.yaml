@@ -1,4 +1,4 @@
-experiment_name: secondrun
+experiment_name: lstmmodel
 data_params:
   timesteps:
     start: 0
@@ -27,7 +27,7 @@ data_params:
       VerticalFlip:
         p: 0.5
       GaussianBlur:
-        p: -1
+        p: 0.5
         n_channels: 2
         kernel_size: 25
         sigma: 2
