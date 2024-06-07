@@ -7,22 +7,23 @@ from torchvision.models.resnet import ResNet50_Weights
 ### Input : 3 channel batch image (3, 356, 256)
 ### Ouput : (256, 64, 64)
 class ResNet50Extract(nn.Module):
-    def __init__(self, layer_name="layer1", bottleneck=2, activation="relu"):
+    def __init__(self, layer_name="layer1", bottleneck=2, activation="relu", in_channels=256): #In channels should match with output of hooked layer
         super(ResNet50Extract, self).__init__()
         self.resnet50 = models.resnet50(weights=ResNet50_Weights.DEFAULT)
         self._freeze_params()
         self.extracted_output = None
 
         self._register_hook(layer_name, bottleneck, activation)
-
+        self.downsample = nn.Conv2d(in_channels, 1, kernel_size=3,stride=1, padding=1)
 
     def _freeze_params(self):
         for param in self.resnet50.parameters():
             param.requires_grad = False
     
     def forward(self, x):
-        _ = self.resnet50(x)
-        return self.extracted_output
+        _ = self.resnet50(x) # Creates extracted output = (-1, 256, 64, 64)
+        conv_out = self.downsample(self.extracted_output) # (-1, 1, 64, 64)
+        return conv_out.squeeze(1) # (-1, 64, 64)
     
     def _register_hook(self, layer_name, bottleneck, activation):
         def hook_fn(module, input, output):
