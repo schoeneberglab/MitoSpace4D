@@ -5,7 +5,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 from torchvision import models
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
-from simclr.models import MitoSpace4D
+from simclr.models import MitoSpace4D, MitoSpace4DConvLSTM
 from simclr.simclr import SimCLRRunner
 from torchsummary import summary
 import pytorch_lightning as pl
@@ -20,7 +20,7 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='MitoSpace4D')
 parser.add_argument('--log-every-n-steps', default=100, type=int,
                     help='Log every n steps')
-parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml', type=str,
+parser.add_argument('--config', default='/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml', type=str,
                     help='Config path.')
 
 
@@ -64,7 +64,7 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=cfg['training']['batch_size'], shuffle=False,
                             num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True)
 
-    model = MitoSpace4D(
+    model = MitoSpace4DConvLSTM(
         in_channels=cfg['model_params']['in_channels'],
         out_dim=cfg['model_params']['out_dim'])
 
@@ -105,8 +105,8 @@ def main():
     trainer.fit(
         model=train_runner,
         train_dataloaders=train_loader,
-        val_dataloaders=val_loader
-        # ckpt_path="/home/dhruvagarwal/projects/MitoSpace/runs/lightning_logs/20240503_noNorm_moreStrongAug_MixedPrec_cosineLR_1000epochs_normalizedFeats512dims/checkpoints/last-v1.ckpt"
+        val_dataloaders=val_loader,
+        #ckpt_path="/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs/lightning_logs/convlstmmodel/checkpoints/last-v2.ckpt"
         # use this to load optimizer as well as model states
     )
 

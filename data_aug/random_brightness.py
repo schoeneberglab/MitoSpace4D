@@ -14,7 +14,7 @@ import random
 np.random.seed(0)
 
 
-def create_gaussian_mask(shape, center, sigma):
+def create_gaussian_mask(shape, center, sigma, dtyp=torch.float32):
     """
     Create a Gaussian mask with given shape, centered at specified coordinates,
     and with specified standard deviation (sigma).
@@ -25,16 +25,16 @@ def create_gaussian_mask(shape, center, sigma):
         sigma (float): Standard deviation of the Gaussian.
 
     Returns:
-        np.ndarray: 2D Gaussian mask.
+        torch.Tensor: 2D Gaussian mask.
     """
     h, w = shape
     y, x = center
-    y_range = np.arange(h)
-    x_range = np.arange(w)
-    xx, yy = np.meshgrid(x_range, y_range)
+    y_range = torch.arange(h, dtype=dtyp)
+    x_range = torch.arange(w, dtype=dtyp)
+    yy, xx = torch.meshgrid(y_range, x_range, indexing='ij')
 
     # Calculate Gaussian mask
-    mask = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2))
+    mask = torch.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2))
 
     return mask
 
@@ -72,8 +72,7 @@ class RandomBrightness(object):
                 sigma = self.spread
 
                 # Create Gaussian mask
-                gaussian_mask = create_gaussian_mask((h, w), center, sigma).astype(np.float32)
-                gaussian_mask = torch.from_numpy(gaussian_mask)
+                gaussian_mask = create_gaussian_mask((h, w), center, sigma, dtyp=sample.dtype)
 
                 if self.apply_idx == [-1]:
                     sample = sample * gaussian_mask

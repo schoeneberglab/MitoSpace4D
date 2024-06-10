@@ -22,11 +22,10 @@ class RandomGaussianNoise(object):
 
     def __call__(self, sample):
         if np.random.uniform() <= self.p:
-            # for when we have tmrm and mito both
-            noise = np.random.normal(np.random.normal(self.mu[0], self.mu[0] * 0.2),
-                                     self.scale * sample.max(), sample[0, 0].shape).astype(np.float32)
-            noise = torch.from_numpy(noise)
+            noise = (torch.randn(sample.size()[-2:], dtype=sample.dtype, device=sample.device) * self.scale +
+                     self.mu[0])
             sample = sample + noise
+            sample = torch.clip(sample, 0, 1)
 
         return sample
 
@@ -51,7 +50,7 @@ class RandomGaussianNoiseGPU(nn.Module):
         if torch.rand(1).item() <= self.p:
             noise = torch.normal(mean=torch.tensor(self.mu[0], device=sample.device),
                                  std=torch.tensor(self.mu[0] * 0.2, device=sample.device),
-                                 size=sample.shape).float().to(sample.device)
+                                 size=sample.shape).float()
             noise = noise * (self.scale * sample.max())
             sample = sample + noise
 

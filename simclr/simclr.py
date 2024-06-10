@@ -7,20 +7,10 @@ import umap
 from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from sklearn.metrics import davies_bouldin_score
 import pytorch_lightning as pl
-from torchvision.transforms import transforms
-
-from data_aug.gaussian_blur import GaussianBlurGPU
-from data_aug.random_affine import RandomAffine
-from data_aug.random_brightness import RandomBrightnessGPU
-from data_aug.random_crop import RandomResizedCrop
-from data_aug.random_exchange_flip import RandomExchangeFlipGPU
-from data_aug.random_noise import RandomGaussianNoiseGPU
-from data_aug.random_rotate import RandomRotation
 from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
 
 from simclr.models import Small3DResNetLSTM
-from utils.utils import minus_one_to_one_normalization
 
 torch.manual_seed(0)
 
@@ -59,35 +49,18 @@ class SimCLRRunner(pl.LightningModule):
                                                                     T_max=cfg['training']['max_epochs'],
                                                                     eta_min=0, last_epoch=-1)
 
-        aug_cfg = cfg['data_params']['transforms']
-        self.augmentation = {"Crop": RandomResizedCrop(p=aug_cfg['Crop']['p'], size=aug_cfg['Crop']['size'],
-                                                       scale=aug_cfg['Crop']['scale'],
-                                                       empty_area_check_idx=aug_cfg['Crop']['empty_area_check_idx']),
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,
+        #                                                  step_size=1000000000000000000000000000000000000000000000,
+        #                                                  gamma=1, last_epoch=-1)  # effectively keep constant lr
 
-                             "HorizontalFlip": transforms.RandomHorizontalFlip(p=aug_cfg['HorizontalFlip']['p']),
+        self.data_bank = {"Train": [], "Val": []}
 
-                             "VerticalFlip": transforms.RandomVerticalFlip(p=aug_cfg['VerticalFlip']['p']),
-
-                             "Rotation": RandomRotation(p=aug_cfg['Rotation']['p'], degrees=aug_cfg['Rotation']['degrees']),
-
-                             "Brightness": RandomBrightnessGPU(p=aug_cfg['Brightness']['p'],
-                                                               factor=aug_cfg['Brightness']['factor'],
-                                                               apply_idx=aug_cfg['Brightness']['apply_idx'],
-                                                               method=aug_cfg['Brightness']['method']),
-
-                             "GaussianNoise": RandomGaussianNoiseGPU(p=aug_cfg['GaussianNoise']['p'],
-                                                                     mu=aug_cfg['GaussianNoise']['mu'],
-                                                                     scale=aug_cfg['GaussianNoise']['scale']),
-
-                             "Affine": RandomAffine(p=aug_cfg['Affine']['p'], degrees=aug_cfg['Affine']['degrees'],
-                                                    translate=aug_cfg['Affine']['translate']),
-
-                             "ExchangeFlip": RandomExchangeFlipGPU(p=aug_cfg['ExchangeFlip']['p']),
-                             "GaussianBlur": GaussianBlurGPU(p=aug_cfg['GaussianBlur']['p'],
-                                                             n_channels=aug_cfg['GaussianBlur']['n_channels'],
-                                                             kernel_size=aug_cfg['GaussianBlur']['kernel_size'],
-                                                             sigma=aug_cfg['GaussianBlur']['sigma'])
-                             }
+        # self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer,
+        #                                                      max_lr=float(self.cfg["training"]["lr"]),
+        #                                                      epochs=int(self.cfg["training"]["max_epochs"]),
+        #                                                      steps_per_epoch=145,
+        #                                                      pct_start=0.3,
+        #                                                      anneal_strategy='cos')
 
         print(f"###################### Using {self.loss} Loss For Training ##################")
 
@@ -251,32 +224,14 @@ class SimCLRRunner(pl.LightningModule):
 
         return entropy.mean()
 
-    @ torch.no_grad()
-    def augment_batch(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        The function is meant to augment the batch to prepare it for SimCLR
-        """
-
-        images_aug1 = batch["images"]  # (bs, T, Z, H, W)
-        images_aug2 = batch["images"].clone()  # (bs, T, Z, H, W)
-
-        # apply the augmentations
-        with torch.no_grad():
-            for aug_name, aug in self.augmentation.items():
-                images_aug1 = aug(images_aug1)
-                images_aug2 = aug(images_aug2)
-
-        images_aug1 = minus_one_to_one_normalization(images_aug1)
-        images_aug2 = minus_one_to_one_normalization(images_aug2)
-        batch = {"images": torch.stack([images_aug1, images_aug2]), "classes": batch["classes"]}
-        return batch
-
     def batch_step(self, batch: Dict[str, Any], key: str = "Train") -> tuple[
         list[Any | None], Any | None, float, torch.Tensor]:
         """Common batch step for train, val, test"""
 
         if isinstance(batch, Dict):
             images, classes = batch["images"], batch["classes"]
+            images = images.permute(1, 0, 2, 3, 4, 5)
+            batch["images"] = images
         else:
             images, classes = batch
 
@@ -300,13 +255,15 @@ class SimCLRRunner(pl.LightningModule):
                                                   n_views=self.cfg['training']['n_views'])
 
         features = F.normalize(features, dim=-1)
-        db = davies_bouldin_score(features.reshape(features.shape[0], -1).cpu().detach().numpy(),
+        try:
+            db = davies_bouldin_score(features.reshape(features.shape[0], -1).cpu().detach().numpy(),
                                   np.array(list(classes.cpu().numpy()) + list(classes.cpu().numpy())))
+        except:
+            db = 1000 # random high number
 
         return [loss, cross_entropy], acc, db, features
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int) -> STEP_OUTPUT:
-        batch = self.augment_batch(batch)
         loss, acc, db, embds = self.batch_step(batch, "Train")
         batch["embeddings"] = embds
 
@@ -330,7 +287,6 @@ class SimCLRRunner(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> STEP_OUTPUT:
-        batch = self.augment_batch(batch)
         loss, acc, db, embds = self.batch_step(batch, "Val")
         batch["embeddings"] = embds
 

@@ -3,6 +3,8 @@ import torch
 from torch import nn
 from torchvision.transforms import transforms
 from scipy.ndimage import convolve, gaussian_filter
+import torch.nn.functional as F
+import torchvision.transforms as T
 
 
 class GaussianBlur(object):
@@ -48,11 +50,6 @@ class GaussianBlur(object):
             sample = torch.from_numpy(blurred_image)
 
         return sample
-
-
-import torch
-import torch.nn.functional as F
-from torch import nn
 
 
 class GaussianBlurGPU(nn.Module):

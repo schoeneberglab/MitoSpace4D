@@ -12,12 +12,6 @@ def get_mitospace_data_loaders(root_folder, to_load=None, shuffle=False, batch_s
     loaders = {}
 
     if "train" in to_load:
-        # train_dataset = MitoSpaceDataset(root_folder,
-        #                                  transform=transforms.Compose([transforms.ToTensor(),
-        #                                                                transforms.Resize(size=(256, 256))]),
-        #                                  flag='train', seed=seed, pick_labels=pick_labels,
-        #                                  samples_per_drug=samples_per_drug)
-
         train_dataset = MitoSpaceDataset(root_folder,
                                          flag='train',
                                          seed=seed, pick_labels=pick_labels,
@@ -36,7 +30,7 @@ def get_mitospace_data_loaders(root_folder, to_load=None, shuffle=False, batch_s
                                        timesteps=timesteps, zstacks=zstacks)
 
         val_loader = DataLoader(val_dataset, batch_size=batch_size,
-                                num_workers=32, drop_last=False, shuffle=shuffle)
+                                num_workers=6, drop_last=False, shuffle=shuffle)
         loaders["val"] = val_loader
 
     if "test" in to_load:
@@ -47,7 +41,7 @@ def get_mitospace_data_loaders(root_folder, to_load=None, shuffle=False, batch_s
                                         samples_per_drug=samples_per_drug)
 
         test_loader = DataLoader(test_dataset, batch_size=batch_size,
-                                 num_workers=32, drop_last=False, shuffle=shuffle)
+                                 num_workers=6, drop_last=False, shuffle=shuffle)
         loaders["test"] = test_loader
 
     if "all" in to_load:
@@ -57,7 +51,7 @@ def get_mitospace_data_loaders(root_folder, to_load=None, shuffle=False, batch_s
                                        flag='all', seed=seed, pick_labels=pick_labels,
                                        samples_per_drug=samples_per_drug)
         all_loader = DataLoader(all_dataset, batch_size=batch_size,
-                                num_workers=32, drop_last=False, shuffle=shuffle)
+                                num_workers=5, drop_last=False, shuffle=shuffle)
         loaders["all"] = all_loader
 
     if "stl10_train" in to_load or "stl10_test" in to_load or "stl10_val" in to_load:
@@ -67,7 +61,7 @@ def get_mitospace_data_loaders(root_folder, to_load=None, shuffle=False, batch_s
                                                                      transforms.Resize(size=(96, 96))]),
                                        download=False)
         stl10_loader = DataLoader(stl10_dataset, batch_size=batch_size,
-                                  num_workers=32, drop_last=False, shuffle=shuffle)
+                                  num_workers=6, drop_last=False, shuffle=shuffle)
         loaders["stl10"] = stl10_loader
 
     if "cifar10_train" in to_load or "cifar10_test" in to_load:

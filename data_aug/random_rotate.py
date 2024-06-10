@@ -107,9 +107,6 @@ class RandomRotation(torch.nn.Module):
 			PIL Image or Tensor: Rotated image.
 		"""
 
-        if isinstance(img, np.ndarray):
-            img = torch.from_numpy(img)
-
         if np.random.uniform() > self.p:
             return img
 

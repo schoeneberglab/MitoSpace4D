@@ -27,7 +27,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(description='MitoSpace Evaluation')
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
-parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml',
+parser.add_argument('--config', default='/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml',
                     type=str, help='Config path.')
 parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
@@ -205,7 +205,6 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
             im, lbl = batch
         else:
             im, lbl = batch["images"], batch["classes"]
-            im = minus_one_to_one_normalization(im)
 
         if messup_tmrm:
             tmrm_idx = 0
@@ -260,13 +259,13 @@ def l2_distance(eval_embeddings, train_embeddings):
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
+    proj_dir = "/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/"
 
     model = MitoSpace4D(
         in_channels=cfg['model_params']['in_channels'],
         out_dim=cfg['model_params']['out_dim']).to(device)
 
-    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=46-step=5875-val_loss=0.00.ckpt"
+    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=70-step=8875-val_loss=0.00.ckpt"
     top_ns = cfg["evaluate"]["top_ns"]
     dataset_name = cfg["evaluate"]["dataset"]
 
@@ -285,13 +284,13 @@ if __name__ == "__main__":
 
     loaders_eval = get_mitospace_data_loaders(
         f'{proj_dir}/data/2023_data/',
-        shuffle=False, batch_size=8, to_load=["val"],
+        shuffle=False, batch_size=8, to_load=["train"],
         timesteps=cfg['data_params']['timesteps'],
         zstacks=cfg['data_params']['zstacks'],
         pick_labels=None
     )
 
-    train_loader, eval_loader = (loaders_reference["train"], loaders_eval["val"])
+    train_loader, eval_loader = (loaders_reference["train"], loaders_eval["train"])
 
     train_embeddings, train_images, train_labels = extract_embeddings_from_model(train_loader, model.model,
                                                                                  normalize_embeddings=True,
