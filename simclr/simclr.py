@@ -10,16 +10,14 @@ import pytorch_lightning as pl
 from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
 
-from simclr.models import ResNetSimCLR3D
+from simclr.models import Small3DResNetLSTM
 
 torch.manual_seed(0)
 
 
 def load_resnet_model(cfg, ckpt_path, device='cuda', eval_mode=True):
-    model = ResNetSimCLR3D(base_model=cfg['model_params']['arch'],
-                         out_dim=cfg['model_params']['out_dim'],
-                         pretrained=cfg['model_params']['pretrained'],
-                         in_channels=cfg["model_params"]["in_channels"]).to(device)
+    model = Small3DResNetLSTM(out_dim=cfg['model_params']['out_dim'],
+                              in_channels=cfg["model_params"]["in_channels"]).to(device)
 
     model = SimCLRRunner.load_from_checkpoint(ckpt_path, model=model, cfg=cfg)
     # state_dict = torch.load(ckpt_path, map_location=device)
@@ -226,14 +224,18 @@ class SimCLRRunner(pl.LightningModule):
 
         return entropy.mean()
 
-    def batch_step(self, batch: Dict[str, Any], key: str = "Train") -> tuple[list[Any | None], Any | None, float, torch.Tensor]:
+    def batch_step(self, batch: Dict[str, Any], key: str = "Train") -> tuple[
+        list[Any | None], Any | None, float, torch.Tensor]:
         """Common batch step for train, val, test"""
 
         if isinstance(batch, Dict):
             images, classes = batch["images"], batch["classes"]
+            images = images.permute(1, 0, 2, 3, 4, 5)
+            batch["images"] = images
         else:
             images, classes = batch
-        images = torch.cat(images, dim=0)
+
+        images = images.reshape(-1, images.shape[2], images.shape[3], images.shape[4], images.shape[5])
 
         features, out = self.model(images)
 
@@ -253,8 +255,11 @@ class SimCLRRunner(pl.LightningModule):
                                                   n_views=self.cfg['training']['n_views'])
 
         features = F.normalize(features, dim=-1)
-        db = davies_bouldin_score(features.reshape(features.shape[0], -1).cpu().detach().numpy(),
+        try:
+            db = davies_bouldin_score(features.reshape(features.shape[0], -1).cpu().detach().numpy(),
                                   np.array(list(classes.cpu().numpy()) + list(classes.cpu().numpy())))
+        except:
+            db = 1000 # random high number
 
         return [loss, cross_entropy], acc, db, features
 

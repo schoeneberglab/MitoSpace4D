@@ -10,7 +10,8 @@ from torchvision.transforms import Compose
 from typing import List, Dict, Union
 from torch.utils.data.dataset import ConcatDataset
 import pytorch_lightning as pl
-
+import time
+import torch
 
 class MitoSpaceDataModule(pl.LightningDataModule):
     def __init__(self, train_datasets: List[Dataset], val_datasets: List[Dataset], batch_size: int,
@@ -48,7 +49,7 @@ class MitoSpaceDataset(Dataset):
         print(f'Loading {flag} Dataset with split seed = {self.seed} ...')
 
         drug_labels = {}
-        with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+        with open('/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
             drugs_to_labels = f.readlines()
             for line in drugs_to_labels:
                 folder, drug, label = line.split()
@@ -132,16 +133,17 @@ class MitoSpaceDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
         img_name = self.filenames[idx]
-        image = np.load(img_name).astype(np.float32)
+        image = np.load(img_name, mmap_mode='r')
 
-        # filter the timesteps and zstacks: remove later timesteps which have bleached mitochondria, remove the zstacks
-        # at the extremes which usually do not contain much mitochondria
-        # image = image[self.timesteps['start']: self.timesteps['end'],
-        #        self.zstacks['start']: self.zstacks['end'],
-        #        ...]
         image = image / 65535.
+        image = image.astype(np.float16)
+
+        dtyp = torch.float16 if image.dtype == np.float16 else torch.float32
+        image = torch.Tensor(image).to(dtyp)
 
         label = self.labels[idx]
+
+        # start = time.time()
 
         if self.transform:
             image = self.transform(image)  # image: [time, H, W, Z]
@@ -149,8 +151,10 @@ class MitoSpaceDataset(Dataset):
             image = idxs_to_keep(image, idxs=None)
 
         else:
-            image = image.transpose(2, 0, 1)  # make it CHW
             image = minus_one_to_one_normalization(image)
             image = idxs_to_keep(image, idxs=None)
 
-        return {"images": image, "classes": label}
+        # end = time.time()
+        # print(f'Time taken for processing one image: {end - start}')
+
+        return {"images": image, "classes": label, "image_paths": img_name}

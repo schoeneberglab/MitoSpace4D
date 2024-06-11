@@ -27,7 +27,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(description='MitoSpace Evaluation')
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
-parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace/simclr/config.yaml',
+parser.add_argument('--config', default='/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml',
                     type=str, help='Config path.')
 parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
@@ -259,22 +259,15 @@ def l2_distance(eval_embeddings, train_embeddings):
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
+    proj_dir = "/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/"
 
-    model = ResNetSimCLR(base_model=cfg['model_params']['arch'], out_dim=cfg['model_params']['out_dim'],
-                         in_channels=cfg["model_params"]["in_channels"]).to(device)
+    model = MitoSpace4D(
+        in_channels=cfg['model_params']['in_channels'],
+        out_dim=cfg['model_params']['out_dim']).to(device)
 
-    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/best_model-v1.ckpt"
+    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=70-step=8875-val_loss=0.00.ckpt"
     top_ns = cfg["evaluate"]["top_ns"]
     dataset_name = cfg["evaluate"]["dataset"]
-
-    drug_labels_dict = {}
-    label_drug_dict = {}
-    with open(f"{proj_dir}/extraction_utils/drugs_to_labels.txt", 'r') as f:
-        for line in f:
-            drug, label = line.split()
-            drug_labels_dict[drug] = int(label)
-            label_drug_dict[int(label)] = drug
 
     print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
 
@@ -282,47 +275,35 @@ if __name__ == "__main__":
         checkpoint_path, model=model, cfg=cfg
     )
 
-    loaders_reference_1 = get_mitospace_data_loaders(
-        '/home/dhruvagarwal/projects/MitoSpace/data/Cal27NewHiroAndre/20240503',
-        shuffle=False, batch_size=50, to_load=["train"],
+    loaders_reference = get_mitospace_data_loaders(
+        f'{proj_dir}/data/2023_data/',
+        shuffle=False, batch_size=8, to_load=["train"],
+        timesteps=cfg['data_params']['timesteps'],
+        zstacks=cfg['data_params']['zstacks'],
         pick_labels=None)
-    # loaders_reference_2 = get_mitospace_data_loaders(
-    #     '/home/dhruvagarwal/projects/MitoSpace/data/Cal27NewHiroAndre/20240312',
-    #     shuffle=False, batch_size=50, to_load=["all"],
-    #     pick_labels=[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35])
 
     loaders_eval = get_mitospace_data_loaders(
-        '/home/dhruvagarwal/projects/MitoSpace/data/Cal27NewHiroAndre/20240503',
-        shuffle=False, batch_size=50, to_load=["val"],
+        f'{proj_dir}/data/2023_data/',
+        shuffle=False, batch_size=8, to_load=["train"],
+        timesteps=cfg['data_params']['timesteps'],
+        zstacks=cfg['data_params']['zstacks'],
         pick_labels=None
     )
 
-    # train_loader1, train_loader2, eval_loader = (loaders_reference_1["all"], loaders_reference_2['all'],
-    #                                              loaders_eval["all"])
-    train_loader1, eval_loader = (loaders_reference_1["train"], loaders_eval["val"])
+    train_loader, eval_loader = (loaders_reference["train"], loaders_eval["train"])
 
-    train_embeddings_1, train_images_1, train_labels_1 = extract_embeddings_from_model(train_loader1, model.model,
-                                                                                       normalize_embeddings=True,
-                                                                                       get_images=False,
-                                                                                       get_labels=True,
-                                                                                       messup_tmrm=False,
-                                                                                       visualise_model_layer=False)
-    # train_embeddings_2, train_images_2, train_labels_2 = extract_embeddings_from_model(train_loader2, model.model,
-    #                                                                                    normalize_embeddings=True,
-    #                                                                                    get_images=False,
-    #                                                                                    get_labels=True,
-    #                                                                                    messup_tmrm=False,
-    #                                                                                    visualise_model_layer=False)
+    train_embeddings, train_images, train_labels = extract_embeddings_from_model(train_loader, model.model,
+                                                                                 normalize_embeddings=True,
+                                                                                 get_images=False,
+                                                                                 get_labels=True,
+                                                                                 messup_tmrm=False,
+                                                                                 visualise_model_layer=False)
+
     eval_embeddings, eval_images, eval_labels = extract_embeddings_from_model(eval_loader, model.model,
                                                                               normalize_embeddings=True,
                                                                               get_images=False, get_labels=True,
                                                                               messup_tmrm=False,
                                                                               visualise_model_layer=False)
-
-    # train_embeddings = np.concatenate([train_embeddings_1, train_embeddings_2])
-    # train_labels = np.concatenate([train_labels_1, train_labels_2])
-    train_embeddings = train_embeddings_1
-    train_labels = train_labels_1
 
     # Evaluation on cosine similarity
     if args.dist_metric == 'cosine':

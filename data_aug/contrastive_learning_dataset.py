@@ -8,7 +8,7 @@ from .view_generator import ContrastiveLearningViewGenerator
 from .mitospace_dataset import *
 from .random_noise import *
 from .random_rotate import RandomRotation
-from .random_affine import RandomAffine
+from .random_affine import RandomAffine, RandomAffineGPUWrapper
 from .random_crop import RandomResizedCrop
 from .random_exchange_flip import RandomExchangeFlip
 from typing import Dict, List
@@ -37,7 +37,7 @@ class ContrastiveLearningDataset:
                                                              scale=cfg['GaussianNoise']['scale']),
 
                         "Affine": RandomAffine(p=cfg['Affine']['p'], degrees=cfg['Affine']['degrees'],
-                                               translate=cfg['Affine']['translate']),
+                                                  translate=cfg['Affine']['translate']),
 
                         "ExchangeFlip": RandomExchangeFlip(p=cfg['ExchangeFlip']['p']),
                         "GaussianBlur": GaussianBlur(p=cfg['GaussianBlur']['p'],
@@ -49,7 +49,7 @@ class ContrastiveLearningDataset:
     @staticmethod
     def get_transforms(self) -> transforms.Compose:
         transform_list = [self.mapping[trans] for trans in
-                                                    self.args['data_params']['transforms']]
+                          self.args['data_params']['transforms']]
         data_transforms = transforms.Compose(transform_list)
         return data_transforms
 

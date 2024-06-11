@@ -1,3 +1,4 @@
+import time
 import math
 import numbers
 import random
@@ -8,12 +9,6 @@ import numpy as np
 import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
-
-try:
-    import accimage
-except ImportError:
-    accimage = None
-
 from torchvision.utils import _log_api_usage_once
 from torchvision.transforms import functional as F
 from torchvision.transforms.functional import _interpolation_modes_from_int, InterpolationMode
@@ -32,7 +27,7 @@ def _setup_size(size, error_msg):
     return size
 
 
-class RandomResizedCrop(torch.nn.Module):
+class RandomResizedCrop(object):
     """Crop a random portion of image and resize it to a given size.
     If the image is torch Tensor, it is expected
     to have [..., H, W] shape, where ... means an arbitrary number of leading dimensions
@@ -43,72 +38,42 @@ class RandomResizedCrop(torch.nn.Module):
         size (int or sequence): expected output size of the crop, for each edge. If size is an
             int instead of sequence like (h, w), a square output size ``(size, size)`` is
             made. If provided a sequence of length 1, it will be interpreted as (size[0], size[0]).
-            .. note::
-                In torchscript mode size as single int is not supported, use a sequence of length 1: ``[size, ]``.
         scale (tuple of float): Specifies the lower and upper bounds for the random area of the crop,
             before resizing. The scale is defined with respect to the area of the original image.
         ratio (tuple of float): lower and upper bounds for the random aspect ratio of the crop, before
             resizing.
         interpolation (InterpolationMode): Desired interpolation enum defined by
             :class:`torchvision.transforms.InterpolationMode`. Default is ``InterpolationMode.BILINEAR``.
-            If input is Tensor, only ``InterpolationMode.NEAREST``, ``InterpolationMode.NEAREST_EXACT``,
-            ``InterpolationMode.BILINEAR`` and ``InterpolationMode.BICUBIC`` are supported.
-            The corresponding Pillow integer constants, e.g. ``PIL.Image.BILINEAR`` are accepted as well.
         antialias (bool, optional): Whether to apply antialiasing.
-            It only affects **tensors** with bilinear or bicubic modes and it is
-            ignored otherwise: on PIL images, antialiasing is always applied on
-            bilinear or bicubic modes; on other modes (for PIL images and
-            tensors), antialiasing makes no sense and this parameter is ignored.
-            Possible values are:
-            - ``True``: will apply antialiasing for bilinear or bicubic modes.
-              Other mode aren't affected. This is probably what you want to use.
-            - ``False``: will not apply antialiasing for tensors on any mode. PIL
-              images are still antialiased on bilinear or bicubic modes, because
-              PIL doesn't support no antialias.
-            - ``None``: equivalent to ``False`` for tensors and ``True`` for
-              PIL images. This value exists for legacy reasons and you probably
-              don't want to use it unless you really know what you are doing.
-            The current default is ``None`` **but will change to** ``True`` **in
-            v0.17** for the PIL and Tensor backends to be consistent.
     """
 
     def __init__(
             self,
-            p,
-            size,
-            scale=(0.08, 1.0),
-            ratio=(3.0 / 4.0, 4.0 / 3.0),
-            interpolation=InterpolationMode.BILINEAR,
+            p: float,
+            size: Union[int, Sequence[int]],
+            scale: Tuple[float, float] = (0.08, 1.0),
+            ratio: Tuple[float, float] = (3.0 / 4.0, 4.0 / 3.0),
+            interpolation: InterpolationMode = InterpolationMode.BILINEAR,
             antialias: Optional[Union[str, bool]] = "warn",
-            empty_area_check_idx=1
+            empty_area_check_idx: int = -1
     ):
-        super().__init__()
-        _log_api_usage_once(self)
-        self.size = _setup_size(size, error_msg="Please provide only two dimensions (h, w) for size.")
+        if isinstance(size, int):
+            size = (size, size)
+        elif isinstance(size, Sequence) and len(size) == 1:
+            size = (size[0], size[0])
 
+        self.size = size
         self.p = p
-        self.empty_area_check_idx = empty_area_check_idx
-
-        if not isinstance(scale, Sequence):
-            raise TypeError("Scale should be a sequence")
-        if not isinstance(ratio, Sequence):
-            raise TypeError("Ratio should be a sequence")
-        if (scale[0] > scale[1]) or (ratio[0] > ratio[1]):
-            warnings.warn("Scale and ratio should be of kind (min, max)")
-
-        if isinstance(interpolation, int):
-            interpolation = _interpolation_modes_from_int(interpolation)
-
-        self.interpolation = interpolation
-        self.antialias = antialias
         self.scale = scale
         self.ratio = ratio
+        self.interpolation = interpolation
+        self.antialias = antialias
 
     @staticmethod
-    def get_params(img: Tensor, scale: List[float], ratio: List[float]) -> Tuple[int, int, int, int]:
+    def get_params(img: torch.Tensor, scale: List[float], ratio: List[float]) -> Tuple[int, int, int, int]:
         """Get parameters for ``crop`` for a random sized crop.
         Args:
-            img (PIL Image or Tensor): Input image.
+            img (Tensor): Input image.
             scale (list): range of scale of the origin size cropped
             ratio (list): range of aspect ratio of the origin aspect ratio cropped
         Returns:
@@ -146,34 +111,18 @@ class RandomResizedCrop(torch.nn.Module):
         j = (width - w) // 2
         return i, j, h, w
 
-    def forward(self, img):
+    def __call__(self, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            img (PIL Image or Tensor): Image to be cropped and resized.
+            img (Tensor): Image to be cropped and resized.
         Returns:
-            PIL Image or Tensor: Randomly cropped and resized image.
+            Tensor: Randomly cropped and resized image.
         """
-
-        # if image is a numpy array, convert it to a tensor
-        if isinstance(img, np.ndarray):
-            img = torch.from_numpy(img)
-
-        if np.random.uniform() > self.p:
-            # Have added the below function for consistency.
-            # F.resize won't change the image if the size is the same; No harm in applying the below function.
-            return F.resize(img, self.size, self.interpolation, antialias=self.antialias)
+        if random.random() > self.p:
+            return img
 
         i, j, h, w = self.get_params(img, self.scale, self.ratio)
-        resized_crop = F.resized_crop(img, i, j, h, w, self.size, self.interpolation, antialias=self.antialias)
-
-        min_pixel_value = resized_crop[self.empty_area_check_idx].min() * 1.2
-        # if 80% of the pixels are minimum pixel value, return the original image
-        num_empty_pixels = (resized_crop[self.empty_area_check_idx] <= min_pixel_value).sum()
-
-        if num_empty_pixels >= 0.8 * resized_crop[self.empty_area_check_idx].flatten().size()[0]:
-            return F.resize(img, self.size, self.interpolation, antialias=self.antialias)
-
-        return resized_crop
+        return F.resized_crop(img, i, j, h, w, self.size, self.interpolation, antialias=self.antialias)
 
     def __repr__(self) -> str:
         interpolate_str = self.interpolation.value
