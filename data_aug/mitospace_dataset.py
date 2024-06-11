@@ -10,8 +10,7 @@ from torchvision.transforms import Compose
 from typing import List, Dict, Union
 from torch.utils.data.dataset import ConcatDataset
 import pytorch_lightning as pl
-import time
-import torch
+
 
 class MitoSpaceDataModule(pl.LightningDataModule):
     def __init__(self, train_datasets: List[Dataset], val_datasets: List[Dataset], batch_size: int,
@@ -48,63 +47,65 @@ class MitoSpaceDataset(Dataset):
 
         print(f'Loading {flag} Dataset with split seed = {self.seed} ...')
 
-        drug_labels = {}
-        with open('/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
-            drugs_to_labels = f.readlines()
-            for line in drugs_to_labels:
-                folder, drug, label = line.split()
-                drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data'))])
+        # debugging (dummy data)
+        filenames = sorted([file for file in os.listdir(osp.join(self.root_dir))])
+        filenames = [osp.join(self.root_dir, file) for file in filenames]
+        labels = np.random.randint(0, 10, len(filenames))
 
-        self.all_filenames = []
-        self.all_labels = []
+        self.filenames = filenames
+        self.labels = list(labels)
 
-        for drug_folder in drug_folders:
-            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data', drug_folder))])
-            filenames = [osp.join(self.root_dir, 'processed_data', drug_folder, file) for file in filenames]
-            self.all_filenames.extend(filenames)
-            self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
-
-        self.data = list(zip(self.all_filenames, self.all_labels))
-
-        random.seed(self.seed)
-        shuffle(self.data)
-
-        self.all_filenames, self.all_labels = zip(*self.data)
-        self.all_filenames, self.all_labels = (list(self.all_filenames), list(self.all_labels))
-
-        self.len_all_data = round(len(self.all_labels) * 1.)
-
-        self.train_split = round(self.len_all_data * 0.9)
-        self.val_split = round(self.len_all_data * 0.1)
-        self.test_split = self.len_all_data - self.train_split - self.val_split
-
-        if flag == "all":
-            self.filenames = self.all_filenames
-            self.labels = self.all_labels
-
-        elif flag == "train":
-            self.filenames = self.all_filenames[:self.train_split]
-            self.labels = self.all_labels[:self.train_split]
-
-        elif flag == "val":
-            self.filenames = self.all_filenames[self.train_split:self.train_split + self.val_split]
-            self.labels = self.all_labels[self.train_split:self.train_split + self.val_split]
-
-        elif flag == "test":
-            self.filenames = self.all_filenames[self.train_split + self.val_split:]
-            self.labels = self.all_labels[self.train_split + self.val_split:]
-
-        else:
-            raise ValueError("Invalid flag")
-
-        if pick_labels is not None:
-            # pick only the labels that are in the pick_labels list
-            print(f"Filtering the labels to {pick_labels}")
-            idxs_to_keep = [i for i, lbl in enumerate(self.labels) if lbl in pick_labels]
-            self.filenames = [self.filenames[i] for i in idxs_to_keep]
-            self.labels = [self.labels[i] for i in idxs_to_keep]
+        # filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, "processed_data"))])
+        #
+        # self.all_filenames = [osp.join(self.root_dir, "processed_data", file) for file in filenames]
+        # self.all_labels = np.load(osp.join(self.root_dir, "labels.npy"))
+        #
+        # if samples_per_drug not in ['None', None]:
+        #     print(f"Using only {samples_per_drug} samples per drug")
+        #     filtered_idxs = self.balance_dataset(self.all_labels, samples_per_drug)
+        #     self.all_filenames = [self.all_filenames[i] for i in filtered_idxs]
+        #     self.all_labels = [self.all_labels[i] for i in filtered_idxs]
+        #
+        # self.data = list(zip(self.all_filenames, self.all_labels))
+        #
+        # random.seed(self.seed)
+        # shuffle(self.data)
+        #
+        # self.all_filenames, self.all_labels = zip(*self.data)
+        # self.all_filenames, self.all_labels = (list(self.all_filenames), list(self.all_labels))
+        #
+        # self.len_all_data = round(len(self.all_labels) * 1.)
+        #
+        # self.train_split = round(self.len_all_data * 0.9)
+        # self.val_split = round(self.len_all_data * 0.1)
+        # self.test_split = self.len_all_data - self.train_split - self.val_split
+        #
+        # if flag == "all":
+        #     self.filenames = self.all_filenames
+        #     self.labels = self.all_labels
+        #
+        # elif flag == "train":
+        #     self.filenames = self.all_filenames[:self.train_split]
+        #     self.labels = self.all_labels[:self.train_split]
+        #
+        # elif flag == "val":
+        #     self.filenames = self.all_filenames[self.train_split:self.train_split + self.val_split]
+        #     self.labels = self.all_labels[self.train_split:self.train_split + self.val_split]
+        #
+        # elif flag == "test":
+        #     self.filenames = self.all_filenames[self.train_split + self.val_split:]
+        #     self.labels = self.all_labels[self.train_split + self.val_split:]
+        #
+        # else:
+        #     raise ValueError("Invalid flag")
+        #
+        # if pick_labels is not None:
+        #     # pick only the labels that are in the pick_labels list
+        #     print(f"Filtering the labels to {pick_labels}")
+        #     idxs_to_keep = [i for i, lbl in enumerate(self.labels) if lbl in pick_labels]
+        #     self.filenames = [self.filenames[i] for i in idxs_to_keep]
+        #     self.labels = [self.labels[i] for i in idxs_to_keep]
 
         print('Loading {} labels, found {} samples ...'.format(len(np.unique(self.labels)), len(self.filenames)))
 
@@ -133,17 +134,15 @@ class MitoSpaceDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
         img_name = self.filenames[idx]
-        image = np.load(img_name, mmap_mode='r')
+        image = np.load(img_name).astype(np.float32)
 
-        image = image / 65535.
-        image = image.astype(np.float16)
-
-        dtyp = torch.float16 if image.dtype == np.float16 else torch.float32
-        image = torch.Tensor(image).to(dtyp)
+        # filter the timesteps and zstacks: remove later timesteps which have bleached mitochondria, remove the zstacks
+        # at the extremes which usually do not contain much mitochondria
+        image = image[self.timesteps['start']: self.timesteps['end'],
+                      self.zstacks['start']: self.zstacks['end'],
+                      ...]
 
         label = self.labels[idx]
-
-        # start = time.time()
 
         if self.transform:
             image = self.transform(image)  # image: [time, H, W, Z]
@@ -151,10 +150,8 @@ class MitoSpaceDataset(Dataset):
             image = idxs_to_keep(image, idxs=None)
 
         else:
+            image = image.transpose(2, 0, 1)  # make it CHW
             image = minus_one_to_one_normalization(image)
             image = idxs_to_keep(image, idxs=None)
 
-        # end = time.time()
-        # print(f'Time taken for processing one image: {end - start}')
-
-        return {"images": image, "classes": label, "image_paths": img_name}
+        return {"images": image, "classes": label}
