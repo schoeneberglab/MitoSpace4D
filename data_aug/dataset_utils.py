@@ -45,13 +45,11 @@ def get_mitospace_data_loaders(root_folder, to_load=None, shuffle=False, batch_s
         loaders["test"] = test_loader
 
     if "all" in to_load:
-        all_dataset = MitoSpaceDataset(root_folder, transform=transforms.Compose([transforms.ToTensor(),
-                                                                                  transforms.Resize(
-                                                                                      size=(256, 256))]),
+        all_dataset = MitoSpaceDataset(root_folder, transform=None,
                                        flag='all', seed=seed, pick_labels=pick_labels,
                                        samples_per_drug=samples_per_drug)
         all_loader = DataLoader(all_dataset, batch_size=batch_size,
-                                num_workers=5, drop_last=False, shuffle=shuffle)
+                                num_workers=6, drop_last=False, shuffle=shuffle)
         loaders["all"] = all_loader
 
     if "stl10_train" in to_load or "stl10_test" in to_load or "stl10_val" in to_load:

@@ -122,7 +122,11 @@ class RandomResizedCrop(object):
             return img
 
         i, j, h, w = self.get_params(img, self.scale, self.ratio)
-        return F.resized_crop(img, i, j, h, w, self.size, self.interpolation, antialias=self.antialias)
+        c, t = img.shape[0], img.shape[1]
+        img = img.reshape(-1, *img.shape[2:])
+        img = F.resized_crop(img, i, j, h, w, self.size, self.interpolation, antialias=self.antialias)
+        img = img.reshape(c, t, *img.shape[1:])
+        return img
 
     def __repr__(self) -> str:
         interpolate_str = self.interpolation.value

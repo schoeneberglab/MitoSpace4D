@@ -107,19 +107,19 @@ def pick_points(pcd, images, labels, label_names):
 def make_mitospace(embedding_dir, pick_labels=None):
     EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings.npy')
     LABEL_PATH = osp.join(embedding_dir, 'labels.npy')
-    IMAGE_PATH = osp.join(embedding_dir, 'images.npy')
+    # IMAGE_PATH = osp.join(embedding_dir, 'images.npy')
     LABEL_NAME_PATH = osp.join(embedding_dir, 'label_names.npy')
 
     embeddings = np.load(EMBEDDING_PATH)
     labels = np.load(LABEL_PATH)
     label_names = np.load(LABEL_NAME_PATH)
-    images = np.load(IMAGE_PATH)
+    # images = np.load(IMAGE_PATH)
 
-    print(embeddings.shape, labels.shape, images.shape)
+    # print(embeddings.shape, labels.shape, images.shape)
 
     print(np.unique(labels))
 
-    images = images.transpose(0, 2, 3, 1)
+    # images = images.transpose(0, 2, 3, 1)
 
     max_label = labels.max()
     pcd = o3d.geometry.PointCloud()

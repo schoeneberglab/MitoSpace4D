@@ -49,7 +49,7 @@ class MitoSpaceDataset(Dataset):
         print(f'Loading {flag} Dataset with split seed = {self.seed} ...')
 
         drug_labels = {}
-        with open('/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+        with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
             drugs_to_labels = f.readlines()
             for line in drugs_to_labels:
                 folder, drug, label = line.split()
@@ -135,7 +135,8 @@ class MitoSpaceDataset(Dataset):
         img_name = self.filenames[idx]
         image = np.load(img_name, mmap_mode='r')
 
-        image = image / 65535.
+        image = np.clip(image, 0, 20000)
+        image = image / 20000
         image = image.astype(np.float16)
 
         dtyp = torch.float16 if image.dtype == np.float16 else torch.float32

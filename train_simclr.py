@@ -20,7 +20,7 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='MitoSpace4D')
 parser.add_argument('--log-every-n-steps', default=100, type=int,
                     help='Log every n steps')
-parser.add_argument('--config', default='/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml', type=str,
+parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml', type=str,
                     help='Config path.')
 
 
@@ -59,10 +59,12 @@ def main():
                                       zstacks=cfg['data_params']['zstacks'])
 
     train_loader = DataLoader(train_dataset, batch_size=cfg['training']['batch_size'], shuffle=True,
-                              num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True)
+                              num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
+                              prefetch_factor=cfg['training']['prefetch_factor'])
 
     val_loader = DataLoader(val_dataset, batch_size=cfg['training']['batch_size'], shuffle=False,
-                            num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True)
+                            num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
+                            prefetch_factor=cfg['training']['prefetch_factor'])
 
     model = MitoSpace4DConvLSTM(
         in_channels=cfg['model_params']['in_channels'],

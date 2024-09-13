@@ -21,9 +21,9 @@ class RandomExchangeFlip(object):
 
     def __call__(self, sample):
         if np.random.uniform() < self.p:
-            sample = torch.cat((sample[..., sample.shape[1] // 2:, :], sample[..., :sample.shape[1] // 2, :]), dim=2)
+            sample = torch.cat((sample[..., sample.shape[1] // 2:, :], sample[..., :sample.shape[1] // 2, :]), dim=-2)
         if np.random.uniform() < self.p / 2:
-            sample = torch.cat((sample[..., sample.shape[1] // 2:], sample[..., :sample.shape[1] // 2]), dim=3)
+            sample = torch.cat((sample[..., sample.shape[1] // 2:], sample[..., :sample.shape[1] // 2]), dim=-1)
             return sample
         else:
             return sample
