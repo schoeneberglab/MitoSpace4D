@@ -7,9 +7,9 @@ import umap
 from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from sklearn.metrics import davies_bouldin_score
 import pytorch_lightning as pl
+
 from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
-
 from simclr.models import Small3DResNetLSTM
 
 torch.manual_seed(0)
@@ -49,18 +49,7 @@ class SimCLRRunner(pl.LightningModule):
                                                                     T_max=cfg['training']['max_epochs'],
                                                                     eta_min=0, last_epoch=-1)
 
-        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,
-        #                                                  step_size=1000000000000000000000000000000000000000000000,
-        #                                                  gamma=1, last_epoch=-1)  # effectively keep constant lr
-
         self.data_bank = {"Train": [], "Val": []}
-
-        # self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer,
-        #                                                      max_lr=float(self.cfg["training"]["lr"]),
-        #                                                      epochs=int(self.cfg["training"]["max_epochs"]),
-        #                                                      steps_per_epoch=145,
-        #                                                      pct_start=0.3,
-        #                                                      anneal_strategy='cos')
 
         print(f"###################### Using {self.loss} Loss For Training ##################")
 
@@ -224,18 +213,27 @@ class SimCLRRunner(pl.LightningModule):
 
         return entropy.mean()
 
+    def augment(self, images: torch.Tensor, n_views: int) -> torch.Tensor:
+        """
+        Apply the same augmentation to generate multiple views (# n_views) of the same image
+        """
+        views = []
+        for i in range(n_views):
+            views.append(self.model.augment_data(images))
+
+        views = torch.stack(views, dim=1)
+        return views
+
     def batch_step(self, batch: Dict[str, Any], key: str = "Train") -> tuple[
         list[Any | None], Any | None, float, torch.Tensor]:
         """Common batch step for train, val, test"""
 
-        if isinstance(batch, Dict):
-            images, classes = batch["images"], batch["classes"]
-            images = images.permute(1, 0, 2, 3, 4, 5)
-            batch["images"] = images
-        else:
-            images, classes = batch
+        images, classes = batch["images"], batch["classes"]
+        images = self.augment(images, n_views=self.cfg['training']['n_views']) # (b, n_views, c, t, z, h, w)
+        batch["images"] = images
 
-        images = images.reshape(-1, images.shape[2], images.shape[3], images.shape[4], images.shape[5])
+        images = images.reshape(-1, *images.shape[2:]) # (b*n_views, c, t, z, h, w)
+        images = images.transpose(1, 2)  # b, c, t, z, h, w -> b, t, c, z, h, w
 
         features, out = self.model(images)
 

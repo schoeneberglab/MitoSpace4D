@@ -8,6 +8,12 @@ from torchvision.models.video import r3d_18
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
+from data_aug.random_brightness import RandomBrightnessGPU
+from data_aug.random_crop import RandomResizedCropGPU
+from torchvision import transforms
+
+from data_aug.random_exchange_flip import RandomExchangeFlipGPU
+from data_aug.random_noise import RandomGaussianNoiseGPU
 
 import torch
 import torch.nn as nn
@@ -264,6 +270,7 @@ class Conv3DLSTM(nn.Module):
             raise ValueError('Inconsistent list length.')
 
         self.input_dim = input_dim
+        self.init_conv_out_dim = 1
         self.hidden_dim = hidden_dim
         self.kernel_size = kernel_size
         self.num_layers = num_layers
@@ -273,13 +280,13 @@ class Conv3DLSTM(nn.Module):
         self.return_all_layers = return_all_layers
 
         self.initial_conv = nn.Sequential(
-            nn.Conv3d(in_channels=input_dim, out_channels=input_dim, kernel_size=(1, 3, 3), stride=(1, 2, 2),
+            nn.Conv3d(in_channels=input_dim, out_channels=self.init_conv_out_dim, kernel_size=(1, 3, 3), stride=(1, 2, 2),
                       padding=(0, 1, 1)),
-            nn.BatchNorm3d(input_dim),
+            nn.BatchNorm3d(1),
             nn.ReLU(inplace=True),
         )
 
-        self.cell_list = nn.ModuleList([Conv3DLSTMCell(input_dim=input_dim if i == 0 else hidden_dim[i - 1],
+        self.cell_list = nn.ModuleList([Conv3DLSTMCell(input_dim=self.init_conv_out_dim if i == 0 else hidden_dim[i - 1],
                                                        hidden_dim=hidden_dim[i],
                                                        kernel_size=kernel_size[i],
                                                        bias=bias) for i in range(num_layers)])
@@ -296,12 +303,12 @@ class Conv3DLSTM(nn.Module):
         if not self.batch_first:
             input_tensor = input_tensor.permute(1, 0, 2, 3, 4, 5)
 
-        b, _, _, d, h, w = input_tensor.size()
-        input_tensor = input_tensor.view(b * input_tensor.size(1), self.input_dim, d, h, w)
+        b, t, c, d, h, w = input_tensor.size()
+        input_tensor = input_tensor.reshape(b * t, c, d, h, w)
         input_tensor = self.initial_conv(input_tensor)
+        _, c, d, h, w = input_tensor.size()
 
-        d, h, w = input_tensor.size(2), input_tensor.size(3), input_tensor.size(4)
-        input_tensor = input_tensor.view(b, -1, self.input_dim, d, h, w)
+        input_tensor = input_tensor.view(b, -1, c, d, h, w)
 
         if hidden_state is None:
             hidden_state = self._init_hidden(batch_size=b, image_size=(d, h, w))
@@ -354,12 +361,26 @@ class Conv3DLSTM(nn.Module):
 
 
 class MitoSpace4DConvLSTM(nn.Module):
-    def __init__(self, in_channels=1, hidden_dim=[2, 2, 4, 16, 32, 256], kernel_size=(3, 3, 3), num_layers=6,
+    def __init__(self, in_channels=1, hidden_dim=[1, 2, 4, 16, 32, 256], kernel_size=(3, 3, 3), num_layers=6,
                  conv_reduction_factor=[(1, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2)], out_dim=512,
-                 feat_dim=2048):
+                 feat_dim=2048, cfg_aug=None):
         super(MitoSpace4DConvLSTM, self).__init__()
 
         self.out_dim = out_dim
+
+        augmentations = [RandomResizedCropGPU(p=cfg_aug['Crop']['p'], size=cfg_aug['Crop']['size'],
+                                              scale=cfg_aug['Crop']['scale']),
+                         transforms.RandomHorizontalFlip(p=cfg_aug['HorizontalFlip']['p']),
+                         transforms.RandomVerticalFlip(p=cfg_aug['VerticalFlip']['p']),
+                         RandomBrightnessGPU(p=cfg_aug['Brightness']['p'], factor=cfg_aug['Brightness']['factor'],
+                                             apply_idx=cfg_aug['Brightness']['apply_idx'],
+                                             method=cfg_aug['Brightness']['method']),
+                         RandomGaussianNoiseGPU(p=cfg_aug['GaussianNoise']['p'], mu=cfg_aug['GaussianNoise']['mu'],
+                                                scale=cfg_aug['GaussianNoise']['scale']),
+                         RandomExchangeFlipGPU(p=cfg_aug['ExchangeFlip']['p']),
+                         ]
+
+        self.augment_pipeline = nn.Sequential(*augmentations)
 
         self.net = Conv3DLSTM(input_dim=in_channels, hidden_dim=hidden_dim, kernel_size=kernel_size,
                               num_layers=num_layers,
@@ -371,8 +392,11 @@ class MitoSpace4DConvLSTM(nn.Module):
         self.proj = nn.Sequential(nn.Linear(feat_dim, out_dim, bias=False), nn.BatchNorm1d(out_dim),
                                   nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
 
+    def augment_data(self, x):
+        x = self.augment_pipeline(x)
+        return x
+
     def forward(self, x):
-        x = x.unsqueeze(2)
         x = self.net(x)
         x = x[:, -1].flatten(start_dim=1)
         x = self.fc(x)
@@ -394,12 +418,12 @@ class MitoSpace4D(nn.Module):
 
 if __name__ == "__main__":
     # Example usage
-    in_channels = 1  # Assuming single-channel 3D data
+    in_channels = 2  # Assuming single-channel 3D data
     num_classes = 10  # Number of output classes, adjust as necessary
     model = MitoSpace4DConvLSTM(in_channels=in_channels, out_dim=512).cuda()
 
     # Create a sample input tensor with shape (batch_size, sequence_length, in_channels, depth, height, width)
-    input_tensor = torch.randn(6, 20, 60, 256, 256).cuda()  # Example input tensor
+    input_tensor = torch.randn(6, 2, 20, 60, 256, 256).cuda()  # Example input tensor
 
     # Forward pass
     output = model(input_tensor)

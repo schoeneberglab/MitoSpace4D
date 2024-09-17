@@ -1,4 +1,4 @@
-experiment_name: largeconvlstmmodel
+experiment_name: debug
 data_params:
   timesteps:
     start: 0
@@ -7,23 +7,23 @@ data_params:
     start: 20
     end: 80
   dataset_name: mitospace
-  data_path: /tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/data/2023_data
+  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/dummy_data
   patch_size: 256
   samples_per_drug: None
   transforms:
       Crop:
-        p: 0.5
+        p: 1
         size: 256
         scale: [0.35, 1.0]
         empty_area_check_idx: 1  # not relevant for 4D? check this once
       Brightness:
-        p: 0.5
+        p: 1
         method: random_gaussian
         factor: 1
         spread: 400
         apply_idx: [-1]  # apply to all channels
       HorizontalFlip:
-        p: 0.5
+        p: 1
       VerticalFlip:
         p: -1
       GaussianBlur:
@@ -35,9 +35,9 @@ data_params:
         p: -1
         degrees: 90
       ExchangeFlip:
-        p: 0.5
+        p: 1
       GaussianNoise:
-        p: 0.5
+        p: 1
         mu: [0.01, 0.01]
         scale: 0.005
       Affine:
@@ -46,12 +46,12 @@ data_params:
         translate: [0.1, 0.2]
   filters: null
 logging_params:
-  save_path: /tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs
+  save_path: /home/dhruvagarwal/projects/MitoSpace4D/runs
 model_params:
   arch: resnet18
   pretrained: false
   out_dim: 512
-  in_channels: 1
+  in_channels: 2
   num_z: 60
   timesteps: 20
 training:
@@ -73,13 +73,14 @@ training:
   lr: 0.0003
   weight_decay: 0.00001
   workers: 12
+  prefetch_factor: 2
   n_views: 2
 distributed:
   flag: True
   num_gpus: -1
   accelerator: gpu
   strategy: ddp
-  num_nodes: 5
+  num_nodes: 1
 evaluate:
   top_ns: [1, 3]
   dataset: Cal27
