@@ -27,7 +27,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(description='MitoSpace Evaluation')
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
-parser.add_argument('--config', default='/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml',
+parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml',
                     type=str, help='Config path.')
 parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
@@ -212,6 +212,8 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
                     im[:, tmrm_idx].max() - im[:, tmrm_idx].min())
 
         with torch.no_grad():
+            # with torch.autocast(device_type="cuda"):
+            # with torch.amp.autocast(device_type='cuda'):
             features, _ = model(im.to('cuda'))
 
         if normalize_embeddings:
@@ -259,13 +261,13 @@ def l2_distance(eval_embeddings, train_embeddings):
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/"
+    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
 
-    model = MitoSpace4D(
+    model = MitoSpace4DConvLSTM(
         in_channels=cfg['model_params']['in_channels'],
         out_dim=cfg['model_params']['out_dim']).to(device)
 
-    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=70-step=8875-val_loss=0.00.ckpt"
+    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=295-step=49136-val_loss=0.00.ckpt"
     top_ns = cfg["evaluate"]["top_ns"]
     dataset_name = cfg["evaluate"]["dataset"]
 
@@ -305,6 +307,8 @@ if __name__ == "__main__":
                                                                               messup_tmrm=False,
                                                                               visualise_model_layer=False)
 
+    # eval_embeddings, eval_images, eval_labels = train_embeddings, train_images, train_labels
+
     # Evaluation on cosine similarity
     if args.dist_metric == 'cosine':
         dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings, train_embeddings, weighted=True,
@@ -312,7 +316,7 @@ if __name__ == "__main__":
         preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs)
 
         # plot confusion matrix
-        cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
+        # cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
 
     # Evaluate on L2 Distance
     if args.dist_metric == 'l2':
@@ -356,7 +360,7 @@ if __name__ == "__main__":
         preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, num_neighbors=[1000])
 
         # plot confusion matrix
-        cm = plot_cm(eval_labels, preds[1], label_drug_dict)
+        # cm = plot_cm(eval_labels, preds[1], label_drug_dict)
 
     # Evaluate on L2 Distance
     if args.dist_metric == 'l2':

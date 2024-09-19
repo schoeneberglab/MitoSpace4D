@@ -5,7 +5,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 from torchvision import models
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
-from simclr.models import MitoSpace4D, MitoSpace4DConvLSTM
+from simclr.models import MitoSpace4DConvLSTM
 from simclr.simclr import SimCLRRunner
 from torchsummary import summary
 import pytorch_lightning as pl
@@ -69,6 +69,9 @@ def main():
         out_dim=cfg['model_params']['out_dim'],
         cfg_aug=cfg['data_params']['transforms']
     )
+
+    for param in model.augment_pipeline.parameters():
+        param.requires_grad = False
 
     tb_logger = pl_loggers.TensorBoardLogger(
         version=cfg["experiment_name"], save_dir=cfg["logging_params"]["save_path"]

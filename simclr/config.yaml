@@ -12,36 +12,36 @@ data_params:
   samples_per_drug: None
   transforms:
       Crop:
-        p: 1
+        p: 0.5
         size: 256
         scale: [0.35, 1.0]
         empty_area_check_idx: 1  # not relevant for 4D? check this once
       Brightness:
-        p: 1
+        p: 0.5
         method: random_gaussian
         factor: 1
         spread: 400
         apply_idx: [-1]  # apply to all channels
       HorizontalFlip:
-        p: 1
+        p: 0.5
       VerticalFlip:
-        p: -1
+        p: 0.5
       GaussianBlur:
-        p: -1
+        p: 0
         n_channels: 2
         kernel_size: 25
         sigma: 2
       Rotation:
-        p: -1
+        p: 0
         degrees: 90
       ExchangeFlip:
-        p: 1
+        p: 0
       GaussianNoise:
-        p: 1
+        p: 0.5
         mu: [0.01, 0.01]
         scale: 0.005
       Affine:
-        p: -1
+        p: 0
         degrees: 0
         translate: [0.1, 0.2]
   filters: null
@@ -62,7 +62,7 @@ training:
   max_epochs: 300
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 6
+  batch_size: 4
   training_samples: None
   ckpt_callback:
     monitor: Val/loss

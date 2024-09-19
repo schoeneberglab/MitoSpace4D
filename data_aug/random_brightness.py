@@ -101,7 +101,7 @@ class RandomBrightness(object):
         return sample
 
 
-def create_gaussian_mask_gpu(shape, center, sigma):
+def create_gaussian_mask_gpu(shape, center, sigma, dtype, device):
     """
     Create a Gaussian mask with given shape, centered at specified coordinates,
     and with specified standard deviation (sigma).
@@ -116,11 +116,11 @@ def create_gaussian_mask_gpu(shape, center, sigma):
     """
     h, w = shape
     y, x = center
-    y_range = torch.arange(h, dtype=torch.float32, device='cuda')
-    x_range = torch.arange(w, dtype=torch.float32, device='cuda')
+    y_range = torch.arange(h, dtype=dtype, device=device)
+    x_range = torch.arange(w, dtype=dtype, device=device)
     yy, xx = torch.meshgrid(y_range, x_range)
 
-    mask = torch.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2))
+    mask = torch.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2)).to(dtype)
     return mask
 
 
@@ -156,7 +156,7 @@ class RandomBrightnessGPU(nn.Module):
                 center = (center_y, center_x)
 
                 sigma = self.spread
-                gaussian_mask = create_gaussian_mask_gpu((h, w), center, sigma).to(sample.device)
+                gaussian_mask = create_gaussian_mask_gpu((h, w), center, sigma, sample.dtype, sample.device)
 
                 if self.apply_idx == [-1]:
                     sample = sample * gaussian_mask

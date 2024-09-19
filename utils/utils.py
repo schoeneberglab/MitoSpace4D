@@ -43,7 +43,7 @@ def load_config(config_path):
     return cfg
 
 
-def minus_one_to_one_normalization(x: Union[List[np.ndarray], np.ndarray]) -> Union[List[np.ndarray], np.ndarray]:
+def minus_one_to_one_normalization(x: Union[List[torch.Tensor], torch.Tensor]) -> Union[List[torch.Tensor], torch.Tensor]:
     if isinstance(x, list):
         return [2 * var - 1 for var in x]
     return 2 * x - 1

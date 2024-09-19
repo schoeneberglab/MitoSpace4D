@@ -139,10 +139,6 @@ class MitoSpaceDataset(Dataset):
         image = image / 20000
         image = image.astype(np.float16)
 
-        dtyp = torch.float16 if image.dtype == np.float16 else torch.float32
-        image = torch.Tensor(image).to(dtyp)
-        image = image.transpose(0, 1)  # (t, c, z, h, w) -> (c, t, z, h, w)
-
         label = self.labels[idx]
 
         return {"images": image, "classes": label, "image_paths": img_name}

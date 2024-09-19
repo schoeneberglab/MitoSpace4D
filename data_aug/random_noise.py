@@ -50,7 +50,7 @@ class RandomGaussianNoiseGPU(nn.Module):
         if torch.rand(1).item() <= self.p:
             noise = torch.normal(mean=torch.tensor(self.mu[0], device=sample.device),
                                  std=torch.tensor(self.mu[0] * 0.2, device=sample.device),
-                                 size=sample.shape).to(sample.device)
+                                 size=sample.shape).to(sample.dtype).to(sample.device)
             noise = noise * (self.scale * sample.max())
             sample = sample + noise
 
