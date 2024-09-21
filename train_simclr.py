@@ -59,10 +59,12 @@ def main():
                                       zstacks=cfg['data_params']['zstacks'])
 
     train_loader = DataLoader(train_dataset, batch_size=cfg['training']['batch_size'], shuffle=True,
-                              num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True)
+                              num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
+                              persistent_workers=cfg['training']['persistent_workers'])
 
     val_loader = DataLoader(val_dataset, batch_size=cfg['training']['batch_size'], shuffle=False,
-                            num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True)
+                            num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
+                            persistent_workers=cfg['training']['persistent_workers'])
 
     model = MitoSpace4DConvLSTM(
         in_channels=cfg['model_params']['in_channels'],

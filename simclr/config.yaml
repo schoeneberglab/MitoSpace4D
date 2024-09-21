@@ -64,6 +64,7 @@ training:
   weight_decay: 0.00001
   workers: 1
   prefetch_factor: 2
+  persistent_workers: True
   n_views: 2
 distributed:
   flag: True
