@@ -31,7 +31,7 @@ data_params:
         sigma: 1.0
         kernel_size: 5
       RandomErasing:
-        p: 0.5
+        p: 0.3
         scale: [0.02, 0.2]
         ratio: [0.3, 3.3]
   filters: null
@@ -62,7 +62,7 @@ training:
   continue_from_ckpt_wo_opt: None
   lr: 0.0003
   weight_decay: 0.00001
-  workers: 12
+  workers: 1
   prefetch_factor: 2
   n_views: 2
 distributed:

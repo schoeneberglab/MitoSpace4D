@@ -132,7 +132,7 @@ class Conv3DLSTM(nn.Module):
             b, t, c, d, h, w = cur_layer_input.size()
             cur_layer_input = cur_layer_input.view(b * t, c, d, h, w)
             cur_layer_input = conv(cur_layer_input)
-            d, h, w = cur_layer_input.size(2), cur_layer_input.size(3), cur_layer_input.size(4)
+            c, d, h, w = cur_layer_input.size(1), cur_layer_input.size(2), cur_layer_input.size(3), cur_layer_input.size(4)
             cur_layer_input = cur_layer_input.view(b, t, c, d, h, w)
 
             layer_idx += 1
