@@ -11,39 +11,29 @@ data_params:
   patch_size: 256
   samples_per_drug: None
   transforms:
-      Crop:
+      ResizedCrop:
         p: 0.5
         size: 256
         scale: [0.35, 1.0]
-        empty_area_check_idx: 1  # not relevant for 4D? check this once
       Brightness:
-        p: 0.5
-        method: random_gaussian
-        factor: 1
-        spread: 400
-        apply_idx: [-1]  # apply to all channels
+        p: 0.0
+        val: 0.3
       HorizontalFlip:
         p: 0.5
       VerticalFlip:
         p: 0.5
-      GaussianBlur:
-        p: 0
-        n_channels: 2
-        kernel_size: 25
-        sigma: 2
-      Rotation:
-        p: 0
-        degrees: 90
-      ExchangeFlip:
-        p: 0
       GaussianNoise:
+        p: 0.3
+        mu: 0.0
+        scale: 0.001
+      GaussianBlur:
         p: 0.5
-        mu: [0.01, 0.01]
-        scale: 0.005
-      Affine:
-        p: 0
-        degrees: 0
-        translate: [0.1, 0.2]
+        sigma: 1.0
+        kernel_size: 5
+      RandomErasing:
+        p: 0.5
+        scale: [0.02, 0.2]
+        ratio: [0.3, 3.3]
   filters: null
 logging_params:
   save_path: /home/dhruvagarwal/projects/MitoSpace4D/runs
