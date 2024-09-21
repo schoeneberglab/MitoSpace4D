@@ -29,8 +29,8 @@ class DataAugmentation(nn.Module):
         views = []
         for i in range(self.n_views):
             views.append(self.transforms(x).view(b, t, c, z, h, w))
-        views = torch.stack(views, dim=1)  # (b, n_views, t, c, z, h, w)
-        views = views.view(-1, *views.shape[2:])  # (b*n_views, t, c, z, h, w)
+        views = torch.stack(views, dim=0)  # (n_views, b, t, c, z, h, w)
+        views = views.view(-1, *views.shape[2:])  # (n_views*b, t, c, z, h, w)
 
         del x
         torch.cuda.empty_cache()

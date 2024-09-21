@@ -36,11 +36,10 @@ class MitoSpaceDataModule(pl.LightningDataModule):
 
 
 class MitoSpaceDataset(Dataset):
-    def __init__(self, root_dir: str, transform: Union[Compose, torchvision.transforms] = None, flag: str = 'train',
+    def __init__(self, root_dir: str, flag: str = 'train',
                  seed: int = None, pick_labels: List = None, samples_per_drug: int = None,
                  timesteps=None, zstacks=None) -> None:
         self.root_dir = root_dir
-        self.transform = transform
         self.timesteps = timesteps
         self.zstacks = zstacks
 
