@@ -1,17 +1,12 @@
 import torch.utils.data
-
-from data_aug.gaussian_blur import GaussianBlur
-from data_aug.random_brightness import RandomBrightness, RandomBrightnessGPU
 from torchvision import transforms, datasets
-from data_aug.view_generator import ContrastiveLearningViewGenerator
+from tqdm import tqdm
+
 # from exceptions.exceptions import InvalidDatasetSelection
 from data_aug.mitospace_dataset import *
-from data_aug.random_noise import *
-from data_aug.random_rotate import RandomRotation
-from data_aug.random_affine import RandomAffine, RandomAffineGPUWrapper
-from data_aug.random_crop import RandomResizedCrop, RandomResizedCropGPU
-from data_aug.random_exchange_flip import RandomExchangeFlip
 from typing import Dict, List
+
+from utils.utils import load_config
 
 
 class ContrastiveLearningDataset:
@@ -26,17 +21,7 @@ class ContrastiveLearningDataset:
                                                                 flag=flag,
                                                                 seed=seed, pick_labels=pick_labels,
                                                                 samples_per_drug=samples_per_drug,
-                                                                timesteps=timesteps, zstacks=zstacks),
-                          'stl10': lambda: datasets.STL10(self.root_folder, split=flag,
-                                                          transform=ContrastiveLearningViewGenerator(
-                                                              self.get_simclr_pipeline_transform(96),
-                                                              n_views),
-                                                          download=False),
-                          'cifar10': lambda: datasets.CIFAR10(self.root_folder, train=(flag == 'train'),
-                                                              transform=ContrastiveLearningViewGenerator(
-                                                                  self.get_simclr_pipeline_transform(32),
-                                                                  n_views),
-                                                              download=False)
+                                                                timesteps=timesteps, zstacks=zstacks)
                           }
 
         try:
