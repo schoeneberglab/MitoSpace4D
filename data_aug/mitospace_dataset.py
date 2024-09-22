@@ -62,6 +62,11 @@ class MitoSpaceDataset(Dataset):
         for drug_folder in drug_folders:
             filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data', drug_folder))])
             filenames = [osp.join(self.root_dir, 'processed_data', drug_folder, file) for file in filenames]
+
+            if samples_per_drug is not None:
+                print(f"Limiting the number of samples per drug to {samples_per_drug}")
+                filenames = filenames[:samples_per_drug]
+
             self.all_filenames.extend(filenames)
             self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
 
