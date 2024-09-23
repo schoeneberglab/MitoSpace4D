@@ -63,7 +63,7 @@ class MitoSpaceDataset(Dataset):
             filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data', drug_folder))])
             filenames = [osp.join(self.root_dir, 'processed_data', drug_folder, file) for file in filenames]
 
-            if samples_per_drug is not None:
+            if samples_per_drug != 'None':
                 print(f"Limiting the number of samples per drug to {samples_per_drug}")
                 filenames = filenames[:samples_per_drug]
 

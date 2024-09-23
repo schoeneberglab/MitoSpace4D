@@ -69,7 +69,8 @@ def main():
     model = MitoSpace4DConvLSTM(
         in_channels=cfg['model_params']['in_channels'],
         out_dim=cfg['model_params']['out_dim'],
-        cfg_aug=cfg['data_params']['transforms']
+        cfg_aug=cfg['data_params']['transforms'],
+        train=True
     )
 
     for param in model.augment_pipeline.parameters():

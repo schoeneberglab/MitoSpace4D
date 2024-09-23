@@ -8,7 +8,7 @@ import torch.distributed as dist
 import diffdist
 
 class InfoNCELoss(nn.Module):
-    def __init__(self, temperature: float = 0.07, use_normalization: bool = True, device: str = 'cuda',
+    def __init__(self, temperature: float = 0.07, use_normalization: bool = True,
                  n_views: int = 2, distributed: bool = True) -> None:
         """
         Initialize the loss function for InfoNCE loss.
@@ -16,7 +16,6 @@ class InfoNCELoss(nn.Module):
         super(InfoNCELoss, self).__init__()
         self.temperature = temperature
         self.normalize = use_normalization
-        self.device = device
         self.cross_entropy = nn.CrossEntropyLoss()
         self.n_views = n_views
         self.distributed = distributed
@@ -63,7 +62,7 @@ class InfoNCELoss(nn.Module):
 
         logits = torch.cat([positives, negatives], dim=1)
         logits = logits / self.temperature
-        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
+        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(logits.device)
 
         loss = self.cross_entropy(logits, labels)
 
