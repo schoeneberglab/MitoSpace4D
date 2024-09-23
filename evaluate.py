@@ -266,7 +266,7 @@ if __name__ == "__main__":
     model = MitoSpace4DConvLSTM(
         in_channels=cfg['model_params']['in_channels'],
         out_dim=cfg['model_params']['out_dim'],
-        train=False).to(device)
+        apply_aug=False).to(device)
 
     checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=295-step=49136-val_loss=0.00.ckpt"
     top_ns = cfg["evaluate"]["top_ns"]

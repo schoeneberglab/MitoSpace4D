@@ -146,11 +146,11 @@ class Conv3DLSTM(nn.Module):
 class MitoSpace4DConvLSTM(nn.Module):
     def __init__(self, in_channels=1, hidden_dim=[1, 2, 4, 16, 32, 256], kernel_size=(3, 3, 3), num_layers=6,
                  conv_reduction_factor=[(1, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2)], out_dim=512,
-                 feat_dim=2048, cfg_aug=None, train=False):
+                 feat_dim=2048, cfg_aug=None, apply_aug=False):
         super(MitoSpace4DConvLSTM, self).__init__()
 
         self.out_dim = out_dim
-        self.train = train
+        self.apply_aug = apply_aug
 
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
         self.net = Conv3DLSTM(input_dim=in_channels, hidden_dim=hidden_dim, kernel_size=kernel_size,
@@ -164,7 +164,7 @@ class MitoSpace4DConvLSTM(nn.Module):
                                   nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
 
     def forward(self, x):
-        x = self.augment_pipeline(x) if self.train else x # (b, t, c, d, h, w)
+        x = self.augment_pipeline(x) if self.apply_aug else x # (b, t, c, d, h, w)
         x = self.net(x)
         x = x[:, -1].flatten(start_dim=1)
         x = self.fc(x)

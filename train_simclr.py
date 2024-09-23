@@ -7,11 +7,12 @@ from torchvision import models
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
 from simclr.models import MitoSpace4DConvLSTM
 from simclr.simclr import SimCLRRunner
-from torchsummary import summary
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from utils.utils import load_config
 import warnings
+from pytorch_lightning.profilers import AdvancedProfiler
+
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -70,7 +71,7 @@ def main():
         in_channels=cfg['model_params']['in_channels'],
         out_dim=cfg['model_params']['out_dim'],
         cfg_aug=cfg['data_params']['transforms'],
-        train=True
+        apply_aug=True
     )
 
     for param in model.augment_pipeline.parameters():
@@ -108,7 +109,8 @@ def main():
         num_nodes=cfg["distributed"]["num_nodes"],
         devices=cfg["distributed"]["num_gpus"],
         sync_batchnorm=True,
-        strategy=cfg["distributed"]["strategy"]
+        strategy=cfg["distributed"]["strategy"],
+        profiler=AdvancedProfiler()
     )
     trainer.fit(
         model=train_runner,
@@ -117,6 +119,8 @@ def main():
         #ckpt_path="/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs/lightning_logs/convlstmmodel/checkpoints/last-v2.ckpt"
         # use this to load optimizer as well as model states
     )
+
+    print(trainer.profiler.summary())
 
 
 if __name__ == "__main__":

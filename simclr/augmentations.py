@@ -46,6 +46,6 @@ class DataAugmentation(nn.Module):
         torch.cuda.empty_cache()
 
         if self.zero_mean_norm:
-            views = minus_one_to_one_normalization(views)
+            return 2*views - 1
 
         return views

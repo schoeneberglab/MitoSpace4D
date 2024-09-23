@@ -1,0 +1,86 @@
+import math
+import numpy as np
+import torch
+import torch.nn as nn
+from einops import einops
+
+from augmentations import DataAugmentation
+from utils.utils import load_config
+
+
+def get_sinusoidal_embedding(seq_len, dim, device):
+    pe = torch.zeros(seq_len, dim, device=device)
+    position = torch.arange(0, seq_len, dtype=torch.float, device=device).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, dim, 2, device=device).float() * (-math.log(10000.0) / dim))
+
+    pe[:, 0::2] = torch.sin(position * div_term)
+    pe[:, 1::2] = torch.cos(position * div_term)
+
+    return pe
+
+class MitoSpace4DTransformer(nn.Module):
+    def __init__(self, out_dim=512, feat_dim=2048, patch_size=(2, 1, 4, 4), hidden_dim=256, nheads=8, num_layers=6,
+                 cfg_aug=None):
+        super(MitoSpace4DTransformer, self).__init__()
+
+        self.patch_size = patch_size # (t, z, h, w)
+        self.out_dim = out_dim
+
+        self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
+
+        self.conv = nn.Sequential(nn.Conv3d(2, 1, kernel_size=3, stride=1, padding=1),
+                                  nn.Conv3d(1, 1, kernel_size=3, stride=2, padding=1),
+                                  nn.Conv3d(1, 1, kernel_size=3, stride=2, padding=1),
+                                  nn.Conv3d(1, 1, kernel_size=3, stride=2, padding=1),
+                                  )
+        self.embed = nn.Linear(np.prod(patch_size), hidden_dim)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, hidden_dim))
+
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=nheads, dim_feedforward=hiden_dim)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        self.fc = nn.Linear(hidden_dim, feat_dim)
+        self.proj = nn.Sequential(nn.Linear(feat_dim, out_dim, bias=False), nn.BatchNorm1d(out_dim),
+                                  nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
+
+    def patchify_and_embed(self, x):
+        x = einops.rearrange(x, 'b (p1 t) c (p2 z) (p3 h) (p4 w) -> b (t z h w) (p1 p2 p3 p4 c)',
+                             p1=self.patch_size[0], p2=self.patch_size[1], p3=self.patch_size[2], p4=self.patch_size[3])
+        return self.embed(x)
+
+    def forward(self, x):
+        x = self.augment_pipeline(x)  # (b, t, c, d, h, w)
+
+        b, t, c, d, h, w = x.size()
+        x = x.view(-1, *x.shape[2:])  # (b*t, c, d, h, w)
+        x = self.conv(x)
+        x = x.view(b, t, x.size(1), x.size(2), x.size(3), x.size(4)) # (b, t, d, z, h, w)
+        x = self.patchify_and_embed(x)
+
+        cls_tokens = self.cls_token.expand(x.size(0), -1, -1)  # Shape: (b, 1, dim)
+        x = torch.cat((cls_tokens, x), dim=1)
+        num_tokens = x.shape[1]  # This will change based on input size
+
+        pos_embedding = get_sinusoidal_embedding(num_tokens, x.shape[2], x.device)
+        x += pos_embedding.unsqueeze(0) # (b, num_patches+1, dim)
+
+        x = self.transformer_encoder(x)
+        x = x[:, 0] # Get the first token (cls token)
+
+        x = self.fc(x)
+        out = self.proj(x)
+        return x, out
+
+
+if __name__ == "__main__":
+    cfg = load_config("/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml")
+    # Example usage
+    in_channels = 2  # Assuming single-channel 3D data
+    model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms']).cuda()
+
+    # Create a sample input tensor with shape (batch_size, sequence_length, in_channels, depth, height, width)
+    input_tensor = torch.randn(6, 20, 2, 60, 256, 256).cuda()  # Example input tensor
+
+    # Forward pass
+    output, _ = model(input_tensor)
+    print(output.shape)

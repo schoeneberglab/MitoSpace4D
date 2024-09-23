@@ -12,7 +12,7 @@ data_params:
   samples_per_drug: None
   transforms:
       ResizedCrop:
-        p: 0.5
+        p: 0.3
         size: 256
         scale: [0.35, 1.0]
       Brightness:
@@ -27,11 +27,11 @@ data_params:
         mu: 0.0
         scale: 0.001
       GaussianBlur:
-        p: 0.5
+        p: 0.0
         sigma: 1.0
         kernel_size: 5
       RandomErasing:
-        p: 0.3
+        p: 0.0
         scale: [0.02, 0.2]
         ratio: [0.3, 3.3]
   filters: null
@@ -49,10 +49,10 @@ training:
     name: InfoNCELoss
     use_normalization: True
     temperature: 0.07
-  max_epochs: 300
+  max_epochs: 2
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 4
+  batch_size: 5
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
@@ -62,7 +62,7 @@ training:
   continue_from_ckpt_wo_opt: None
   lr: 0.0003
   weight_decay: 0.00001
-  workers: 1
+  workers: 6
   prefetch_factor: 2
   persistent_workers: True
   n_views: 2
