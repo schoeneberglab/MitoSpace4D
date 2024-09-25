@@ -7,6 +7,7 @@ from typing import Tuple
 import torch.distributed as dist
 import diffdist
 
+
 class InfoNCELoss(nn.Module):
     def __init__(self, temperature: float = 0.07, use_normalization: bool = True,
                  n_views: int = 2, distributed: bool = True) -> None:
@@ -20,7 +21,7 @@ class InfoNCELoss(nn.Module):
         self.n_views = n_views
         self.distributed = distributed
 
-    def forward(self, features: Tensor, bs: int, n_views: int) -> Tuple[Tensor, Tuple[float, float]]:
+    def forward(self, features: Tensor, bs: int) -> Tuple[Tensor, Tuple[float, float]]:
         """
         Compute loss for model and accuracy (top-1 and top-5) for the batch of features.
         The accuracy are based on the logits produced and the labels from the batch.
@@ -31,26 +32,30 @@ class InfoNCELoss(nn.Module):
         """
 
         if self.normalize:
-            features = F.normalize(features, dim=1)
+            features = F.normalize(features, dim=1).to(features.dtype)
 
         if self.distributed:
-            features_list = [torch.zeros_like(features) for _ in range(dist.get_world_size())]
-            features_list = diffdist.functional.all_gather(features_list, features)
-            features_list = [chunk for x in features_list for chunk in x.chunk(self.n_views)]
-            features_sorted = []
-            for m in range(self.n_views):
-                for i in range(dist.get_world_size()):
-                    features_sorted.append(features_list[i * self.n_views + m])
-            features = torch.cat(features_sorted, dim=0)
-            bs = features.shape[0] // self.n_views
+            world_size = dist.get_world_size()
+            gathered_features = [torch.zeros_like(features) for _ in range(world_size)]
+            gathered_features = diffdist.functional.all_gather(gathered_features, features)
 
-        labels = torch.cat([torch.arange(bs) for _ in range(n_views)], dim=0)
+            gathered_features = torch.cat(gathered_features, dim=0)
+
+            features_sorted = gathered_features.view(world_size, self.n_views, bs, -1).permute(1, 0, 2, 3).reshape(-1,
+                                                                                                                   gathered_features.size(
+                                                                                                                       -1))
+            features = features_sorted
+
+        bs = features.shape[0] // self.n_views
+
+        labels = torch.arange(bs).repeat(self.n_views).to(features.device)
+
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
 
         similarity_matrix = torch.matmul(features, features.T)
 
         # discard the main diagonal from both: labels and similarities matrix
-        mask = torch.eye(labels.shape[0], dtype=torch.bool)
+        mask = torch.eye(labels.shape[0], dtype=torch.bool, device=features.device)
         labels = labels[~mask].view(labels.shape[0], -1)
         similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)
 
@@ -83,7 +88,8 @@ class SupConLoss(nn.Module):
         self.base_temperature = base_temperature
         self.normalize = use_normalization
 
-    def forward(self, features: Tensor, bs: int, n_views: int, labels: Tensor = None, mask: Tensor = None) -> Tuple[Tensor, Tuple[float, float]]:
+    def forward(self, features: Tensor, bs: int, n_views: int, labels: Tensor = None, mask: Tensor = None) -> Tuple[
+        Tensor, Tuple[float, float]]:
         """Compute loss for model. If both `labels` and `mask` are None,
         it degenerates to SimCLR unsupervised loss:
         https://arxiv.org/pdf/2002.05709.pdf

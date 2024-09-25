@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from einops import einops
 
-from augmentations import DataAugmentation
+from simclr.augmentations import DataAugmentation
 from utils.utils import load_config
 
 
@@ -18,13 +18,15 @@ def get_sinusoidal_embedding(seq_len, dim, device):
 
     return pe
 
+
 class MitoSpace4DTransformer(nn.Module):
     def __init__(self, out_dim=512, feat_dim=2048, patch_size=(2, 1, 4, 4), hidden_dim=256, nheads=8, num_layers=6,
-                 cfg_aug=None):
+                 cfg_aug=None, apply_aug=False):
         super(MitoSpace4DTransformer, self).__init__()
 
-        self.patch_size = patch_size # (t, z, h, w)
+        self.patch_size = patch_size  # (t, d, h, w)
         self.out_dim = out_dim
+        self.apply_aug = apply_aug
 
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
 
@@ -36,7 +38,7 @@ class MitoSpace4DTransformer(nn.Module):
         self.embed = nn.Linear(np.prod(patch_size), hidden_dim)
         self.cls_token = nn.Parameter(torch.randn(1, 1, hidden_dim))
 
-        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=nheads, dim_feedforward=hiden_dim)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=nheads, dim_feedforward=hidden_dim)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         self.fc = nn.Linear(hidden_dim, feat_dim)
@@ -44,28 +46,28 @@ class MitoSpace4DTransformer(nn.Module):
                                   nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
 
     def patchify_and_embed(self, x):
-        x = einops.rearrange(x, 'b (p1 t) c (p2 z) (p3 h) (p4 w) -> b (t z h w) (p1 p2 p3 p4 c)',
+        x = einops.rearrange(x, 'b (p1 t) c (p2 d) (p3 h) (p4 w) -> b (t d h w) (p1 p2 p3 p4 c)',
                              p1=self.patch_size[0], p2=self.patch_size[1], p3=self.patch_size[2], p4=self.patch_size[3])
         return self.embed(x)
 
     def forward(self, x):
-        x = self.augment_pipeline(x)  # (b, t, c, d, h, w)
+        x = self.augment_pipeline(x) if self.apply_aug else x  # (b, t, c, d, h, w)
 
         b, t, c, d, h, w = x.size()
         x = x.view(-1, *x.shape[2:])  # (b*t, c, d, h, w)
         x = self.conv(x)
-        x = x.view(b, t, x.size(1), x.size(2), x.size(3), x.size(4)) # (b, t, d, z, h, w)
-        x = self.patchify_and_embed(x)
+        x = x.view(b, t, *x.shape[1:])  # (b, t, c, d, h, w)
+        x = self.patchify_and_embed(x)  # (b, num_tokens, dim)
 
         cls_tokens = self.cls_token.expand(x.size(0), -1, -1)  # Shape: (b, 1, dim)
-        x = torch.cat((cls_tokens, x), dim=1)
+        x = torch.cat([cls_tokens, x], dim=1)
         num_tokens = x.shape[1]  # This will change based on input size
 
         pos_embedding = get_sinusoidal_embedding(num_tokens, x.shape[2], x.device)
-        x += pos_embedding.unsqueeze(0) # (b, num_patches+1, dim)
+        x += pos_embedding.unsqueeze(0)  # (b, num_tokens+1, dim)
 
         x = self.transformer_encoder(x)
-        x = x[:, 0] # Get the first token (cls token)
+        x = x[:, 0]  # Get the first token (cls token)
 
         x = self.fc(x)
         out = self.proj(x)

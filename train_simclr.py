@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from torchvision import models
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
 from simclr.models import MitoSpace4DConvLSTM
+from simclr.models_transformer import MitoSpace4DTransformer
 from simclr.simclr import SimCLRRunner
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
@@ -67,12 +68,14 @@ def main():
                             num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
                             persistent_workers=cfg['training']['persistent_workers'])
 
-    model = MitoSpace4DConvLSTM(
-        in_channels=cfg['model_params']['in_channels'],
-        out_dim=cfg['model_params']['out_dim'],
-        cfg_aug=cfg['data_params']['transforms'],
-        apply_aug=True
-    )
+    # model = MitoSpace4DConvLSTM(
+    #     in_channels=cfg['model_params']['in_channels'],
+    #     out_dim=cfg['model_params']['out_dim'],
+    #     cfg_aug=cfg['data_params']['transforms'],
+    #     apply_aug=True
+    # )
+
+    model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], apply_aug=True).cuda()
 
     for param in model.augment_pipeline.parameters():
         param.requires_grad = False
