@@ -22,12 +22,12 @@ class DataAugmentation(nn.Module):
                                 mean=cfg_aug['GaussianNoise']['mu'],
                                 std=cfg_aug['GaussianNoise']['scale']),
             RandomGaussianBlur(p=cfg_aug['GaussianBlur']['p'],
-                                 kernel_size=(cfg_aug['GaussianBlur']['kernel_size'],
-                                              cfg_aug['GaussianBlur']['kernel_size']),
-                                 sigma=(cfg_aug['GaussianBlur']['sigma'], cfg_aug['GaussianBlur']['sigma'])),
+                               kernel_size=(cfg_aug['GaussianBlur']['kernel_size'],
+                                            cfg_aug['GaussianBlur']['kernel_size']),
+                               sigma=(cfg_aug['GaussianBlur']['sigma'], cfg_aug['GaussianBlur']['sigma'])),
             RandomErasing(p=cfg_aug['RandomErasing']['p'],
-                            scale=(cfg_aug['RandomErasing']['scale'][0], cfg_aug['RandomErasing']['scale'][1]),
-                            ratio=(cfg_aug['RandomErasing']['ratio'][0], cfg_aug['RandomErasing']['ratio'][1]))
+                          scale=(cfg_aug['RandomErasing']['scale'][0], cfg_aug['RandomErasing']['scale'][1]),
+                          ratio=(cfg_aug['RandomErasing']['ratio'][0], cfg_aug['RandomErasing']['ratio'][1]))
         )
 
         self.n_views = 2
@@ -46,6 +46,6 @@ class DataAugmentation(nn.Module):
         torch.cuda.empty_cache()
 
         if self.zero_mean_norm:
-            return 2*views - 1
+            return 2 * views - 1
 
         return views

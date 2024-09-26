@@ -237,8 +237,7 @@ class SimCLRRunner(pl.LightningModule):
 
         loss, cross_entropy, acc = None, None, None
         if self.loss == 'InfoNCELoss':
-            loss, acc = self.criterion(out, bs=self.cfg['training']['batch_size'],
-                                       n_views=self.cfg['training']['n_views'])
+            loss, acc = self.criterion(out, bs=self.cfg['training']['batch_size'])
             cross_entropy = self.cross_entropy_2d(features.detach().cpu(), labels=classes.detach().cpu(),
                                                   batch_size=self.cfg['training']['batch_size'],
                                                   n_views=self.cfg['training']['n_views'])

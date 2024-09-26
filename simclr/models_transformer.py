@@ -46,7 +46,7 @@ class MitoSpace4DTransformer(nn.Module):
                                   nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
 
     def patchify_and_embed(self, x):
-        x = einops.rearrange(x, 'b (p1 t) c (p2 d) (p3 h) (p4 w) -> b (t d h w) (p1 p2 p3 p4 c)',
+        x = einops.rearrange(x, 'b (t p1) c (d p2) (h p3) (w p4) -> b (t d h w) (p1 p2 p3 p4 c)',
                              p1=self.patch_size[0], p2=self.patch_size[1], p3=self.patch_size[2], p4=self.patch_size[3])
         return self.embed(x)
 

@@ -214,6 +214,7 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
         with torch.no_grad():
             # with torch.autocast(device_type="cuda"):
             # with torch.amp.autocast(device_type='cuda'):
+            im = 2 * im - 1  # zero mean normalization
             features, _ = model(im.to('cuda'))
 
         if normalize_embeddings:
@@ -266,9 +267,10 @@ if __name__ == "__main__":
     model = MitoSpace4DConvLSTM(
         in_channels=cfg['model_params']['in_channels'],
         out_dim=cfg['model_params']['out_dim'],
+        cfg_aug=cfg['data_params']['transforms'],
         apply_aug=False).to(device)
 
-    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=295-step=49136-val_loss=0.00.ckpt"
+    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=99-step=5300-val_loss=0.00.ckpt"
     top_ns = cfg["evaluate"]["top_ns"]
     dataset_name = cfg["evaluate"]["dataset"]
 
@@ -280,21 +282,23 @@ if __name__ == "__main__":
     model.eval()
 
     loaders_reference = get_mitospace_data_loaders(
-        f'{proj_dir}/data/2023_data/',
+        f'{proj_dir}/data/dummy_data/',
         shuffle=False, batch_size=8, to_load=["train"],
         timesteps=cfg['data_params']['timesteps'],
         zstacks=cfg['data_params']['zstacks'],
+        samples_per_drug=cfg['data_params']['samples_per_drug'],
         pick_labels=None)
 
     loaders_eval = get_mitospace_data_loaders(
-        f'{proj_dir}/data/2023_data/',
-        shuffle=False, batch_size=8, to_load=["train"],
+        f'{proj_dir}/data/dummy_data/',
+        shuffle=False, batch_size=8, to_load=["val"],
         timesteps=cfg['data_params']['timesteps'],
         zstacks=cfg['data_params']['zstacks'],
+        samples_per_drug=cfg['data_params']['samples_per_drug'],
         pick_labels=None
     )
 
-    train_loader, eval_loader = (loaders_reference["train"], loaders_eval["train"])
+    train_loader, eval_loader = (loaders_reference["train"], loaders_eval["val"])
 
     train_embeddings, train_images, train_labels = extract_embeddings_from_model(train_loader, model.model,
                                                                                  normalize_embeddings=True,

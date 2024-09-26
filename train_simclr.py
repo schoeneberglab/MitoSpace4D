@@ -33,14 +33,6 @@ def main():
 
     assert cfg['training']['n_views'] == 2, "Only two view training is supported. Please use --n-views 2."
 
-    if torch.cuda.is_available():
-        args.device = torch.device('cuda')
-        cudnn.deterministic = True
-        cudnn.benchmark = True
-    else:
-        args.device = torch.device('cpu')
-        args.gpu_index = -1
-
     torch.set_float32_matmul_precision('medium')
 
     dataset = ContrastiveLearningDataset(cfg['data_params']['data_path'], cfg)
@@ -68,14 +60,14 @@ def main():
                             num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
                             persistent_workers=cfg['training']['persistent_workers'])
 
-    # model = MitoSpace4DConvLSTM(
-    #     in_channels=cfg['model_params']['in_channels'],
-    #     out_dim=cfg['model_params']['out_dim'],
-    #     cfg_aug=cfg['data_params']['transforms'],
-    #     apply_aug=True
-    # )
+    model = MitoSpace4DConvLSTM(
+        in_channels=cfg['model_params']['in_channels'],
+        out_dim=cfg['model_params']['out_dim'],
+        cfg_aug=cfg['data_params']['transforms'],
+        apply_aug=True
+    )
 
-    model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], apply_aug=True).cuda()
+    # model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], apply_aug=True).cuda()
 
     for param in model.augment_pipeline.parameters():
         param.requires_grad = False
@@ -113,7 +105,6 @@ def main():
         devices=cfg["distributed"]["num_gpus"],
         sync_batchnorm=True,
         strategy=cfg["distributed"]["strategy"],
-        profiler=AdvancedProfiler()
     )
     trainer.fit(
         model=train_runner,
@@ -122,8 +113,6 @@ def main():
         #ckpt_path="/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs/lightning_logs/convlstmmodel/checkpoints/last-v2.ckpt"
         # use this to load optimizer as well as model states
     )
-
-    print(trainer.profiler.summary())
 
 
 if __name__ == "__main__":

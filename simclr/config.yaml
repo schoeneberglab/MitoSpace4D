@@ -1,4 +1,4 @@
-experiment_name: debug
+experiment_name: convlstm_100perdrug
 data_params:
   timesteps:
     start: 0
@@ -9,7 +9,7 @@ data_params:
   dataset_name: mitospace
   data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/dummy_data
   patch_size: 256
-  samples_per_drug: None
+  samples_per_drug: 100
   transforms:
       ResizedCrop:
         p: 0.3
