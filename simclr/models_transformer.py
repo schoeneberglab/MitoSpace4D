@@ -20,7 +20,7 @@ def get_sinusoidal_embedding(seq_len, dim, device):
 
 
 class MitoSpace4DTransformer(nn.Module):
-    def __init__(self, out_dim=512, feat_dim=2048, patch_size=(2, 1, 4, 4), hidden_dim=256, nheads=8, num_layers=6,
+    def __init__(self, out_dim=512, feat_dim=2048, patch_size=(2, 6, 32, 32), hidden_dim=512, nheads=8, num_layers=5,
                  cfg_aug=None, apply_aug=False):
         super(MitoSpace4DTransformer, self).__init__()
 
@@ -30,13 +30,15 @@ class MitoSpace4DTransformer(nn.Module):
 
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
 
-        self.conv = nn.Sequential(nn.Conv3d(2, 1, kernel_size=3, stride=1, padding=1),
-                                  nn.Conv3d(1, 1, kernel_size=3, stride=2, padding=1),
-                                  nn.Conv3d(1, 1, kernel_size=3, stride=2, padding=1),
-                                  nn.Conv3d(1, 1, kernel_size=3, stride=2, padding=1),
-                                  )
+        self.conv = nn.Sequential(nn.Conv3d(2, 2, kernel_size=3, stride=1, padding=1),
+                                  nn.ReLU(inplace=True),
+                                  nn.Conv3d(2, 1, kernel_size=3, stride=1, padding=1))
+
         self.embed = nn.Linear(np.prod(patch_size), hidden_dim)
-        self.cls_token = nn.Parameter(torch.randn(1, 1, hidden_dim))
+
+        num_patches = (20 // self.patch_size[0]) * (60 // self.patch_size[1]) * (256 // self.patch_size[2]) * (
+                    256 // self.patch_size[3])
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, hidden_dim))
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=nheads, dim_feedforward=hidden_dim)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
@@ -59,15 +61,12 @@ class MitoSpace4DTransformer(nn.Module):
         x = x.view(b, t, *x.shape[1:])  # (b, t, c, d, h, w)
         x = self.patchify_and_embed(x)  # (b, num_tokens, dim)
 
-        cls_tokens = self.cls_token.expand(x.size(0), -1, -1)  # Shape: (b, 1, dim)
-        x = torch.cat([cls_tokens, x], dim=1)
-        num_tokens = x.shape[1]  # This will change based on input size
+        x += self.pos_embedding  # (b, num_tokens, dim)
 
-        pos_embedding = get_sinusoidal_embedding(num_tokens, x.shape[2], x.device)
-        x += pos_embedding.unsqueeze(0)  # (b, num_tokens+1, dim)
-
+        x = x.permute(1, 0, 2)  # (num_tokens, b, dim)
         x = self.transformer_encoder(x)
-        x = x[:, 0]  # Get the first token (cls token)
+
+        x = x.mean(dim=0)
 
         x = self.fc(x)
         out = self.proj(x)

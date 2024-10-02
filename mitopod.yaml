@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mitopod
+spec:
+  template:
+    spec:
+      containers:
+      - name: mitospace
+        image: drvagwl1008/mitospace4d:latest
+        command:
+          - "python"
+        args:
+          - "/opt/repo/mitospace4d/train_simclr.py"
+          - "--config"
+          - "/opt/repo/mitospace4d/simclr/config.yaml"
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        resources:
+          limits:
+            memory: 6Gi
+            cpu: "6"
+            nvidia.com/gpu: "1"
+          requests:
+            memory: 4Gi
+            cpu: "1"
+            nvidia.com/gpu: "1"
+      initContainers:
+      - name: init-clone-repo
+        image: alpine/git
+        env:
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-secret
+              key: user
+        - name: GIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-secret
+              key: password
+        args:
+          - clone
+          - --single-branch
+          - --branch
+          - gpu_augmentations
+          - https://$(GIT_USERNAME):$(GIT_PASSWORD)@gitlab.nrp-nautilus.io/drvagwl1008/mitospace4d.git
+          - /opt/repo/mitospace4d
+        volumeMounts:
+          - name: git-repo
+            mountPath: /opt/repo
+      volumes:
+      - name: git-repo
+        emptyDir: {}
+      restartPolicy: Never
+  backoffLimit: 1
