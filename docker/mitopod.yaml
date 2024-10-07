@@ -8,12 +8,12 @@ spec:
       containers:
       - name: mitospace
         image: drvagwl1008/mitospace4d:latest
-        command:
-          - "python"
-        args:
-          - "/opt/repo/mitospace4d/train_simclr.py"
-          - "--config"
-          - "/opt/repo/mitospace4d/simclr/config.yaml"
+#        command:
+#          - "python"
+#        args:
+#          - "/opt/repo/mitospace4d/train_simclr.py"
+#          - "--config"
+#          - "/opt/repo/mitospace4d/simclr/config.yaml"
         volumeMounts:
         - name: git-repo
           mountPath: /opt/repo

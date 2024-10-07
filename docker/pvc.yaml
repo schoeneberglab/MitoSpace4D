@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mitospace-vol
+spec:
+  storageClassName: rook-ceph-block
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 11000Gi
