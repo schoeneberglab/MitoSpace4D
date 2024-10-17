@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rclone-job-template
+spec:
+  template:
+    spec:
+      containers:
+      - name: rsync-container
+        image: mdoshi2612/rclone-image:latest
+        command: [
+          "/bin/sh", 
+          "-c", 
+          "mkdir -p /mitospace4d-vol/data/2024_data/processed_data/(insert-folder-name)/ && rclone copy bigbox:/run/user/1001/gvfs/smb-share:server=bigbox.ucsd.edu,share=schoeneberg/MitoSpace4D/Data/(insert-folder-name)/ /mitospace4d-vol/data/2024_data/processed_data/(insert-folder-name)/ --transfers=8 --checkers=8"
+        ]
+        volumeMounts:
+        - name: pvc-storage
+          mountPath: /mitospace4d-vol
+        env:
+        - name: RSYNC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rsync-password-secret
+              key: password
+        resources:
+          limits:
+            memory: 6Gi
+            cpu: "6"
+          requests:
+            memory: 4Gi
+            cpu: "4"
+      restartPolicy: Never
+      volumes:
+      - name: pvc-storage
+        persistentVolumeClaim:
+          claimName: mitospace4d-vol
+  backoffLimit: 1

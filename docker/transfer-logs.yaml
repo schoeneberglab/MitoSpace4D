@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: logs-transfer-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: rsync-container
+        image: mdoshi2612/rclone-image:latest
+        command: [
+          "/bin/sh", 
+          "-c", 
+          "rclone copy /mitospace4d-vol/runs/lightning_logs/convlstm/ bigbox:/run/user/1001/gvfs/smb-share:server=bigbox.ucsd.edu,share=schoeneberg/MitoSpace4D/Logs/ --transfers=8 --checkers=8"
+        ]
+        volumeMounts:
+        - name: pvc-storage
+          mountPath: /mitospace4d-vol
+        env:
+        - name: RSYNC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rsync-password-secret
+              key: password
+        resources:
+          limits:
+            memory: 6Gi
+            cpu: "6"
+          requests:
+            memory: 4Gi
+            cpu: "4"
+      restartPolicy: Never
+      volumes:
+      - name: pvc-storage
+        persistentVolumeClaim:
+          claimName: mitospace4d-vol
+  backoffLimit: 4
