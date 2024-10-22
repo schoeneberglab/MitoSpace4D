@@ -15,7 +15,7 @@ from autoencoder import AutoEncoderRunner
 from mitospace_dataset import MitoSpaceAutoEncoderDataset
 from models import MitoSpace3DAutoencoder
 
-def train_model(model, train_loader, val_loader, test_loader):
+def train_model(model, train_loader):
     trainer = pl.Trainer(
         default_root_dir='./logs/',
         accelerator="gpu",
@@ -29,11 +29,9 @@ def train_model(model, train_loader, val_loader, test_loader):
 
     trainer.logger._log_graph = True  # If True, we plot the computation graph in tensorboard
     trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(model, train_loader)
                 
-    val_result = trainer.test(model, dataloaders=val_loader, verbose=False)
-    test_result = trainer.test(model, dataloaders=test_loader, verbose=False)
-    result = {"test": test_result, "val": val_result}
+    result = trainer.test(model, dataloaders=train_loader, verbose=False)
     return model, result
 
 if __name__ == '__main__':
@@ -41,11 +39,14 @@ if __name__ == '__main__':
     print("Total samples in dataset:", len(dataset))
     
     # Create DataLoader for training
-    train_loader = dataset.get_dataloader(batch_size=32, split='train', train_split=0.8, val_split=0.1, shuffle=True)
-    val_loader = dataset.get_dataloader(batch_size=32, split='val', train_split=0.8, val_split=0.1, shuffle=True)
-    test_loader = dataset.get_dataloader(batch_size=32, split='test', train_split=0.8, val_split=0.1, shuffle=True)
+    train_loader = DataLoader(dataset, batch_size=32,
+                              shuffle=True, 
+                              drop_last=True, 
+                              num_workers=6, 
+                              pin_memory=True, 
+                              prefetch_factor=2
+                        )
     model = MitoSpace3DAutoencoder()
     runner = AutoEncoderRunner(model)
-    print(len(train_loader), len(val_loader), len(test_loader))
     print(model)
-    train_model(runner, train_loader, val_loader, test_loader)
+    train_model(runner, train_loader)
