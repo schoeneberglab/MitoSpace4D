@@ -113,7 +113,6 @@ class MitoSpace3DDecoder(nn.Module):
 
         self.deconv5 = nn.Sequential(
             nn.ConvTranspose3d(in_channels=4, out_channels=2, kernel_size=(3, 3, 3), stride=(2, 2, 2), padding=(1, 1, 1), output_padding=(1, 1, 1)),
-            nn.ReLU(inplace=True)
         )
 
     def forward(self, x):
