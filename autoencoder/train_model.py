@@ -25,6 +25,7 @@ def train_model(model, train_loader):
             ModelCheckpoint(save_weights_only=True),
             LearningRateMonitor("epoch"),
         ],
+        precision=16
     )
 
     trainer.logger._log_graph = True  # If True, we plot the computation graph in tensorboard
@@ -39,13 +40,14 @@ if __name__ == '__main__':
     print("Total samples in dataset:", len(dataset))
     
     # Create DataLoader for training
-    train_loader = DataLoader(dataset, batch_size=32,
+    train_loader = DataLoader(dataset, batch_size=4,
                               shuffle=True, 
                               drop_last=True, 
                               num_workers=6, 
                               pin_memory=True, 
                               prefetch_factor=2
                         )
+    
     model = MitoSpace3DAutoencoder()
     runner = AutoEncoderRunner(model)
     print(model)

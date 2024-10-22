@@ -6,7 +6,7 @@ DATA_DIR="./data"
 mkdir -p "$DATA_DIR"
 
 # Create 27 folders and populate them with random NumPy files
-for i in $(seq 1 27); do
+for i in $(seq 1 5); do
     # Create a folder named folder_<i>
     FOLDER_NAME="$DATA_DIR/folder_$i"
     mkdir -p "$FOLDER_NAME"
@@ -17,6 +17,6 @@ for i in $(seq 1 27); do
         FILE_NAME="$FOLDER_NAME/file_$j.npy"
         
         # Use Python to generate the random NumPy array and save it
-        python -c "import numpy as np; np.save('$FILE_NAME', np.random.rand(2, 2, 60, 256, 256))"
+        python -c "import numpy as np; np.save('$FILE_NAME', np.random.rand(2, 2, 60, 256, 256).astype(np.float16) * 20000)"
     done
 done
