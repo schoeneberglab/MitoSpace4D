@@ -137,10 +137,8 @@ class MitoSpaceDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
         img_name = self.filenames[idx]
-        image = np.load(img_name, mmap_mode='r')
+        image = np.load(img_name)
 
-        image = np.clip(image, 0, 20000)
-        image = image / 20000
         image = image.astype(np.float16)
 
         label = self.labels[idx]

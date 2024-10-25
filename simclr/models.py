@@ -173,6 +173,8 @@ class MitoSpace4DConvLSTM(nn.Module):
                                   nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
 
     def forward(self, x):
+        x = self.decoder(x) # (b, t, c, d, h, w)
+
         x = self.augment_pipeline(x) if self.apply_aug else x  # (b, t, c, d, h, w)
         x = self.net(x)
         x = x[:, -1].flatten(start_dim=1)
