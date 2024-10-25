@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from simclr.augmentations import DataAugmentation
 from utils.utils import load_config
+from autoencoder.models import MitoSpace3DAutoencoder
 
 
 class Conv3DLSTMCell(nn.Module):
@@ -152,7 +153,15 @@ class MitoSpace4DConvLSTM(nn.Module):
         self.out_dim = out_dim
         self.apply_aug = apply_aug
 
+        self.decoder = MitoSpace3DAutoencoder().decoder
+        cpkt_path = '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/autoencoder/version_3017473/checkpoints/epoch=4-step=43060.ckpt'
+        params_dict = torch.load(cpkt_path)
+        decoder_param_dict = {k.replace('model.decoder.', ''): v for k, v in params_dict['state_dict'].items() if
+                              'model.decoder' in k}
+        self.decoder.load_state_dict(decoder_param_dict)
+
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
+
         self.net = Conv3DLSTM(input_dim=in_channels, hidden_dim=hidden_dim, kernel_size=kernel_size,
                               num_layers=num_layers,
                               conv_reduction_factor=conv_reduction_factor, batch_first=True, bias=True,
@@ -164,7 +173,7 @@ class MitoSpace4DConvLSTM(nn.Module):
                                   nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
 
     def forward(self, x):
-        x = self.augment_pipeline(x) if self.apply_aug else x # (b, t, c, d, h, w)
+        x = self.augment_pipeline(x) if self.apply_aug else x  # (b, t, c, d, h, w)
         x = self.net(x)
         x = x[:, -1].flatten(start_dim=1)
         x = self.fc(x)
@@ -179,7 +188,7 @@ if __name__ == "__main__":
     model = MitoSpace4DConvLSTM(in_channels=in_channels, out_dim=512, cfg_aug=cfg['data_params']['transforms']).cuda()
 
     # Create a sample input tensor with shape (batch_size, sequence_length, in_channels, depth, height, width)
-    input_tensor = torch.randn(3, 2, 20, 60, 256, 256).cuda()  # Example input tensor
+    input_tensor = torch.randn(3, 20, 2, 60, 256, 256).cuda()  # Example input tensor
 
     # Forward pass
     output, _ = model(input_tensor)

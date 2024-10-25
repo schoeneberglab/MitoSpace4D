@@ -1,4 +1,4 @@
-experiment_name: convlstm_100perdrug
+experiment_name: debug_convlstm
 data_params:
   timesteps:
     start: 0
@@ -7,7 +7,7 @@ data_params:
     start: 20
     end: 80
   dataset_name: mitospace
-  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/dummy_data
+  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata
   patch_size: 256
   samples_per_drug: 100
   transforms:
@@ -49,10 +49,10 @@ training:
     name: InfoNCELoss
     use_normalization: True
     temperature: 0.07
-  max_epochs: 2
+  max_epochs: 100
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 5
+  batch_size: 3
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
@@ -62,12 +62,12 @@ training:
   continue_from_ckpt_wo_opt: None
   lr: 0.0003
   weight_decay: 0.00001
-  workers: 6
+  workers: 2
   prefetch_factor: 2
   persistent_workers: True
   n_views: 2
 distributed:
-  flag: True
+  flag: False
   num_gpus: -1
   accelerator: gpu
   strategy: ddp
