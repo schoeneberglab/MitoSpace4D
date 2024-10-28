@@ -21,13 +21,13 @@ class AutoEncoderRunner(pl.LightningModule):
         super().__init__()
         self.model = model
         self.intermediate_outputs = []
-        self.optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=100)
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.1)
         self.data_bank = {"Train": [], "Val": []}
 
         print(f"###################### Using MSE Loss For Training ##################")
 
-        self.criterion = nn.MSELoss(reduction = 'mean')
+        self.criterion = nn.L1Loss()
 
     def flush_bank(self):
         self.data_bank = {"Train": [], "Val": []}
@@ -37,28 +37,30 @@ class AutoEncoderRunner(pl.LightningModule):
         scheduler = self.scheduler
 
         return [optimizer], [{'scheduler': scheduler, 'interval': 'epoch'}]
-    
+
     def batch_step(self, batch: Dict[str, Any]):
         z = self.model(batch)
         loss = self.criterion(batch, z)
 
-        return loss
+        return loss, z
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int):
-        loss = self.batch_step(batch)
+        loss, z = self.batch_step(batch)
 
         learning_rate = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', learning_rate, on_step=True, on_epoch=False)
         self.log('Train/loss', loss)
 
         if self.global_step % 100 == 0:
-            self.log_images(batch)
+            self.log_images(batch, z)
 
         return loss
 
-    def log_images(self, batch):
-        reconstructed_images = self.model(batch)
-        batch_size, timesteps, channels, depth, height, width = batch.shape
+    def log_images(self, batch, z):
+        y = batch
+        reconstructed_images = z
+
+        batch_size, timesteps, channels, depth, height, width = y.shape
 
         # Randomly select batch_idx, timestep, and depth
         batch_idx = np.random.randint(batch_size)
@@ -66,8 +68,8 @@ class AutoEncoderRunner(pl.LightningModule):
         depth_idx = np.random.randint(depth)
 
         # Convert tensors to numpy arrays for plotting
-        original_img_channel_1 = batch[batch_idx, timestep, 0, depth_idx, :, :].detach().cpu().numpy()
-        original_img_channel_2 = batch[batch_idx, timestep, 1, depth_idx, :, :].detach().cpu().numpy()
+        original_img_channel_1 = y[batch_idx, timestep, 0, depth_idx, :, :].detach().cpu().numpy()
+        original_img_channel_2 = y[batch_idx, timestep, 1, depth_idx, :, :].detach().cpu().numpy()
 
         reconstructed_img_channel_1 = reconstructed_images[batch_idx, timestep, 0, depth_idx, :, :].detach().cpu().numpy()
         reconstructed_img_channel_2 = reconstructed_images[batch_idx, timestep, 1, depth_idx, :, :].detach().cpu().numpy()
@@ -82,5 +84,9 @@ class AutoEncoderRunner(pl.LightningModule):
         channel_2[:, :original_img_channel_1.shape[1]] = original_img_channel_2
         channel_2[:, original_img_channel_1.shape[1]+sep:] = reconstructed_img_channel_2
 
-        self.logger.experiment.add_image('Train/TMRM', channel_1, self.global_step, dataformats='HW')
-        self.logger.experiment.add_image('Train/MitoTracker', channel_2, self.global_step, dataformats='HW')
+        cm = plt.get_cmap('viridis')
+        channel_1 = cm(channel_1)[:, :, :3]
+        channel_2 = cm(channel_2)[:, :, :3]
+
+        self.logger.experiment.add_image('Train/TMRM', channel_1, self.global_step, dataformats='HWC')
+        self.logger.experiment.add_image('Train/MitoTracker', channel_2, self.global_step, dataformats='HWC')

@@ -32,25 +32,28 @@ class MitoSpaceAutoEncoderDataset(Dataset):
         img_name = self.data_files[idx]
         image = np.load(img_name, mmap_mode='r')
 
-        image = np.clip(image, 0, 20000)
-        image = image / 20000
+        max_value = 5000
+        image = np.clip(image, 0, max_value)
+        image = image / max_value
+
         image = image.astype(np.float16)
 
-        return torch.from_numpy(image)
-    
+        return image
+
 if __name__ == '__main__':
     # Create a dataset object
     dataset = MitoSpaceAutoEncoderDataset(root_dir='data')
     print("Total samples in dataset:", len(dataset))
-    
+
     # Create DataLoader for training
-    train_loader = DataLoader(dataset, batch_size=32,
-                              shuffle=True, 
-                              drop_last=True, 
-                              num_workers=6, 
-                              pin_memory=True, 
-                              prefetch_factor=2
-                        )
+    train_loader = DataLoader(dataset, batch_size=8,
+                              shuffle=True,
+                              drop_last=True,
+                              num_workers=16,
+                              pin_memory=True,
+                              prefetch_factor=2,
+                              persistent_workers=True
+                              )
 
     # Check the number of batches in train_loader
     print("Number of batches in train_loader:", len(train_loader))
