@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torchsummary import summary
 
 class MitoSpace3DEncoder(nn.Module):
     def __init__(self, input_dim=2):
@@ -47,7 +48,17 @@ class MitoSpace3DEncoder(nn.Module):
 
         self.conv5 = nn.Sequential(
             nn.Conv3d(in_channels = 64,
-                               out_channels = 128,
+                      out_channels = 128,
+                      kernel_size = (3, 3, 3),
+                      stride = (1, 1, 1),
+                      padding = (1, 1, 1),
+                      bias = True),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        )
+
+        self.conv6 = nn.Sequential(
+            nn.Conv3d(in_channels = 128,
+                               out_channels = 256,
                                kernel_size = (3, 3, 3),
                                stride = (1, 1, 1),
                                padding = (1, 1, 1),
@@ -55,8 +66,8 @@ class MitoSpace3DEncoder(nn.Module):
             nn.LeakyReLU(negative_slope=0.2, inplace=True)
         )
 
-        self.conv6 = nn.Sequential(
-            nn.Conv3d(in_channels=128,
+        self.conv7 = nn.Sequential(
+            nn.Conv3d(in_channels=256,
                       out_channels=64,
                       kernel_size=(3, 3, 3),
                       stride=(1, 1, 1),
@@ -65,17 +76,17 @@ class MitoSpace3DEncoder(nn.Module):
             nn.LeakyReLU(negative_slope=0.2, inplace=True)
         )
 
-        self.conv7 = nn.Sequential(
+        self.conv8 = nn.Sequential(
             nn.Conv3d(in_channels=64,
-                      out_channels=64,
+                      out_channels=32,
                       kernel_size=(3, 3, 3),
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
         )
 
-        self.conv8 = nn.Sequential(
-            nn.Conv3d(in_channels=64,
+        self.conv9 = nn.Sequential(
+            nn.Conv3d(in_channels=32,
                       out_channels=2,
                       kernel_size=(3, 3, 3),
                       stride=(1, 1, 1),
@@ -103,8 +114,10 @@ class MitoSpace3DEncoder(nn.Module):
         x = self.conv6(x)
         x = self.conv7(x)
         x = self.conv8(x)
+        x = self.conv9(x)
 
         _, _, new_stacks, new_height, new_width = x.shape
+        print(noisy_x.shape)
         noisy_x = noisy_x.view(batch_size, timesteps, channels, new_stacks, new_height, new_width)
         x = x.view(batch_size, timesteps, channels, new_stacks, new_height, new_width)
 
@@ -233,15 +246,16 @@ class MitoSpace3DAutoencoder(nn.Module):
         x = self.encoder(x)
         return self.decoder(x)
 
-
 if __name__ == '__main__':
-    batch_size = 2
+    batch_size = 1
     input_data = torch.randn(batch_size, 10, 2, 60, 256, 256).cuda()
     autoencoder = MitoSpace3DAutoencoder().cuda()
 
     # print number of parameters
     print(sum(p.numel() for p in autoencoder.parameters()))
 
-    output = autoencoder(input_data)
-    assert input_data.shape == output.shape
-    print(output.shape) 
+    autoencoder = MitoSpace3DAutoencoder().cuda()
+
+    # Use input shape (timesteps, channels, depth, height, width)
+    batch_size = 1
+    summary(autoencoder, input_size=(20, 2, 60, 256, 256), batch_size=batch_size)

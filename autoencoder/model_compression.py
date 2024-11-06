@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torchsummary import summary
 
 class MitoSpace3DEncoder(nn.Module):
     def __init__(self, input_dim=2):
@@ -39,7 +40,7 @@ class MitoSpace3DEncoder(nn.Module):
             nn.Conv3d(in_channels = 8,
                       out_channels = 64,
                       kernel_size = (3, 3, 3),
-                      stride = (2, 2, 2),
+                      stride = (2, 1, 1),
                       padding = (1, 1, 1),
                       bias = True),
             nn.LeakyReLU(negative_slope=0.2, inplace=True)
@@ -90,7 +91,7 @@ class MitoSpace3DEncoder(nn.Module):
         x = x.view(batch_size * timesteps, channels, stacks, height, width)
 
         noisy_x = torch.nn.functional.interpolate(x,
-                                                  scale_factor=(0.25, 0.25, 0.25),
+                                                  scale_factor=(0.25, 0.5, 0.5),
                                                   mode='nearest',
                                                   align_corners=None,
                                                 )
@@ -207,7 +208,7 @@ class MitoSpace3DDecoder(nn.Module):
 
         batch_size, timesteps = x.shape[:2]
 
-        x = x.view(batch_size*timesteps, 4, 15, 64, 64)
+        x = x.view(batch_size*timesteps, 4, 15, 128, 128)
 
         x = self.deconv1(x)
         x = self.deconv2(x)
@@ -231,17 +232,18 @@ class MitoSpace3DAutoencoder(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
+        print("Decoded shape x", x.shape)
         return self.decoder(x)
 
 
 if __name__ == '__main__':
-    batch_size = 2
-    input_data = torch.randn(batch_size, 10, 2, 60, 256, 256).cuda()
+    batch_size = 1
+    # input_data = torch.randn(batch_size, 10, 2, 60, 256, 256).cuda()
     autoencoder = MitoSpace3DAutoencoder().cuda()
 
     # print number of parameters
     print(sum(p.numel() for p in autoencoder.parameters()))
 
-    output = autoencoder(input_data)
-    assert input_data.shape == output.shape
-    print(output.shape) 
+    # Use input shape (timesteps, channels, depth, height, width)
+    batch_size = 2
+    summary(autoencoder, input_size=(5, 2, 60, 256, 256), batch_size=batch_size)

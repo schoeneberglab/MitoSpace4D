@@ -14,17 +14,20 @@ from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
+from resnet_model import MitoSpace3ResNetAutoEncoder
 from autoencoder import AutoEncoderRunner
-from mitospace_dataset import MitoSpaceAutoEncoderDataset
+from autoencoder_dataset import MitoSpaceAutoEncoderDataset
 from models import MitoSpace3DAutoencoder
 
+print("Imported packages")
 
 def train_model(model, train_loader):
     trainer = pl.Trainer(
-        default_root_dir='/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs/autoencoder/',
+        default_root_dir='logs/lightning_logs/v_100_autoencoder_5000/',
         accelerator="gpu",
         devices=-1,
-        max_epochs=50,
+        max_epochs=100,
+	strategy="ddp",
         callbacks=[
             ModelCheckpoint(save_weights_only=True),
             LearningRateMonitor("epoch"),
@@ -41,12 +44,13 @@ def train_model(model, train_loader):
 
 
 if __name__ == '__main__':
+    print("Started Training Loop")
     dataset = MitoSpaceAutoEncoderDataset(
-        root_dir='data')
+        root_dir='/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/data/2024_data/processed_data')
     print("Total samples in dataset:", len(dataset))
 
     # Create DataLoader for training
-    train_loader = DataLoader(dataset, batch_size=4,
+    train_loader = DataLoader(dataset, batch_size=1,
                               shuffle=True,
                               drop_last=True,
                               num_workers=4,
@@ -55,12 +59,7 @@ if __name__ == '__main__':
                               persistent_workers=True
                               )
 
-    # pbar = tqdm(len(train_loader))
-    # for batch in train_loader:
-    #     print(batch.shape)
-    #     pbar.update(1)
-
-    model = MitoSpace3DAutoencoder()
+    model = MitoSpace3ResNetAutoEncoder()
     runner = AutoEncoderRunner(model)
     print(model)
     train_model(runner, train_loader)
