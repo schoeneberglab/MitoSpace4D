@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torchsummary import summary
 
 class MitoSpace3DEncoder(nn.Module):
     def __init__(self, input_dim=2):
@@ -12,7 +13,7 @@ class MitoSpace3DEncoder(nn.Module):
                       stride = (2, 2, 2),
                       padding = (1, 1, 1),
                       bias = True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.conv2 = nn.Sequential(
@@ -22,7 +23,7 @@ class MitoSpace3DEncoder(nn.Module):
                       stride = (1, 1, 1),
                       padding = (1, 1, 1),
                       bias = True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.conv3 = nn.Sequential(
@@ -32,7 +33,7 @@ class MitoSpace3DEncoder(nn.Module):
                       stride = (1, 1, 1),
                       padding = (1, 1, 1),
                       bias = True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.conv4 = nn.Sequential(
@@ -42,7 +43,7 @@ class MitoSpace3DEncoder(nn.Module):
                       stride = (2, 2, 2),
                       padding = (1, 1, 1),
                       bias = True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.conv5 = nn.Sequential(
@@ -52,7 +53,7 @@ class MitoSpace3DEncoder(nn.Module):
                                stride = (1, 1, 1),
                                padding = (1, 1, 1),
                                bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.conv6 = nn.Sequential(
@@ -62,7 +63,7 @@ class MitoSpace3DEncoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.conv7 = nn.Sequential(
@@ -72,6 +73,7 @@ class MitoSpace3DEncoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
+            nn.ReLU()
         )
 
         self.conv8 = nn.Sequential(
@@ -81,6 +83,7 @@ class MitoSpace3DEncoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
+            nn.ReLU()
         )
 
     def forward(self, x):
@@ -122,7 +125,7 @@ class MitoSpace3DDecoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.deconv2 = nn.Sequential(
@@ -133,7 +136,7 @@ class MitoSpace3DDecoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.deconv3 = nn.Sequential(
@@ -144,7 +147,7 @@ class MitoSpace3DDecoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.deconv4 = nn.Sequential(
@@ -155,7 +158,7 @@ class MitoSpace3DDecoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.deconv5 = nn.Sequential(
@@ -166,7 +169,7 @@ class MitoSpace3DDecoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.deconv6 = nn.Sequential(
@@ -177,7 +180,7 @@ class MitoSpace3DDecoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.deconv7 = nn.Sequential(
@@ -188,7 +191,7 @@ class MitoSpace3DDecoder(nn.Module):
                       stride=(1, 1, 1),
                       padding=(1, 1, 1),
                       bias=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU()
         )
 
         self.deconv8 = nn.Sequential(
@@ -233,15 +236,7 @@ class MitoSpace3DAutoencoder(nn.Module):
         x = self.encoder(x)
         return self.decoder(x)
 
-
 if __name__ == '__main__':
-    batch_size = 2
-    input_data = torch.randn(batch_size, 10, 2, 60, 256, 256).cuda()
+    batch_size = 1
     autoencoder = MitoSpace3DAutoencoder().cuda()
-
-    # print number of parameters
-    print(sum(p.numel() for p in autoencoder.parameters()))
-
-    output = autoencoder(input_data)
-    assert input_data.shape == output.shape
-    print(output.shape) 
+    summary(autoencoder, input_size=(10, 2, 60, 256, 256), batch_size=batch_size)

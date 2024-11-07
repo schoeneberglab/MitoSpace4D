@@ -26,8 +26,11 @@ class AutoEncoderRunner(pl.LightningModule):
         self.data_bank = {"Train": [], "Val": []}
 
         print(f"###################### Using MSE Loss For Training ##################")
-
         self.criterion = nn.L1Loss()
+
+        # Initialize cumulative loss and step counter for monitoring total loss
+        self.cumulative_loss = 0.0
+        self.step_counter = 0
 
     def flush_bank(self):
         self.data_bank = {"Train": [], "Val": []}
@@ -50,6 +53,16 @@ class AutoEncoderRunner(pl.LightningModule):
         learning_rate = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', learning_rate, on_step=True, on_epoch=False)
         self.log('Train/loss', loss)
+
+        # Accumulate total loss and increment step counter
+        self.cumulative_loss += loss.item()
+        self.step_counter += 1
+
+        # Log total loss every 2000 steps
+        if self.step_counter == 2000:
+            self.log('Train/total_loss', self.cumulative_loss)
+            self.cumulative_loss = 0.0  # Reset cumulative loss
+            self.step_counter = 0       # Reset step counter
 
         if self.global_step % 100 == 0:
             self.log_images(batch, z)

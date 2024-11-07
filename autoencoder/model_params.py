@@ -117,7 +117,6 @@ class MitoSpace3DEncoder(nn.Module):
         x = self.conv9(x)
 
         _, _, new_stacks, new_height, new_width = x.shape
-        print(noisy_x.shape)
         noisy_x = noisy_x.view(batch_size, timesteps, channels, new_stacks, new_height, new_width)
         x = x.view(batch_size, timesteps, channels, new_stacks, new_height, new_width)
 
@@ -258,4 +257,4 @@ if __name__ == '__main__':
 
     # Use input shape (timesteps, channels, depth, height, width)
     batch_size = 1
-    summary(autoencoder, input_size=(20, 2, 60, 256, 256), batch_size=batch_size)
+    summary(autoencoder, input_size=(10, 2, 60, 256, 256), batch_size=batch_size)

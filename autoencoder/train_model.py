@@ -15,19 +15,18 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
 from resnet_model import MitoSpace3ResNetAutoEncoder
+from models import MitoSpace3DAutoencoder
 from autoencoder import AutoEncoderRunner
 from autoencoder_dataset import MitoSpaceAutoEncoderDataset
-from models import MitoSpace3DAutoencoder
 
 print("Imported packages")
 
 def train_model(model, train_loader):
     trainer = pl.Trainer(
-        default_root_dir='logs/lightning_logs/v_100_autoencoder_5000/',
+        default_root_dir='lightning_logs/retrain_og_model_sanity_check',
         accelerator="gpu",
         devices=-1,
         max_epochs=100,
-	strategy="ddp",
         callbacks=[
             ModelCheckpoint(save_weights_only=True),
             LearningRateMonitor("epoch"),
@@ -46,8 +45,12 @@ def train_model(model, train_loader):
 if __name__ == '__main__':
     print("Started Training Loop")
     dataset = MitoSpaceAutoEncoderDataset(
-        root_dir='/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/data/2024_data/processed_data')
+        root_dir='/home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/')
     print("Total samples in dataset:", len(dataset))
+
+    checkpoint_path = "/home/dhruvagarwal/projects/MitoSpace4D/autoencoder/runs/autoencoder/lightning_logs/version_2/checkpoints/epoch=31-step=43136.ckpt"
+    checkpoint = torch.load(checkpoint_path)
+    print(checkpoint)
 
     # Create DataLoader for training
     train_loader = DataLoader(dataset, batch_size=1,
@@ -59,7 +62,7 @@ if __name__ == '__main__':
                               persistent_workers=True
                               )
 
-    model = MitoSpace3ResNetAutoEncoder()
-    runner = AutoEncoderRunner(model)
+    model = MitoSpace3DAutoencoder()
+    runner = AutoEncoderRunner(model=model)
     print(model)
     train_model(runner, train_loader)

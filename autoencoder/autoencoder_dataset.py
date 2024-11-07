@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 class MitoSpaceAutoEncoderDataset(Dataset):
     def __init__(self, root_dir):
@@ -78,7 +78,7 @@ def save_random_image(dataset, save_dir='.'):
 
 if __name__ == '__main__':
     # Create a dataset object
-    dataset = MitoSpaceAutoEncoderDataset(root_dir='/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/')
+    dataset = MitoSpaceAutoEncoderDataset(root_dir='/home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/')
     print("Total samples in dataset:", len(dataset))
 
     sample_idx = np.random.randint(len(dataset))
