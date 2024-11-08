@@ -23,7 +23,7 @@ print("Imported packages")
 
 def train_model(model, train_loader):
     trainer = pl.Trainer(
-        default_root_dir='lightning_logs/retrain_og_model_sanity_check',
+        default_root_dir='lightning_logs/model_decrease_lr_gamma_0.05_extra_logging',
         accelerator="gpu",
         devices=-1,
         max_epochs=100,

@@ -13,7 +13,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
 import matplotlib.pyplot as plt
+from models import MitoSpace3DAutoencoder
 import io
+from pytorch_msssim import ssim, ms_ssim, SSIM, MS_SSIM
 from PIL import Image
 
 class AutoEncoderRunner(pl.LightningModule):
@@ -22,12 +24,19 @@ class AutoEncoderRunner(pl.LightningModule):
         self.model = model
         self.intermediate_outputs = []
         self.optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.1)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.05)
         self.data_bank = {"Train": [], "Val": []}
 
         print(f"###################### Using MSE Loss For Training ##################")
         self.criterion = nn.L1Loss()
-
+        # self.ssim_loss = MS_SSIM(
+        #                     data_range=1.0,      # Assuming the random tensors are between 0 and 1
+        #                     size_average=True,
+        #                     win_size=11,
+        #                     win_sigma=1.5,
+        #                     channel=2,           # Number of channels is 2
+        #                     spatial_dims=3       # Set spatial dimensions to 3 for 3D images
+        #                 )
         # Initialize cumulative loss and step counter for monitoring total loss
         self.cumulative_loss = 0.0
         self.step_counter = 0
@@ -44,7 +53,12 @@ class AutoEncoderRunner(pl.LightningModule):
     def batch_step(self, batch: Dict[str, Any]):
         z = self.model(batch)
         loss = self.criterion(batch, z)
-
+        # b, t, c, d, x, y = batch.shape
+        # batch = batch.view(b*t, c, d, x, y)
+        # z = z.view(b*t, c, d, x, y)
+        # print(batch.shape, z.shape)
+        # loss += self.ssim_loss(batch, z)
+        # z = z.view(b, t, c, d, x, y)
         return loss, z
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int):
@@ -103,3 +117,18 @@ class AutoEncoderRunner(pl.LightningModule):
 
         self.logger.experiment.add_image('Train/TMRM', channel_1, self.global_step, dataformats='HWC')
         self.logger.experiment.add_image('Train/MitoTracker', channel_2, self.global_step, dataformats='HWC')
+
+
+if __name__ == '__main__':
+    model = MitoSpace3DAutoencoder()
+    runner = AutoEncoderRunner(model=model)
+    
+    # Create a dummy batch with shape (batch, t, c, z, x, y)
+    batch_size = 1
+    t, c, z, x, y = 20, 2, 60, 256, 256
+    dummy_data = torch.rand(batch_size, t, c, z, x, y)  # Values between 0 and 1
+
+    # Run batch_step and print output shapes
+    loss, output = runner.batch_step(dummy_data)
+    print("Loss:", loss.item())
+    print("Output shape:", output.shape)
