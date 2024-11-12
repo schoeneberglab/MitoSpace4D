@@ -33,8 +33,8 @@ class MitoSpaceAutoEncoderDataset(Dataset):
         img_name = self.data_files[idx]
         image = np.load(img_name)
         image = image.astype(np.float32)
-        max_value_tmrm = 5000
-        max_value_tracker = 5000
+        max_value_tmrm = 25000
+        max_value_tracker = 10000
 
         image[:, 0] = np.clip(image[:, 0], 0, max_value_tmrm)
         image[:, 0] = image[:, 0] / max_value_tmrm

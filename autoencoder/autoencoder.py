@@ -24,7 +24,7 @@ class AutoEncoderRunner(pl.LightningModule):
         self.model = model
         self.intermediate_outputs = []
         self.optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.05)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.1)
         self.data_bank = {"Train": [], "Val": []}
 
         print(f"###################### Using MSE Loss For Training ##################")

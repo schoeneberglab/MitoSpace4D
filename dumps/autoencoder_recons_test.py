@@ -246,7 +246,7 @@ class MitoSpace3DAutoencoder(nn.Module):
 
 if __name__ == '__main__':
     viewer = napari.Viewer()
-    cpkt_path = '/home/dhruvagarwal/projects/Manav_MitoSpace/MitoSpace4D/autoencoder/lightning_logs/retrain_old_model_forgetting/lightning_logs/version_0/checkpoints/epoch=25-step=70122.ckpt'
+    cpkt_path = '/home/dhruvagarwal/projects/Manav_MitoSpace/MitoSpace4D/autoencoder/lightning_logs/model_decrease_lr_gamma_0.05_extra_logging/lightning_logs/version_0/checkpoints/epoch=59-step=161820.ckpt'
     ae_model = MitoSpace3DAutoencoder()
     decoder = ae_model.decoder
     encoder = ae_model.encoder
