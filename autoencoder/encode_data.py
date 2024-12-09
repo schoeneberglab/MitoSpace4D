@@ -14,8 +14,8 @@ from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
-from resnet_model import MitoSpace3ResNetAutoEncoder
-from models import MitoSpace3DAutoencoder
+from autoencoder.models.resnet_model import MitoSpace3ResNetAutoEncoder
+from autoencoder.models.models import MitoSpace3DAutoencoder
 from autoencoder import AutoEncoderRunner
 from autoencoder_dataset import MitoSpaceAutoEncoderDataset
 

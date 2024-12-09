@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 from torchsummary import summary
-from resnet_encoder import MitoSpace3DResNetEncoder  # Adjust the import paths as needed
-from resnet_decoder import MitoSpace3DResNetDecoder  # Adjust the import paths as needed
+from autoencoder.models.resnet_encoder import MitoSpace3DResNetEncoder  # Adjust the import paths as needed
+from autoencoder.models.resnet_decoder import MitoSpace3DResNetDecoder  # Adjust the import paths as needed
 
 class MitoSpace3ResNetAutoEncoder(nn.Module):
     def __init__(self, input_dim=2, output_dim=2):
