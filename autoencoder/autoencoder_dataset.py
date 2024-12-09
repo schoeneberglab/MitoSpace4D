@@ -4,22 +4,25 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import matplotlib.pyplot as plt
+from utils import load_config
 
 class MitoSpaceAutoEncoderDataset(Dataset):
-    def __init__(self, root_dir):
+    def __init__(self, cfg):
         """
         Args:
             root_dir (string): Directory with all the subfolders and npy files.
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
-        self.root_dir = root_dir
+        self.root_dir = cfg['data_params']['data_path']
         self.data_files = []
         self.seed = 42
+        self.max_value_tmrm = cfg['data_params']['tmrm_clip']
+        self.max_value_tracker = cfg['data_params']['mitotracker_clip']
 
         # Traverse all subfolders and gather npy files
-        for subfolder in os.listdir(root_dir):
-            subfolder_path = os.path.join(root_dir, subfolder)
+        for subfolder in os.listdir(self.root_dir):
+            subfolder_path = os.path.join(self.root_dir, subfolder)
             if os.path.isdir(subfolder_path):
                 for file in os.listdir(subfolder_path):
                     if file.endswith('.npy'):
@@ -33,17 +36,14 @@ class MitoSpaceAutoEncoderDataset(Dataset):
         img_name = self.data_files[idx]
         image = np.load(img_name)
         image = image.astype(np.float32)
-        max_value_tmrm = 25000
-        max_value_tracker = 10000
 
-        image[:, 0] = np.clip(image[:, 0], 0, max_value_tmrm)
-        image[:, 0] = image[:, 0] / max_value_tmrm
+        image[:, 0] = np.clip(image[:, 0], 0, self.max_value_tmrm)
+        image[:, 0] = image[:, 0] / self.max_value_tmrm
 
-        image[:, 1] = np.clip(image[:, 1], 0, max_value_tracker)
-        image[:, 1] = image[:, 1] / max_value_tracker
+        image[:, 1] = np.clip(image[:, 1], 0, self.max_value_tracker)
+        image[:, 1] = image[:, 1] / self.max_value_tracker
 
         image = image.astype(np.float32)
-
         return image
 
 def save_random_image(dataset, save_dir='.'):
@@ -77,13 +77,11 @@ def save_random_image(dataset, save_dir='.'):
 
 
 if __name__ == '__main__':
-    # Create a dataset object
-    dataset = MitoSpaceAutoEncoderDataset(root_dir='/home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/')
+    cfg = load_config('/home/dhruvagarwal/projects/Manav_MitoSpace/MitoSpace4D/autoencoder/config.yaml')
+    dataset = MitoSpaceAutoEncoderDataset(cfg)
     print("Total samples in dataset:", len(dataset))
 
     sample_idx = np.random.randint(len(dataset))
     image = dataset[sample_idx]
     print(np.max(image))
-
-    save_random_image(dataset)
 

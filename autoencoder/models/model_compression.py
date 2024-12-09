@@ -240,10 +240,7 @@ if __name__ == '__main__':
     batch_size = 1
     # input_data = torch.randn(batch_size, 10, 2, 60, 256, 256).cuda()
     autoencoder = MitoSpace3DAutoencoder().cuda()
-
-    # print number of parameters
-    print(sum(p.numel() for p in autoencoder.parameters()))
-
+    
     # Use input shape (timesteps, channels, depth, height, width)
     batch_size = 2
     summary(autoencoder, input_size=(5, 2, 60, 256, 256), batch_size=batch_size)

@@ -14,30 +14,25 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
 import matplotlib.pyplot as plt
 from models.model import MitoSpace3DAutoencoder
+from utils import load_config
 import io
 from pytorch_msssim import ssim, ms_ssim, SSIM, MS_SSIM
 from PIL import Image
 
 class AutoEncoderRunner(pl.LightningModule):
-    def __init__(self, model: torch.nn.Module) -> None:
+    def __init__(self, model: torch.nn.Module, cfg) -> None:
         super().__init__()
+        self.cfg = cfg
         self.model = model
         self.intermediate_outputs = []
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.1)
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.cfg['training']['lr'])
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 
+                                                         step_size=self.cfg['training']['scheduler_step_rate'], 
+                                                         gamma=self.cfg['training']['scheduler_gamma'])
         self.data_bank = {"Train": [], "Val": []}
 
         print(f"###################### Using MSE Loss For Training ##################")
         self.criterion = nn.L1Loss()
-        # self.ssim_loss = MS_SSIM(
-        #                     data_range=1.0,      # Assuming the random tensors are between 0 and 1
-        #                     size_average=True,
-        #                     win_size=11,
-        #                     win_sigma=1.5,
-        #                     channel=2,           # Number of channels is 2
-        #                     spatial_dims=3       # Set spatial dimensions to 3 for 3D images
-        #                 )
-        # Initialize cumulative loss and step counter for monitoring total loss
         self.cumulative_loss = 0.0
         self.step_counter = 0
 
@@ -53,12 +48,6 @@ class AutoEncoderRunner(pl.LightningModule):
     def batch_step(self, batch: Dict[str, Any]):
         z = self.model(batch)
         loss = self.criterion(batch, z)
-        # b, t, c, d, x, y = batch.shape
-        # batch = batch.view(b*t, c, d, x, y)
-        # z = z.view(b*t, c, d, x, y)
-        # print(batch.shape, z.shape)
-        # loss += self.ssim_loss(batch, z)
-        # z = z.view(b, t, c, d, x, y)
         return loss, z
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int):
@@ -70,23 +59,19 @@ class AutoEncoderRunner(pl.LightningModule):
 
         # Accumulate total loss and increment step counter
         self.cumulative_loss += loss.item()
-        self.step_counter += 1
-
-        # Log total loss every 2000 steps
-        if self.step_counter == 2000:
-            self.log('Train/total_loss', self.cumulative_loss)
-            self.cumulative_loss = 0.0  # Reset cumulative loss
-            self.step_counter = 0       # Reset step counter
 
         if self.global_step % 100 == 0:
             self.log_images(batch, z)
 
         return loss
 
+    def on_train_epoch_end(self):
+        self.log('Train/total_loss', self.cumulative_loss)
+        self.cumulative_loss = 0.0  # Reset cumulative loss
+
     def log_images(self, batch, z):
         y = batch
         reconstructed_images = z
-
         batch_size, timesteps, channels, depth, height, width = y.shape
 
         # Randomly select batch_idx, timestep, and depth
@@ -120,8 +105,10 @@ class AutoEncoderRunner(pl.LightningModule):
 
 
 if __name__ == '__main__':
+    cfg = load_config('/home/dhruvagarwal/projects/Manav_MitoSpace/MitoSpace4D/autoencoder/config.yaml')
+
     model = MitoSpace3DAutoencoder()
-    runner = AutoEncoderRunner(model=model)
+    runner = AutoEncoderRunner(model=model, cfg=cfg)
     
     # Create a dummy batch with shape (batch, t, c, z, x, y)
     batch_size = 1

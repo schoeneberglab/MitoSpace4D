@@ -1,0 +1,36 @@
+experiment_name: autoencoder
+data_params:
+  dataset_name: mitospace
+  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/
+  tmrm_clip: 25000
+  mitotracker_clip: 10000
+logging_params:
+  save_path: /home/dhruvagarwal/projects/Manav_MitoSpace/MitoSpace4D/autoencoder/lightning_logs/checking_new_code
+model_params:
+  model_name: 'model'
+training:
+  max_epochs: 2
+  batch_size: 2
+  ckpt_callback:
+    monitor: Train/total_loss
+    mode: min
+    save_top_k: 3
+    save_last: True
+  continue_from_ckpt_wo_opt: None
+  lr: 0.0003
+  shuffle: True
+  num_workers: 2
+  scheduler_step_rate: 1
+  scheduler_gamma: 0.05
+  weight_decay: 0.00001
+  workers: 6
+  pin_memory: True
+  prefetch_factor: 2
+  persistent_workers: True
+  n_views: 2
+distributed:
+  flag: True
+  num_gpus: -1
+  accelerator: gpu
+  strategy: ddp
+  num_nodes: 1
