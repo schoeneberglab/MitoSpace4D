@@ -1,0 +1,9 @@
+slurm-*
+run.sb
+*.pyc
+__pycache__
+*.ckpt  
+*.xml
+hparams.yaml
+events.out.*
+autoencoder/lightning_logs
