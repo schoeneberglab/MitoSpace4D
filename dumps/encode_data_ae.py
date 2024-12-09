@@ -4,7 +4,7 @@ import random
 import numpy as np
 from tqdm import tqdm
 
-from autoencoder.models.models import MitoSpace3DAutoencoder
+from autoencoder.models.model import MitoSpace3DAutoencoder
 import torch
 from torch import nn
 import os.path as osp
