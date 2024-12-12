@@ -4,6 +4,8 @@ import torch
 from tqdm import tqdm
 import torch.nn as nn
 import torch.nn.functional as F
+import shutil
+import os
 import torch.backends.cudnn as cudnn
 from utils import load_config
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -35,6 +37,7 @@ def main():
     print("Total samples in dataset:", len(dataset))
     model = MitoSpace3DAutoencoder()
     if cfg['training']['continue_from_ckpt_wo_opt'] != 'None':
+        print("Loaded from checkpoint path: ", cfg['training']['continue_from_ckpt_wo_opt'])
         runner = AutoEncoderRunner.load_from_checkpoint(cfg['training']['continue_from_ckpt_wo_opt'], model = model, cfg = cfg)
 
     else:
@@ -48,8 +51,6 @@ def main():
                               prefetch_factor=cfg['training']['prefetch_factor'],
                               persistent_workers=cfg['training']['persistent_workers']
                               )
-
-    print(train_loader)
 
     trainer = pl.Trainer(
         default_root_dir=cfg['logging_params']['save_path'],
@@ -68,35 +69,16 @@ def main():
         precision=16,
     )
 
+    if trainer.logger:
+        log_dir = trainer.logger.log_dir + '/'
+        os.makedirs(log_dir, exist_ok=True)
+        dest_path = os.path.join(log_dir, "config.yaml")
+        shutil.copy(args.config, dest_path)
+        print(f"Current Lightning logging folder: {log_dir}")
+
     trainer.logger._log_graph = True  # If True, we plot the computation graph in tensorboard
     trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
     trainer.fit(runner, train_loader)
-
-# def train_model(model, train_loader):
-#     trainer = pl.Trainer(
-#         default_root_dir='lightning_logs/resnet_model_25k_10k_clipped_gamma_1e-1',
-#         accelerator="gpu",
-#         devices=-1,
-#         max_epochs=100,
-#         callbacks=[
-#             ModelCheckpoint(
-#                 save_last=True,
-#                 save_top_k=3,  # Keep only the best checkpoint
-#                 monitor="Train/total_loss",  # Monitor cumulative training loss
-#                 mode="min"  # Minimize cumulative training loss
-#             ),
-#             LearningRateMonitor("epoch"),
-#         ],
-#         precision=16,
-#     )
-
-#     trainer.logger._log_graph = True  # If True, we plot the computation graph in tensorboard
-#     trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
-#     trainer.fit(model, train_loader)
-
-#     result = trainer.test(model, dataloaders=train_loader, verbose=False)
-#     return model, result
-
 
 if __name__ == '__main__':
     main()

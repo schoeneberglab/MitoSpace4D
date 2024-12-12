@@ -5,11 +5,11 @@ data_params:
   tmrm_clip: 25000
   mitotracker_clip: 10000
 logging_params:
-  save_path: /home/dhruvagarwal/projects/Manav_MitoSpace/MitoSpace4D/autoencoder/lightning_logs/checking_new_code
+  save_path: /home/dhruvagarwal/projects/Manav_MitoSpace/MitoSpace4D/autoencoder/lightning_logs/checking_new_code_test_2
 model_params:
   model_name: 'model'
 training:
-  max_epochs: 2
+  max_epochs: 3
   batch_size: 2
   ckpt_callback:
     monitor: Train/total_loss
@@ -17,12 +17,12 @@ training:
     save_top_k: 3
     save_last: True
   continue_from_ckpt_wo_opt: None
-  lr: 0.0003
+  lr: 0.01
   shuffle: True
   num_workers: 2
   scheduler_step_rate: 1
-  scheduler_gamma: 0.05
-  weight_decay: 0.00001
+  scheduler_gamma: 0.1
+  weight_decay: 0.01
   workers: 6
   pin_memory: True
   prefetch_factor: 2
