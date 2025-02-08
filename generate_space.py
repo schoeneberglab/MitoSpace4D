@@ -8,17 +8,17 @@ import umap
 import argparse
 import os.path as osp
 
-from simclr.simclr import load_resnet_model
 import time
 from utils.vis import make_mitospace
 from data_aug.dataset_utils import get_mitospace_data_loaders
 from train_simclr import SimCLRRunner
 import torch.nn.functional as F
-from utils.utils import normalize, load_config
+from utils.utils import normalize, load_config, get_fpaths
 from torch.utils.data import DataLoader
 from utils.utils import get_drug_labels, increase_contrast
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
+from simclr.models_simple import Lightweight3DResNet
 
 np.random.seed(0)
 random.seed(0)
@@ -29,8 +29,8 @@ parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D
                     type=str, help='Config path.')
 parser.add_argument('--data_path', help='Data to predict')
 parser.add_argument('--load_epoch', help='Load weights from this epoch')
-parser.add_argument('--save_embeddings', default=True, help='Save embeddings')
-parser.add_argument('--visualise_space', default=False, help='Visualise MitoSpace')
+parser.add_argument('--save_embeddings', default=False, help='Save embeddings')
+parser.add_argument('--visualise_space', default=True, help='Visualise MitoSpace')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -44,60 +44,95 @@ if __name__ == '__main__':
     print("Experiment name:", cfg['experiment_name'])
     save_dir = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}"
 
-    pick_labels = [None, None]
+    image_paths = get_fpaths("/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data") + get_fpaths("/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data_4")
+
+    pick_labels = [0, 1, 27]
+    t_slice = 0
+    z_slice = 30
+
+    colors = {}
+    with open(f"{proj_dir}/extraction_utils/colors.txt", "r") as file:
+        for line in file:
+            parts = line.strip().split()
+            print(parts)
+            if len(parts) == 6:
+                date, label, index, r, g, b = parts
+                colors[int(index)] = [int(r) / 255, int(g) / 255, int(b) / 255]
 
     if args.visualise_space:
-        if not osp.exists(f"{save_dir}/embeddings/"):
+        if not osp.exists(f"{save_dir}/embeddings_combined/"):
             print("Embeddings are not saved. Please run the script again with --save_embeddings flag")
 
-        make_mitospace(embedding_dir=f"{save_dir}/embeddings/", pick_labels=pick_labels[0])
+        make_mitospace(embedding_dir=f"{save_dir}/embeddings_combined/", pick_labels=pick_labels, color_palette=colors,
+                       image_paths=image_paths)
         exit()
 
-    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=295-step=49136-val_loss=0.00.ckpt"
-    model = load_resnet_model(cfg=cfg, ckpt_path=checkpoint_path, device=device, eval_mode=True)
+    # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=147-step=47804-val_loss=0.00.ckpt"
+    # model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
+    #                             apply_aug=False)
+    #
+    # model = SimCLRRunner.load_from_checkpoint(
+    #     checkpoint_path, model=model, cfg=cfg
+    # )
+    # model.eval()
+    #
+    # drug_labels_dict = {}
+    # label_drug_dict = {}
+    # with open(f"/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
+    #     for line in f:
+    #         folder, drug, label = line.split()
+    #         drug_labels_dict[drug] = int(label)
+    #         label_drug_dict[int(label)] = drug
+    #
+    # data_paths = ['/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data/']
+    #
+    # loaders = []
+    # for data_path, pick_label in zip(data_paths, pick_labels):
+    #     loaders.append(get_mitospace_data_loaders(data_path, shuffle=False, batch_size=1, to_load=["all"], seed=None,
+    #                                               pick_labels=pick_label,
+    #                                               samples_per_drug=None)['all'])
+    #
+    # embeddings = []
+    # labels = []
+    # images = []
+    #
+    # for loader_idx, loader in enumerate(loaders):
+    #     pbar = tqdm.tqdm(total=len(loader))
+    #     for i, batch in enumerate(iter(loader)):
+    #
+    #         if isinstance(batch, list):
+    #             im, lbl = batch[0], batch[1]
+    #         else:
+    #             im, lbl = batch["images"], batch["classes"]
+    #
+    #         labels.append(lbl.detach().cpu().numpy())
+    #
+    #         with torch.no_grad():
+    #             images.append(im[:, t_slice, :, z_slice].detach().cpu().numpy())
+    #             features, _ = model.model(im.to(0))
+    #             features = F.normalize(features, dim=-1)
+    #
+    #         embeddings.append(features.detach().cpu().numpy())
+    #         pbar.update(1)
 
-    drug_labels_dict, label_drug_dict = get_drug_labels(f"{proj_dir}/extraction_utils/drugs_to_labels.txt")
+    embeddings = np.load(osp.join(save_dir, 'embeddings_combined', 'embeddings.npy'))
+    # embeddings = embeddings[:, -1]
+    # images = np.load(osp.join(save_dir, 'embeddings', 'images.npy'))
+    labels = np.load(osp.join(save_dir, 'embeddings_combined', 'labels.npy'))
 
-    data_paths = ['/home/dhruvagarwal/projects/MitoSpace4D/data/2023_data/']
-                  # '/home/dhruvagarwal/projects/MitoSpace/data/Cal27NewHiroAndre/20240507']
+    # embeddings = np.concatenate(embeddings)
+    # images = np.concatenate(images)
+    # labels = np.concatenate(labels)
 
-    loaders = []
-    for data_path, pick_label in zip(data_paths, pick_labels):
-        loaders.append(get_mitospace_data_loaders(data_path, shuffle=False, batch_size=6, to_load=["all"], seed=None,
-                                                  pick_labels=pick_label,
-                                                  samples_per_drug=None)['all'])
-
-    embeddings = []
-    labels = []
-
-    for loader_idx, loader in enumerate(loaders):
-        for i, batch in tqdm.tqdm(enumerate(iter(loader))):
-
-            if isinstance(batch, list):
-                im, lbl = batch[0], batch[1]
-            else:
-                im, lbl = batch["images"], batch["classes"]
-
-            labels.append(lbl.detach().cpu().numpy())
-
-            with torch.no_grad():
-                features, _ = model.model(im.to(0))
-                features = F.normalize(features, dim=1)
-
-            embeddings.append(features.detach().cpu().numpy())
-
-    embeddings = np.concatenate(embeddings)
-
-    labels = np.concatenate(labels)
     reducer = umap.UMAP(verbose=True, n_components=3, n_neighbors=25, min_dist=0.01, metric='cosine')
     embeddings = reducer.fit_transform(embeddings.reshape(embeddings.shape[0], -1))
 
     if args.save_embeddings:
-        os.makedirs(osp.join(save_dir, 'embeddings'), exist_ok=True)
+        os.makedirs(osp.join(save_dir, 'embeddings_combined'), exist_ok=True)
 
-        np.save(osp.join(save_dir, 'embeddings', 'embeddings.npy'), embeddings)
-        np.save(osp.join(save_dir, 'embeddings', 'labels.npy'), labels)
-        # np.save(osp.join(save_dir, 'embeddings', 'images.npy'), images)
-        np.save(osp.join(save_dir, 'embeddings', 'label_names.npy'), np.array(list(drug_labels_dict.keys())))
+        np.save(osp.join(save_dir, 'embeddings_combined', 'embeddings_umap.npy'), embeddings)
+        np.save(osp.join(save_dir, 'embeddings_combined', 'labels.npy'), labels)
+        np.save(osp.join(save_dir, 'embeddings_combined', 'images.npy'), images)
+        np.save(osp.join(save_dir, 'embeddings_combined', 'label_names.npy'), np.array(list(drug_labels_dict.keys())))
 
     make_mitospace(embedding_dir=f"{save_dir}/embeddings/", pick_labels=pick_labels)

@@ -1,4 +1,4 @@
-experiment_name: convlstm_100perdrug
+experiment_name: resnetbilstm_encoded_normal
 data_params:
   timesteps:
     start: 0
@@ -7,33 +7,51 @@ data_params:
     start: 20
     end: 80
   dataset_name: mitospace
-  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/dummy_data
+  data_path: /home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata
   patch_size: 256
   samples_per_drug: 100
   transforms:
-      ResizedCrop:
-        p: 0.3
-        size: 256
-        scale: [0.35, 1.0]
-      Brightness:
-        p: 0.0
-        val: 0.3
-      HorizontalFlip:
-        p: 0.5
-      VerticalFlip:
-        p: 0.5
-      GaussianNoise:
-        p: 0.3
-        mu: 0.0
-        scale: 0.001
-      GaussianBlur:
-        p: 0.0
-        sigma: 1.0
-        kernel_size: 5
-      RandomErasing:
-        p: 0.0
-        scale: [0.02, 0.2]
-        ratio: [0.3, 3.3]
+    ResizedCrop:
+      p: 0.0
+      size: 256
+      scale: [ 0.35, 1.0 ]
+    HorizontalFlip3D:
+      p: 0.0
+    VerticalFlip3D:
+      p: 0.0
+    DepthicalFlip3D:
+      p: 0.0
+    GaussianNoise:
+      p: 0.0
+      mu: 0.0
+      scale: 0.06
+    GaussianBlur:
+      p: 0.0
+      sigma: 1.5
+      kernel_size: 13
+    RandomRotation3D:
+      p: 0.0
+      degrees: 35
+    RandomAffine3D:
+      p: 0.0
+      degrees: 0
+      translate: [0.2, 0.2, 0.1]
+    RandomTimeFlip:
+      p: 0.0
+    RandomTimeMask:
+      p: 0.0
+    RandomExchangeFlip:
+      p: 0.0
+    RandomErasing:
+      p: 0.0
+      scale: [0.02, 0.33]
+      ratio: [0.3, 3.3]
+      value: 0
+    RandomBrightness:
+      p: 1.0
+      lower: -0.5
+      upper: 0.5
+
   filters: null
 logging_params:
   save_path: /home/dhruvagarwal/projects/MitoSpace4D/runs
@@ -49,10 +67,10 @@ training:
     name: InfoNCELoss
     use_normalization: True
     temperature: 0.07
-  max_epochs: 2
+  max_epochs: 100
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 5
+  batch_size: 2
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
@@ -62,12 +80,12 @@ training:
   continue_from_ckpt_wo_opt: None
   lr: 0.0003
   weight_decay: 0.00001
-  workers: 6
+  workers: 0
   prefetch_factor: 2
-  persistent_workers: True
+  persistent_workers: False
   n_views: 2
 distributed:
-  flag: True
+  flag: False
   num_gpus: -1
   accelerator: gpu
   strategy: ddp

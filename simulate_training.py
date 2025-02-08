@@ -5,13 +5,14 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 from torchvision import models
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
-from simclr.models_simple_attn import Lightweight3DResNet
+from simclr.models import MitoSpace4DConvLSTM
 from simclr.models_transformer import MitoSpace4DTransformer
 from simclr.simclr import SimCLRRunner
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from utils.utils import load_config
 import warnings
+from tqdm import tqdm
 from pytorch_lightning.profilers import AdvancedProfiler
 
 
@@ -53,63 +54,23 @@ def main():
                                       zstacks=cfg['data_params']['zstacks'])
 
     train_loader = DataLoader(train_dataset, batch_size=cfg['training']['batch_size'], shuffle=True,
-                              num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
-                              persistent_workers=cfg['training']['persistent_workers'])
+                                num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
+                                persistent_workers=cfg['training']['persistent_workers'])
 
     val_loader = DataLoader(val_dataset, batch_size=cfg['training']['batch_size'], shuffle=False,
                             num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
                             persistent_workers=cfg['training']['persistent_workers'])
 
-    model = Lightweight3DResNet(embedding_size=2048,
-                                cfg_aug=cfg['data_params']['transforms'],
-                                apply_aug=True).cuda()
 
-    # model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], apply_aug=True).cuda()
+    pbar = tqdm(len(train_loader))
+    for batch in train_loader:
+        pbar.update(1)
 
-    for param in model.augment_pipeline.parameters():
-        param.requires_grad = False
+    pbar.close()
 
-    tb_logger = pl_loggers.TensorBoardLogger(
-        version=cfg["experiment_name"], save_dir=cfg["logging_params"]["save_path"]
-    )
-
-    ckpt_callback = ModelCheckpoint(
-        monitor=cfg["training"]["ckpt_callback"]["monitor"],
-        mode=cfg["training"]["ckpt_callback"]["mode"],
-        save_top_k=cfg["training"]["ckpt_callback"]["save_top_k"],
-        filename='{epoch}-{step}-{val_loss:.2f}',
-        save_last=cfg["training"]["ckpt_callback"]["save_last"],
-    )
-
-    # load from checkpoint
-    if cfg["training"]["continue_from_ckpt_wo_opt"] != 'None':
-        # Note: It simply loads the checkpoint and doesn't load the optimizer or scheduler states
-        # To continue training properly, add ckpt_path in the trainer.fit() call
-        train_runner = SimCLRRunner.load_from_checkpoint(cfg["training"]["continue_from_ckpt_wo_opt"], cfg=cfg,
-                                                         model=model)
-
-    else:
-        train_runner = SimCLRRunner(cfg, model)
-
-    trainer = pl.Trainer(
-        max_epochs=cfg["training"]["max_epochs"],
-        accelerator=cfg["distributed"]["accelerator"],
-        log_every_n_steps=13,
-        logger=tb_logger,
-        callbacks=[ckpt_callback],
-        precision=16,  # mixed precision training,
-        num_nodes=cfg["distributed"]["num_nodes"],
-        devices=cfg["distributed"]["num_gpus"],
-        sync_batchnorm=True,
-        strategy=cfg["distributed"]["strategy"],
-    )
-    trainer.fit(
-        model=train_runner,
-        train_dataloaders=train_loader,
-        val_dataloaders=val_loader,
-        #ckpt_path="/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs/lightning_logs/convlstmmodel/checkpoints/last-v2.ckpt"
-        # use this to load optimizer as well as model states
-    )
+    pbar = tqdm(len(val_loader))
+    for batch in val_loader:
+        pbar.update(1)
 
 
 if __name__ == "__main__":

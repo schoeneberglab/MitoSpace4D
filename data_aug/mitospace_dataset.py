@@ -12,6 +12,9 @@ from torch.utils.data.dataset import ConcatDataset
 import pytorch_lightning as pl
 import time
 import torch
+from torch.utils.data import get_worker_info
+from collections import OrderedDict
+
 
 class MitoSpaceDataModule(pl.LightningDataModule):
     def __init__(self, train_datasets: List[Dataset], val_datasets: List[Dataset], batch_size: int,
@@ -135,14 +138,24 @@ class MitoSpaceDataset(Dataset):
     def __len__(self) -> int:
         return len(self.filenames)
 
-    def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
-        img_name = self.filenames[idx]
+    def _load_image(self, img_name: str) -> np.ndarray:
+        """Load and preprocess the image from disk."""
         image = np.load(img_name, mmap_mode='r')
-
         image = np.clip(image, 0, 20000)
         image = image / 20000
-        image = image.astype(np.float16)
+        return image.astype(np.float32)
+
+    def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
+        img_name = self.filenames[idx]
+        image = np.load(img_name, mmap_mode='r').astype(np.float32)
+
+        image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
+        image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
+        #image = image / 20000
+        #image = image/255.
+        #image = image.astype(np.float32)
 
         label = self.labels[idx]
 
         return {"images": image, "classes": label, "image_paths": img_name}
+

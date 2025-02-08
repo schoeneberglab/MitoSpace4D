@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import umap
 from tqdm import tqdm
@@ -9,6 +11,8 @@ import torch.nn.functional as F
 from data_aug.mitospace_dataset import *
 from simclr.models import *
 import argparse
+
+from simclr.models_simple import Lightweight3DResNet
 from utils.utils import *
 from data_aug.dataset_utils import get_mitospace_data_loaders
 import torch
@@ -16,6 +20,8 @@ from train_simclr import SimCLRRunner
 
 from utils.vis import plot_cm
 from torch.utils.data import DataLoader
+from sklearn.model_selection import train_test_split
+
 
 global device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -50,6 +56,10 @@ def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, 
         correct_preds_per_class = {top_n: {lbl: 0 for lbl in np.unique(train_labels)} for top_n in top_ns}
         preds = {top_n: [] for top_n in top_ns}  # overrides for every k: needs to be changed
 
+        # save the indices of the correct and incorrect predictions
+        correct_preds_idxs = {top_n: [] for top_n in top_ns}
+        incorrect_preds_idxs = {top_n: [] for top_n in top_ns}
+
         pbar = tqdm(total=len(dist_matrix)) if verbose else None
         for i in range(len(dist_matrix)):
             eval_lbl = eval_labels[i]  # ground truth label
@@ -63,8 +73,15 @@ def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, 
                     correct_preds_per_class[top_n][eval_lbl] += 1
                     preds[top_n].append(eval_lbl)
 
+                    # save the indices of the correct predictions
+                    correct_preds_idxs[top_n].append(i)
+
                 else:
                     preds[top_n].append(top_most_freq_lbls[0])
+
+                    # save the indices of the incorrect predictions
+                    incorrect_preds_idxs[top_n].append(i)
+
             if pbar is not None:
                 pbar.update(1)
 
@@ -86,7 +103,7 @@ def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, 
                     print(
                         f"Class {lbl} has {correct} correct predictions out of {total} samples: Accuracy: {correct * 100. / total}")
 
-    return preds
+    return preds, correct_preds_idxs, incorrect_preds_idxs
 
 
 def softmax(x):
@@ -181,11 +198,12 @@ def distance_distribution_metric_evaluation(eval_labels, ref_labels,
 
 
 def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, get_images=False, get_labels=False,
-                                  messup_tmrm=False, visualise_model_layer=True):
+                                  messup_tmrm=False, visualise_model_layer=True, get_fpaths=False):
     embeddings = []
 
     images = [] if get_images else None
     labels = [] if get_labels else None
+    im_paths = [] if get_fpaths else None
 
     pbar = tqdm(total=len(dataloader))
 
@@ -202,9 +220,9 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
 
     for batch in dataloader:
         if isinstance(batch, list):
-            im, lbl = batch
+            im, lbl, im_path = batch
         else:
-            im, lbl = batch["images"], batch["classes"]
+            im, lbl, im_path = batch["images"], batch["classes"], batch["image_paths"]
 
         if messup_tmrm:
             tmrm_idx = 0
@@ -214,7 +232,7 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
         with torch.no_grad():
             # with torch.autocast(device_type="cuda"):
             # with torch.amp.autocast(device_type='cuda'):
-            im = 2 * im - 1  # zero mean normalization
+            #im = 2 * im - 1  # zero mean normalization
             features, _ = model(im.to('cuda'))
 
         if normalize_embeddings:
@@ -226,6 +244,8 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
             images.append(im.detach().cpu().numpy())
         if get_labels:
             labels.append(lbl.detach().cpu().numpy())
+        if get_fpaths:
+            im_paths.append(im_path)
 
         pbar.update(1)
 
@@ -236,8 +256,10 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
         images = np.concatenate(images)
     if get_labels:
         labels = np.concatenate(labels)
+    if get_fpaths:
+        im_paths = np.concatenate(im_paths)
 
-    return embeddings, images, labels
+    return embeddings, images, labels, im_paths
 
 
 def cosine_distance(eval_embeddings, train_embeddings, weighted=False, temperature=1.):
@@ -263,66 +285,106 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
     proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
-
-    model = MitoSpace4DConvLSTM(
-        in_channels=cfg['model_params']['in_channels'],
-        out_dim=cfg['model_params']['out_dim'],
-        cfg_aug=cfg['data_params']['transforms'],
-        apply_aug=False).to(device)
-
-    checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=99-step=5300-val_loss=0.00.ckpt"
+    already_have_embeddings = True
     top_ns = cfg["evaluate"]["top_ns"]
-    dataset_name = cfg["evaluate"]["dataset"]
 
-    print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
+    drug_labels_dict = {}
+    label_drug_dict = {}
+    with open(f"/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
+        for line in f:
+            folder, drug, label = line.split()
+            drug_labels_dict[drug] = int(label)
+            label_drug_dict[int(label)] = drug
 
-    model = SimCLRRunner.load_from_checkpoint(
-        checkpoint_path, model=model, cfg=cfg
-    )
-    model.eval()
+    if already_have_embeddings:
+        split_perc = 0.1
 
-    loaders_reference = get_mitospace_data_loaders(
-        f'{proj_dir}/data/dummy_data/',
-        shuffle=False, batch_size=8, to_load=["train"],
-        timesteps=cfg['data_params']['timesteps'],
-        zstacks=cfg['data_params']['zstacks'],
-        samples_per_drug=cfg['data_params']['samples_per_drug'],
-        pick_labels=None)
+        # embeddings = np.load(
+        #     '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal_attn_highTemp_strongAug/embeddings/embeddings.npy')
+        # labels = np.load(
+        #     '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal_attn_highTemp_strongAug/embeddings/labels.npy')
+        #
+        # train_idx_end = int(split_perc * len(labels))
+        #
+        # train_embeddings, eval_embeddings, train_labels, eval_labels = train_test_split(embeddings, labels, test_size=split_perc, random_state=1123)
 
-    loaders_eval = get_mitospace_data_loaders(
-        f'{proj_dir}/data/dummy_data/',
-        shuffle=False, batch_size=8, to_load=["val"],
-        timesteps=cfg['data_params']['timesteps'],
-        zstacks=cfg['data_params']['zstacks'],
-        samples_per_drug=cfg['data_params']['samples_per_drug'],
-        pick_labels=None
-    )
+        train_embeddings = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_tscrambled/embeddings/embeddings.npy')
+        train_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_tscrambled/embeddings/labels.npy')
 
-    train_loader, eval_loader = (loaders_reference["train"], loaders_eval["val"])
+        eval_embeddings = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_tscrambled/embeddings_4/embeddings.npy')
+        eval_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_tscrambled/embeddings_4/labels.npy')
 
-    train_embeddings, train_images, train_labels = extract_embeddings_from_model(train_loader, model.model,
-                                                                                 normalize_embeddings=True,
-                                                                                 get_images=False,
-                                                                                 get_labels=True,
-                                                                                 messup_tmrm=False,
-                                                                                 visualise_model_layer=False)
+        if len(train_embeddings.shape) > 2:
+            train_embeddings = train_embeddings[:, -1]  # take only the final time step
 
-    eval_embeddings, eval_images, eval_labels = extract_embeddings_from_model(eval_loader, model.model,
-                                                                              normalize_embeddings=True,
-                                                                              get_images=False, get_labels=True,
-                                                                              messup_tmrm=False,
-                                                                              visualise_model_layer=False)
+        if len(eval_embeddings.shape) > 2:
+            eval_embeddings = eval_embeddings[:, -1]  # take only the final time step
+
+    else:
+        model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
+                                    apply_aug=False)
+
+        checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
+        dataset_name = cfg["evaluate"]["dataset"]
+
+        # print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
+
+        model = SimCLRRunner.load_from_checkpoint(
+            checkpoint_path, model=model, cfg=cfg
+        )
+        model.eval()
+
+        loaders_reference = get_mitospace_data_loaders(
+            f'{proj_dir}/data/2024_subdata/',
+            shuffle=False, batch_size=2, to_load=["train"],
+            timesteps=cfg['data_params']['timesteps'],
+            zstacks=cfg['data_params']['zstacks'],
+            samples_per_drug=cfg['data_params']['samples_per_drug'],
+            pick_labels=None)
+
+        loaders_eval = get_mitospace_data_loaders(
+            f'{proj_dir}/data/2024_subdata/',
+            shuffle=False, batch_size=2, to_load=["val"],
+            timesteps=cfg['data_params']['timesteps'],
+            zstacks=cfg['data_params']['zstacks'],
+            samples_per_drug=cfg['data_params']['samples_per_drug'],
+            pick_labels=None
+        )
+
+        train_loader, eval_loader = (loaders_reference["train"], loaders_eval["val"])
+
+        train_embeddings, train_images, train_labels, train_im_paths = extract_embeddings_from_model(train_loader,
+                                                                                                     model.model,
+                                                                                                     normalize_embeddings=True,
+                                                                                                     get_images=False,
+                                                                                                     get_labels=True,
+                                                                                                     messup_tmrm=False,
+                                                                                                     visualise_model_layer=False,
+                                                                                                     get_fpaths=True)
+
+        eval_embeddings, eval_images, eval_labels, eval_im_paths = extract_embeddings_from_model(eval_loader, model.model,
+                                                                                                 normalize_embeddings=True,
+                                                                                                 get_images=False,
+                                                                                                 get_labels=True,
+                                                                                                 messup_tmrm=False,
+                                                                                                 visualise_model_layer=False,
+                                                                                                 get_fpaths=True)
 
     # eval_embeddings, eval_images, eval_labels = train_embeddings, train_images, train_labels
 
     # Evaluation on cosine similarity
     if args.dist_metric == 'cosine':
-        dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings, train_embeddings, weighted=True,
+        dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings, train_embeddings, weighted=False,
                                                         temperature=cfg["training"]["loss"]["temperature"])
-        preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs)
+        preds, correct_preds_idxs, incorrect_preds_idxs = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs)
+
+        with open('/home/dhruvagarwal/projects/MitoSpace4D/correct_preds_idxs.pkl', 'wb') as f:
+            pickle.dump(correct_preds_idxs, f)
+        with open('/home/dhruvagarwal/projects/MitoSpace4D/incorrect_preds_idxs.pkl', 'wb') as f:
+            pickle.dump(incorrect_preds_idxs, f)
 
         # plot confusion matrix
-        # cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
+        cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
 
     # Evaluate on L2 Distance
     if args.dist_metric == 'l2':
