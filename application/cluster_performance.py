@@ -3,6 +3,8 @@ import os
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+from utils.utils import get_phenotypic_colors
+
 
 def compute_intercluster_dist(embedding, labels, label_names):
     """
@@ -25,10 +27,10 @@ def compute_intercluster_dist(embedding, labels, label_names):
     # create a dictionary to store the inter-cluster distances
     intercluster_distances = np.zeros((len(unique_labels), len(unique_labels)))
 
-    # for i, label1 in enumerate(unique_labels):
-    #     for j, label2 in enumerate(unique_labels):
-    #         intercluster_distances[i, j] = np.dot(mean_vectors[label1], mean_vectors[label2])
-    #         intercluster_distances[j, i] = intercluster_distances[i, j]
+    for i, label1 in enumerate(unique_labels):
+        for j, label2 in enumerate(unique_labels):
+            intercluster_distances[i, j] = np.dot(mean_vectors[label1], mean_vectors[label2])
+            intercluster_distances[j, i] = intercluster_distances[i, j]
 
     for label1 in unique_labels:
         for label2 in unique_labels:
@@ -36,8 +38,17 @@ def compute_intercluster_dist(embedding, labels, label_names):
             label2_embeddings = embedding[labels == label2]
 
             # compute the pairwise cosine distances between the embeddings
-            distances = np.dot(label1_embeddings, label2_embeddings.T)
+            distances = np.dot(label1_embeddings, label2_embeddings.T).flatten()
+
+            # remove the top and bottom 5% of the distances
+            distances = np.sort(distances)
+            bottom_5_percentile = np.percentile(distances, 5)
+            top_5_percentile = np.percentile(distances, 95)
+            distances = distances[(distances > bottom_5_percentile) & (distances < top_5_percentile)]
+
             intercluster_distances[label1, label2] = np.mean(distances)
+
+    phenotypic_colors = get_phenotypic_colors(intercluster_distances, num_clusters=8)
 
     # normalize it per row
     for label1 in unique_labels:
@@ -55,9 +66,9 @@ def compute_intercluster_dist(embedding, labels, label_names):
 
 
 if __name__ == '__main__':
-    exp_dir = '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal_attn_highTemp_strongAug'
-    embeddings_path = f'{exp_dir}/embeddings/embeddings.npy'
-    labels_path = f'{exp_dir}/embeddings/labels.npy'
+    exp_dir = '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal'
+    embeddings_path = f'{exp_dir}/embeddings/embeddings_static_oligo.npy'
+    labels_path = f'{exp_dir}/embeddings/labels_static_oligo.npy'
     label_names_path = f'{exp_dir}/embeddings/label_names.npy'
 
     embedding = np.load(embeddings_path)

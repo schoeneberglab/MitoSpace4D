@@ -12,9 +12,6 @@ from torch.utils.data.dataset import ConcatDataset
 import pytorch_lightning as pl
 import time
 import torch
-from torch.utils.data import get_worker_info
-from collections import OrderedDict
-
 
 class MitoSpaceDataModule(pl.LightningDataModule):
     def __init__(self, train_datasets: List[Dataset], val_datasets: List[Dataset], batch_size: int,
@@ -51,24 +48,24 @@ class MitoSpaceDataset(Dataset):
         print(f'Loading {flag} Dataset with split seed = {self.seed} ...')
 
         drug_labels = {}
-        with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+        with open('/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
             drugs_to_labels = f.readlines()
             for line in drugs_to_labels:
                 folder, drug, label = line.split()
                 drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data'))])
+        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
 
         self.all_filenames = []
         self.all_labels = []
 
         for drug_folder in drug_folders:
-            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data', drug_folder))])
-            filenames = [osp.join(self.root_dir, 'processed_data', drug_folder, file) for file in filenames]
+            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data', drug_folder)) if osp.isfile(osp.join(self.root_dir, 'encoded_data', drug_folder, file))])
+            filenames = [osp.join(self.root_dir, 'encoded_data', drug_folder, file) for file in filenames]
 
-            if samples_per_drug != 'None':
+            if samples_per_drug != 'None' and samples_per_drug is not None:
                 print(f"Limiting the number of samples per drug to {samples_per_drug}")
-                filenames = filenames[:samples_per_drug]
+                filenames = filenames[samples_per_drug: samples_per_drug*2]
 
             self.all_filenames.extend(filenames)
             self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
@@ -138,13 +135,6 @@ class MitoSpaceDataset(Dataset):
     def __len__(self) -> int:
         return len(self.filenames)
 
-    def _load_image(self, img_name: str) -> np.ndarray:
-        """Load and preprocess the image from disk."""
-        image = np.load(img_name, mmap_mode='r')
-        image = np.clip(image, 0, 20000)
-        image = image / 20000
-        return image.astype(np.float32)
-
     def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
         img_name = self.filenames[idx]
         image = np.load(img_name, mmap_mode='r').astype(np.float32)
@@ -157,5 +147,6 @@ class MitoSpaceDataset(Dataset):
 
         label = self.labels[idx]
 
-        return {"images": image, "classes": label, "image_paths": img_name}
+        #print(img_name, label)
 
+        return {"images": image, "classes": label, "image_paths": img_name}

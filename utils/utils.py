@@ -1,13 +1,9 @@
-import random
-from random import shuffle
 import yaml
 import cv2
 import numpy as np
 import torch
 from typing import List, Union
 import matplotlib.pyplot as plt
-import os
-import os.path as osp
 
 from skimage.restoration import denoise_tv_bregman
 
@@ -47,8 +43,7 @@ def load_config(config_path):
     return cfg
 
 
-def minus_one_to_one_normalization(x: Union[List[torch.Tensor], torch.Tensor]) -> Union[
-    List[torch.Tensor], torch.Tensor]:
+def minus_one_to_one_normalization(x: Union[List[torch.Tensor], torch.Tensor]) -> Union[List[torch.Tensor], torch.Tensor]:
     if isinstance(x, list):
         return [2 * var - 1 for var in x]
     return 2 * x - 1
@@ -337,27 +332,3 @@ def increase_contrast(gray_images):
     equalized_image = equalized_image * 2 - 1
 
     return equalized_image
-
-
-def get_fpaths(root_dir, seed=1123):
-    drug_labels = {}
-    with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
-        drugs_to_labels = f.readlines()
-        for line in drugs_to_labels:
-            folder, drug, label = line.split()
-            drug_labels[folder] = {'drug': drug, 'label': int(label)}
-
-    drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data'))])
-
-    all_filenames = []
-
-    for drug_folder in drug_folders:
-        filenames = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data', drug_folder))])
-        filenames = [osp.join(root_dir, 'processed_data', drug_folder, file) for file in filenames]
-
-        all_filenames.extend(filenames)
-
-    random.seed(seed)
-    shuffle(all_filenames)
-
-    return all_filenames

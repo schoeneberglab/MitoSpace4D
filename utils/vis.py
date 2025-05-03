@@ -5,7 +5,6 @@ import os.path as osp
 import random
 import colorsys
 
-import skimage
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import confusion_matrix
 from PIL import Image
@@ -13,7 +12,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import itertools
-import napari
 
 cmap = LinearSegmentedColormap.from_list('blackgreen', ["k", "lime"], N=256)
 
@@ -52,56 +50,22 @@ def draw_registration_result(source, target, transformation):
     o3d.visualization.draw_geometries([source_temp, target_temp])
 
 
-def add_to_viewer(viewer, img, translate, channel=0, label=""):
-    # visualising mito channel, change the index to 0 for tmrm channel
-    viewer.add_image(img[:, channel], name=f"{label}", translate=translate, colormap='cyan')
-
-
-def pick_points(pcd, labels, label_names, image_paths=None):
+def pick_points(pcd, images, labels, label_names):
     print("")
     print(
         "1) Please pick at least three correspondences using [shift + left click]"
     )
     print("   Press [shift + right click] to undo point picking")
     print("2) After picking points, press 'Q' to close the window")
-
     vis = o3d.visualization.VisualizerWithEditing()
     vis.create_window()
     vis.add_geometry(pcd)
 
     vis.run()  # user picks points
     idxs = vis.get_picked_points()
-
-    napari_viewer = napari.Viewer()
-
-    drug_names = []
-    picked_image_paths = []
     imgs = []
-    for i, idx in enumerate(idxs):
-        drug_names.append(label_names[(labels[idx]%27)])
-        picked_image_paths.append(image_paths[idx])
-        if image_paths is not None:
-            img_4d = np.load(image_paths[idx])
-
-            # skimage.io.imsave("/home/dhruvagarwal/Desktop/p110.tiff", img_4d[0, 0])
-
-            add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 0), channel=0, label=label_names[(labels[idx]%27)])
-            add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 256 + 10), channel=1, label=label_names[(labels[idx]%27)])
-
-            img_4d = img_4d.astype(np.float32)
-            img_4d[:, 0] = np.clip(img_4d[:, 0], 0., 25000) / 25000
-            img_4d[:, 1] = np.clip(img_4d[:, 1], 0., 10000) / 10000
-
-            imgs.append((img_4d[0, :, :].max(axis=1)))
-
-    napari_viewer.window.add_plugin_dock_widget(
-        plugin_name="napari-matplotlib", widget_name="FeaturesHistogram"
-    )
-
-    napari.run()
-
-    print(drug_names)
-    print(picked_image_paths)
+    for idx in idxs:
+        imgs.append(np.array(images[idx]))
 
     if len(idxs) == 0:
         return
@@ -109,13 +73,12 @@ def pick_points(pcd, labels, label_names, image_paths=None):
     colors = np.array(pcd.colors)[idxs]
 
     f, axarr = plt.subplots(2, len(imgs), figsize=(20, 20))
-    f.suptitle("MIP", fontsize=50)
     vals = []
     for i in range(len(imgs)):
         mito_idx = 1 if imgs[i].shape[-1] > 1 else 0
         tmrm_idx = 0
-        axarr[0, i].imshow(imgs[i][tmrm_idx], vmin=0., vmax=1., cmap=plt.cm.hot)
-        axarr[1, i].imshow(imgs[i][mito_idx], vmin=0., vmax=1., cmap=plt.cm.viridis)
+        axarr[0, i].imshow(imgs[i][:, :, tmrm_idx], vmin=0., vmax=1., cmap=plt.cm.hot)
+        axarr[1, i].imshow(imgs[i][:, :, mito_idx], vmin=0., vmax=1., cmap=plt.cm.viridis)
 
         vals.append(np.mean(imgs[i][:, :, 0]))
         axarr[0, i].set_xticks([])
@@ -130,10 +93,10 @@ def pick_points(pcd, labels, label_names, image_paths=None):
     plt.xticks([]), plt.yticks([])
     for idx in idxs:
         print(idx)
-        print(labels[idx])
-        print(label_names[int(labels[idx]%27)])
+        print(labels[idx] % 27)
+        print(label_names[int(labels[idx]) % 27])
         print("")
-    patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_names[int(labels[idxs[i]]%27)])) for i in
+    patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_names[int(labels[idxs[i]]) % 27])) for i in
                range(len(idxs))]
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     plt.show()
@@ -141,51 +104,65 @@ def pick_points(pcd, labels, label_names, image_paths=None):
     return vis.get_picked_points()
 
 
-def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None):
-    EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings_umap.npy')
+def make_mitospace(embedding_dir, pick_labels=None):
+    EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings.npy')
     LABEL_PATH = osp.join(embedding_dir, 'labels.npy')
+    # IMAGE_PATH = osp.join(embedding_dir, 'images.npy')
     LABEL_NAME_PATH = osp.join(embedding_dir, 'label_names.npy')
 
     embeddings = np.load(EMBEDDING_PATH)
     labels = np.load(LABEL_PATH)
-    # labels = labels.repeat(20)
-
-    # pick labels present in the pick_labels list
-    if pick_labels is not None:
-        mask = np.isin(labels, pick_labels)
-        embeddings = embeddings[mask]
-        labels = labels[mask]
-        image_paths = [image_paths[i] for i in range(len(image_paths)) if mask[i]]
-
-        # to visualise the temporal progression in the embeddings
-        # for temp, label in enumerate(labels):
-        #     labels[temp] = (int(temp) % 20)
-
     label_names = np.load(LABEL_NAME_PATH)
+    # images = np.load(IMAGE_PATH)
+
+    # print(embeddings.shape, labels.shape, images.shape)
+
+    print(np.unique(labels))
+
+    # images = images.transpose(0, 2, 3, 1)
 
     max_label = labels.max()
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(embeddings)
+    # colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
+    # print(max_label)
 
-    # color_palette = generate_distinct_colors(max_label + 1)
-    colors = np.array([color_palette[int(label)] for label in labels])
+    colors = generate_distinct_colors(max_label + 1)
+
+    # assign colors to the all the points by indexing the values as the labels
+    colors = np.array([colors[int(label)] for label in labels])
+
     colors[labels < 0] = 0
     pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
 
     aabb = pcd.get_axis_aligned_bounding_box()
     aabb.color = np.array([0, 0, 0])
 
+    # Get min and max points of the AABB
+    min_bound = aabb.get_min_bound()
+    max_bound = aabb.get_max_bound()
+
+    # Calculate diameter along each axis
+    diameter_x = np.abs(max_bound[0] - min_bound[0])
+    diameter_y = np.abs(max_bound[1] - min_bound[1])
+    diameter_z = np.abs(max_bound[2] - min_bound[2])
+
+    print("Diameter along X-axis:", diameter_x)
+    print("Diameter along Y-axis:", diameter_y)
+    print("Diameter along Z-axis:", diameter_z)
+
     o3d.visualization.draw_geometries([pcd, aabb])
 
-    # Create legend
-    legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names))]
-    plt.figure(figsize=(10, 10))
-    plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
-    plt.axis('off')
-    plt.show()
+    # if pick_labels is not None:
+    #     idxs = np.concatenate([np.where(labels == x)[0] for x in pick_labels], axis=0)
+    #     pcd = o3d.geometry.PointCloud()
+    #     pcd.points = o3d.utility.Vector3dVector(embeddings[idxs])
+    #     pcd.colors = o3d.utility.Vector3dVector(colors[idxs, :3])
+    #     images = images[idxs]
+    #     labels = labels[idxs]
 
     while True:
-        pick_points(pcd, labels, label_names, image_paths)
+        pick_points(pcd, images, labels, label_names)
 
 
 def plot_confusion_matrix(cm,
@@ -194,36 +171,38 @@ def plot_confusion_matrix(cm,
                           cmap=None,
                           normalize=True,
                           k=100):
-    cm_unnorm = cm.copy()
+    accuracy = np.trace(cm) / float(np.sum(cm))
+    misclass = 1 - accuracy
 
-    cmap = plt.get_cmap('Blues')
+    if cmap is None:
+        cmap = plt.get_cmap('Blues')
     plt.figure(figsize=(20, 20))
-
-    tickmarks = np.arange(cm.shape[0])
-    plt.xticks(tickmarks, label_names, rotation=45)
-    plt.yticks(tickmarks, label_names)
-
-    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-
-    plt.imshow(cm, cmap=cmap, interpolation='nearest')
-    plt.title('Confusion Matrix')
+    if label_names is not None:
+        tick_marks = np.arange(len(label_names))
+        plt.xticks(tick_marks, label_names, rotation=45)
+        plt.yticks(tick_marks, label_names)
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
     plt.colorbar()
-    thresh = cm.max() / 1.5
-
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            plt.text(j, i, cm_unnorm[i, j],
+    thresh = cm.max() / 1.5 if normalize else cm.max() / 2
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        if normalize:
+            plt.text(j, i, "",
+                     horizontalalignment="center",
+                     color="white" if cm[i, j] > thresh else "black")
+        else:
+            plt.text(j, i, "",
                      horizontalalignment="center",
                      color="white" if cm[i, j] > thresh else "black")
 
-    plt.tight_layout()
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
     plt.show()
 
 
 def plot_cm(gt_labels, pred_labels, label_drug_dict, verbose=True, make_plot=True):
     cm = confusion_matrix(gt_labels, pred_labels, labels=list(label_drug_dict.keys()))
+    np.save('/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/confusion_matrix.npy', cm)
 
     if verbose:
         print("per class accuracy Top-1")

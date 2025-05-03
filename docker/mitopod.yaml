@@ -4,28 +4,10 @@ metadata:
   name: mitopod
 spec:
   template:
+    metadata:
+      labels:
+        app: mitopod
     spec:
-      containers:
-      - name: mitospace
-        image: drvagwl1008/mitospace4d:latest
-#        command:
-#          - "python"
-#        args:
-#          - "/opt/repo/mitospace4d/train_simclr.py"
-#          - "--config"
-#          - "/opt/repo/mitospace4d/simclr/config.yaml"
-        volumeMounts:
-        - name: git-repo
-          mountPath: /opt/repo
-        resources:
-          limits:
-            memory: 6Gi
-            cpu: "6"
-            nvidia.com/gpu: "1"
-          requests:
-            memory: 4Gi
-            cpu: "1"
-            nvidia.com/gpu: "1"
       initContainers:
       - name: init-clone-repo
         image: alpine/git
@@ -40,18 +22,54 @@ spec:
             secretKeyRef:
               name: gitlab-secret
               key: password
+        command: ["/bin/sh", "-c"]
         args:
-          - clone
-          - --single-branch
-          - --branch
-          - gpu_augmentations
-          - https://$(GIT_USERNAME):$(GIT_PASSWORD)@gitlab.nrp-nautilus.io/drvagwl1008/mitospace4d.git
-          - /opt/repo/mitospace4d
+          - git clone --single-branch --branch gpu_augmentations https://$(GIT_USERNAME):$(GIT_PASSWORD)@gitlab.nrp-nautilus.io/drvagwl1008/mitospace4d.git /opt/repo/mitospace4d
         volumeMounts:
           - name: git-repo
             mountPath: /opt/repo
+
+      containers:
+      - name: mitospace
+        image: drvagwl1008/mitospace4d:latest
+        command:
+          - /bin/sh
+        args:
+          - -c
+          - python /opt/repo/mitospace4d/train_simclr.py --config /opt/repo/mitospace4d/simclr/config.yaml
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        - name: mitospace4d-vol
+          mountPath: /mitospace4d-vol
+        - name: dshm
+          mountPath: /dev/shm  # Mount the shared memory volume
+        resources:
+          limits:
+            memory: "450Gi"
+            cpu: "120"
+            nvidia.com/a100: "8"
+          requests:
+            memory: "450Gi"
+            cpu: "120"
+            nvidia.com/a100: "8"
+      nodeSelector:
+        kubernetes.io/hostname: node-2-3.sdsc.optiputer.net
+      tolerations:
+        - key: "mitospace4d"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+
       volumes:
       - name: git-repo
         emptyDir: {}
+      - name: mitospace4d-vol
+        persistentVolumeClaim:
+          claimName: mitospace4d-vol
+      - name: dshm
+        emptyDir:
+          medium: Memory  # Use RAM for shared memory
+
       restartPolicy: Never
-  backoffLimit: 1
+  backoffLimit: 0

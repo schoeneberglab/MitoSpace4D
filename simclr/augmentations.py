@@ -3,7 +3,7 @@ from typing import Tuple, List
 import torch
 from torch import nn, Tensor
 import numpy as np
-from kornia.augmentation import RandomResizedCrop, RandomHorizontalFlip, RandomVerticalFlip, \
+from kornia.augmentation import RandomResizedCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomBrightness, \
     RandomGaussianNoise, RandomGaussianBlur, RandomErasing, RandomRotation, RandomAffine, RandomHorizontalFlip3D, \
     RandomVerticalFlip3D, RandomDepthicalFlip3D, RandomRotation3D, RandomAffine3D
 
@@ -18,11 +18,11 @@ class RandomTimeFlip(nn.Module):
         # swap time dimension with z to apply the z-flipper to time
         # x is (b, t, c, z, h, w)
         b, t, c, z, h, w = x.size()
-        x = x.permute(0, 3, 2, 1, 4, 5)  # (b, z, c, t, h, w)
-        x = x.reshape(b * z, c, t, h, w)
+        x = x.permute(0, 3, 2, 1, 4, 5) # (b, z, c, t, h, w)
+        x = x.reshape(b*z, c, t, h, w)
         x = self.flipper(x)
         x = x.view(b, z, c, t, h, w)
-        x = x.permute(0, 3, 2, 1, 4, 5)  # (b, t, c, z, h, w)
+        x = x.permute(0, 3, 2, 1, 4, 5) # (b, t, c, z, h, w)
 
         return x
 
@@ -45,6 +45,7 @@ class RandomExchangeFlip(nn.Module):
 
         for dim, idx in slices:
             x = x.index_select(dim, idx)
+
         return x
 
 
@@ -57,7 +58,8 @@ class RandomTimeMask(nn.Module):
         self.probs_time_delay = [0.03, 0.038, 0.047, 0.059, 0.074, 0.092, 0.115, 0.144, 0.401]
 
         self.clip_len = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11]
-        self.clip_len_probs = [0.501, 0.116, 0.092, 0.074, 0.059, 0.047, 0.038, 0.030, 0.024, 0.019]
+        self.clip_len_probs = [0.501, 0.116,0.092,0.074,0.059,0.047,0.038,0.030,0.024,0.019]
+
 
     def forward(self, x: torch.Tensor):
         if self.p == 0:
@@ -83,7 +85,6 @@ class RandomTimeMask(nn.Module):
 
         return [x_1, x_2]
 
-
 class RandomBrightness(nn.Module):
     def __init__(self, p=0.5, lower=1, upper=1) -> None:
         super().__init__()
@@ -94,7 +95,7 @@ class RandomBrightness(nn.Module):
         if np.random.uniform() < self.p:
             factor = np.random.uniform(self.range[0], self.range[1])
             x = x + factor  # that's what kornia's brightness augmentation does
-            # x = torch.clamp(x, 0, 1)
+            #x = torch.clamp(x, 0, 1)
 
         return x
 
@@ -147,7 +148,7 @@ class DataAugmentation(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t, c, z, h, w = x.size()
 
-        views = self.temporal_transform_1(x)  # (b, t, c, z, h, w), (b, t, c, z, h, w)
+        views = self.temporal_transform_1(x) # (b, t, c, z, h, w), (b, t, c, z, h, w)
         assert len(views) == self.n_views, f"Number of views should be {self.n_views}"
 
         views = [view.view(b, -1, h, w) for view in views]
@@ -155,7 +156,7 @@ class DataAugmentation(nn.Module):
         for i in range(self.n_views):
             views[i] = self.transforms_2d(views[i]).view(b, t, c, z, h, w)  # same 2D transforms for all t and z
             views[i] = self.transforms_3d(views[i].view(b * t, c, z, h, w)).view(b, t, c, z, h,
-                                                                                 w)  # same 3D transforms for all t
+                                                                         w)  # same 3D transforms for all t
             views[i] = self.temporal_transform_2(views[i])  # (b, t, c, z, h, w)
 
         views = torch.stack(views, dim=0)  # (n_views, b, t, c, z, h, w)

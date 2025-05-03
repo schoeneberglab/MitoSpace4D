@@ -5,4 +5,7 @@
     <orderEntry type="jdk" jdkName="Remote Python 3.11.5 (sftp://dhruvagarwal@172.16.35.73:22/home/dhruvagarwal/anaconda3/envs/deeplearning/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="PackageRequirementsSettings">
+    <option name="versionSpecifier" value="Don't specify version" />
+  </component>
 </module>

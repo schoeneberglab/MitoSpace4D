@@ -10,21 +10,21 @@ import pytorch_lightning as pl
 
 from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
-
-from simclr.models import MitoSpace4DConvLSTM
 from utils.utils import minus_one_to_one_normalization
 
 torch.manual_seed(0)
 
 
-def load_mitospace_model(cfg, ckpt_path, device='cuda', eval_mode=True):
-    model = MitoSpace4DConvLSTM(
-        in_channels=cfg['model_params']['in_channels'],
-        out_dim=cfg['model_params']['out_dim'],
-        cfg_aug=cfg['data_params']['transforms'],
-        apply_aug=False).to(device)
+def load_resnet_model(cfg, ckpt_path, device='cuda', eval_mode=True):
+    model = Small3DResNetLSTM(out_dim=cfg['model_params']['out_dim'],
+                              in_channels=cfg["model_params"]["in_channels"]).to(device)
 
     model = SimCLRRunner.load_from_checkpoint(ckpt_path, model=model, cfg=cfg)
+    # state_dict = torch.load(ckpt_path, map_location=device)
+    # for key in list(state_dict.keys()):
+    #     if 'model.' in key:
+    #         state_dict[key.replace('model.', '')] = state_dict.pop(key)
+    # model.load_state_dict(state_dict)
 
     if eval_mode:
         model.eval()
@@ -243,8 +243,7 @@ class SimCLRRunner(pl.LightningModule):
                                                   n_views=self.cfg['training']['n_views'])
         elif self.loss == 'SupConLoss':
             loss, acc = self.criterion(out, labels=classes,
-                                       bs=self.cfg['training']['batch_size'],
-                                       n_views=self.cfg['training']['n_views'])
+                                       bs=self.cfg['training']['batch_size'])
             cross_entropy = self.cross_entropy_2d(features.detach().cpu(), labels=classes.detach().cpu(),
                                                   batch_size=self.cfg['training']['batch_size'],
                                                   n_views=self.cfg['training']['n_views'])
