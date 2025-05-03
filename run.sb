@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#SBATCH --output slurm-%j.out-%N            # Standard output file
+#SBATCH --output slurm-%j.err-%N        # Optional, for separating standard error
+
+#SBATCH --job-name  mitospace_autencoded_normal_run2
+
+#SBATCH --partition=hotel-gpu
+#SBATCH --nodes=15
+#SBATCH --ntasks-per-node=4
+#SBATCH --time=24:00:00
+#SBATCH --account=htl203
+#SBATCH --qos=hca-htl203
+#SBATCH --gres=gpu:4  # Number of GPUs per node
+#SBATCH --mem=200G
+#SBATCH --exclusive
+
+source activate deeplearning
+
+# Set environment variables for distributed training
+export MASTER_ADDR=$(scontrol show hostname $SLURM_NODELIST | head -n 1)
+export MASTER_PORT=12345  # You can choose any available port
+export WORLD_SIZE=$(($SLURM_NNODES * $SLURM_NTASKS_PER_NODE))  # Total number of tasks across nodes
+export RANK=$SLURM_PROCID  # Rank of the current process
+
+srun python train_simclr.py
