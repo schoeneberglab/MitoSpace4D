@@ -8,7 +8,7 @@ from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
 from simclr.models import MitoSpace4DConvLSTM
 from simclr.models_transformer import MitoSpace4DTransformer
 from simclr.simclr import SimCLRRunner
-from simclr.models_simple_attn import Lightweight3DResNet
+from simclr.models_simple import Lightweight3DResNet
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from utils.utils import load_config
