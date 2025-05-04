@@ -139,11 +139,10 @@ class MitoSpaceDataset(Dataset):
         img_name = self.filenames[idx]
         image = np.load(img_name, mmap_mode='r').astype(np.float32)
 
+        # normalize if loading the processed_data (not encoded).
+        # don't normalize if loading the encoded data (because then its already normalized)
         image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
         image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
-        #image = image / 20000
-        #image = image/255.
-        #image = image.astype(np.float32)
 
         label = self.labels[idx]
 
