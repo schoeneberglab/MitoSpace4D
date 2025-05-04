@@ -114,11 +114,11 @@ class Lightweight3DResNet(nn.Module):
         x, _ = self.lstm(x)
 
         # Use the last LSTM output
-        #x = x[:, -1, :]
+        x = x[:, -1, :]
 
         # Pass all the timesteps to the final embedding to get the temporal embeddings
-        b, t, d = x.size()
-        x = x.reshape(-1, d)
+        #b, t, d = x.size()
+        #x = x.reshape(-1, d)
 
         # Final embedding
         x = self.fc(x)
@@ -126,8 +126,8 @@ class Lightweight3DResNet(nn.Module):
         # Projection head
         out = self.proj(x)
 
-        x = x.reshape(b, t, -1)
-        out = out.reshape(b, t, -1)
+        #x = x.reshape(b, t, -1)
+        #out = out.reshape(b, t, -1)
 
         return x, out
 
