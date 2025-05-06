@@ -75,3 +75,11 @@ python -m generate_space
 - `--visualise_space` (True/False): Whether to visualize the space using Open3D.
 
 ---
+
+## 🌐 Explore the Embedding Space
+
+You can explore the interactive embedding space at:  
+🔗 [https://mitospace.ai](https://mitospace.ai)
+
+---
+
