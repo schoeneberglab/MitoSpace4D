@@ -1,5 +1,6 @@
 
 # MitoSpace4D: Training Pipeline
+[project notion page](https://www.notion.so/843a96c9ecd84394b6e558d3c2f489a7?v=aa05e2b147594a3ea6c2aea17ceb2a20)
 
 This repository contains the training pipeline for **MitoSpace4D**, a 4D deep learning model designed to capture mitochondrial morphological changes across time and treatments.
 
