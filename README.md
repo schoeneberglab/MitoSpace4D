@@ -1,3 +1,4 @@
+
 # MitoSpace4D: Training Pipeline
 
 This repository contains the training pipeline for **MitoSpace4D**, a 4D deep learning model designed to capture mitochondrial morphological changes across time and treatments.
@@ -51,6 +52,29 @@ Start training:
 python -m train_simclr
 ```
 
+To run training on SLURM:
+
+```bash
+sbatch run.sb
+```
+
+Make sure that:
+- `--ntasks-per-node` is set to the number of GPUs you want per node.
+- `--gres=gpu:<n>` matches that same number (`<n>` = GPUs per node).
+
+---
+
+## 🧠 Training Details
+
+- **System**: SDSC (San Diego Supercomputer Center) server  
+- **Queue**: `hotel-gpu`  
+- **GPUs**: V100  
+- **Setup**: 15 nodes × 4 GPUs = **60 GPUs total**  
+- **Batch size**: 2 per GPU → **Total batch size = 120**  
+- **Epochs**: 300  
+- **Training duration**: ~3 days  
+- **SLURM config**: See `run.sb` for detailed job submission parameters.
+
 ---
 
 ## 🔍 Inference / Embedding Space Generation
@@ -73,13 +97,3 @@ python -m generate_space
 
 - `--save_embeddings` (True/False): Whether to save the embeddings.
 - `--visualise_space` (True/False): Whether to visualize the space using Open3D.
-
----
-
-## 🌐 Explore the Embedding Space
-
-You can explore the interactive embedding space at:  
-🔗 [https://mitospace.ai](https://mitospace.ai)
-
----
-
