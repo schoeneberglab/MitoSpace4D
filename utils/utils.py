@@ -1,11 +1,142 @@
+import colorsys
+import random
+from random import shuffle
 import yaml
 import cv2
 import numpy as np
 import torch
 from typing import List, Union
 import matplotlib.pyplot as plt
+import os
+import os.path as osp
+import seaborn as sns
+from scipy.cluster.hierarchy import linkage, fcluster
 
 from skimage.restoration import denoise_tv_bregman
+from sklearn.preprocessing import MinMaxScaler
+
+
+def get_valid_palette(num_colors, max_attempts=50):
+    """Generates a color palette and ensures all colors are visible (not too light)."""
+    for _ in range(max_attempts):  # Retry if light colors exist
+        # base_palette = sns.color_palette("husl", num_colors)  # Generate colors
+        base_palette = [(0.698, 0.875, 0.859), (0.820, 0.769, 0.914), (1.000, 0.800, 0.737),
+                         (0.702, 0.898, 0.988), (1.000, 0.976, 0.769), (1.0, 0.0, 1.0)]
+
+        # display the colors
+        plt.figure(figsize=(12, 3))
+        for i, color in enumerate(base_palette):
+            plt.scatter(i, 0, color=color, s=200)
+        plt.axis("off")
+        plt.show()
+
+        valid_palette = []
+
+        for color in base_palette:
+            h, l, s = colorsys.rgb_to_hls(*color)  # Convert to HLS to check lightness
+            # if l < 0.85:  # Avoid very light colors
+            #     valid_palette.append(color)
+            valid_palette.append(color)
+
+        # valid_palette = [(0.698, 0.875, 0.859), (0.820, 0.769, 0.914), (1.000, 0.800, 0.737),
+        #                  (0.702, 0.898, 0.988), (1.000, 0.976, 0.769), (0.973, 0.733, 0.816)]
+
+        if len(valid_palette) == num_colors:
+            return valid_palette  # Return only if all colors are valid
+
+    raise ValueError("Could not generate a valid palette without light colors.")  # Fail-safe
+
+
+def get_phenotypic_colors(similarity_matrix, num_clusters):
+    # Load the similarity matrix (Replace with actual data)
+    np.fill_diagonal(similarity_matrix, 1)  # Set diagonal to 1 for perfect self-similarity
+
+    # Normalize the similarity matrix
+    scaler = MinMaxScaler()
+    normalized_matrix = scaler.fit_transform(similarity_matrix)
+
+    fig, ax = plt.subplots(figsize=(20, 20))
+    sns.heatmap(similarity_matrix, annot=True, ax=ax)
+    plt.show()
+
+    # Perform hierarchical clustering
+    linkage_matrix = linkage(normalized_matrix, method='ward')
+    clusters = fcluster(linkage_matrix, num_clusters, criterion='maxclust')
+
+    # Generate base colors for each cluster
+    # base_palette = sns.color_palette("tab20", num_clusters)  # Base colors
+    base_palette = get_valid_palette(num_clusters, max_attempts=10)
+
+    # Function to generate shades of a base color
+    def get_shaded_colors(base_color, num_shades, min_lightness=0.25, max_lightness=0.45):
+        """Generates `num_shades` variations of `base_color`, ensuring they are not too light."""
+        h, l, s = colorsys.rgb_to_hls(*base_color)  # Convert to HLS
+
+        # Generate shades by varying lightness within a safe range
+        lightness_values = np.linspace(min_lightness, max_lightness, num_shades)
+        shaded_colors = []
+
+        for lightness in lightness_values:
+            shaded_rgb = colorsys.hls_to_rgb(h, lightness, s)  # Convert back to RGB
+            shaded_colors.append(shaded_rgb)
+
+        return shaded_colors
+
+    # Assign shades to classes
+    class_colors = {}
+    cluster_counts = {i: 0 for i in range(1, num_clusters + 1)}  # Track how many classes per cluster
+    for i, cluster_id in enumerate(clusters):
+        num_in_cluster = sum(clusters == cluster_id)  # Count classes in the same cluster
+        shade_index = cluster_counts[cluster_id]  # Assign a unique shade index
+        shaded_colors = get_shaded_colors(base_palette[cluster_id - 1], num_in_cluster)
+        # plot the colors
+        # plt.figure(figsize=(12, 3))
+        # for i, color in enumerate(shaded_colors):
+        #     plt.scatter(i, 0, color=color, s=200)
+        # plt.axis("off")
+        # plt.show()
+        class_colors[f"Class {i}"] = shaded_colors[shade_index]  # Assign a color
+        cluster_counts[cluster_id] += 1  # Increment count for next shade
+
+    ################################# assign same color to same cluster #########################################
+    # class_colors = {}
+    # cluster_counts = {i: 0 for i in range(1, num_clusters + 1)}  # Track how many classes per cluster
+    # for i, cluster_id in enumerate(clusters):
+    #     shade_index = cluster_counts[cluster_id]  # Assign a unique shade index
+    #     shaded_colors = get_shaded_colors(base_palette[cluster_id - 1], 1)
+    #     # plot the colors
+    #     # plt.figure(figsize=(12, 3))
+    #     # for i, color in enumerate(shaded_colors):
+    #     #     plt.scatter(i, 0, color=color, s=200)
+    #     # plt.axis("off")
+    #     # plt.show()
+    #     class_colors[f"Class {i}"] = shaded_colors[shade_index]  # Assign a color
+
+    ###################################################### comment the code block to have shades ################
+
+    # Print assigned colors
+    to_print_dict = {0: "20240729 control 0", 1: "20240730 p110 1", 2: "20240731 myls22 2",
+                     3: "20240801 mfi8 3", 4: "20240731 tbhp 4", 5: "20240805 h2o2 5",
+                     6: "20240806 mitoq 6", 7: "20240807 resveratrol 7", 8: "20240808 lonidmaine 8",
+                     9: "20240809 oligomycin 9", 10: "20240813 dnp 10", 11: "20240814 valinomycin 11",
+                     12: "20240815 cccp 12", 13: "20240816 mitomycinc 13", 14: "20240820 cytochalasind 14",
+                     15: "20240821 lantrunculinb 15", 16: "20240823 mdivi1 16", 17: "20240826 nocodazole 17",
+                     18: "20240830 colchicine 18", 19: "20240903 antimycina 19", 20: "20240904 tiron 20",
+                     21: "20240905 cisplatin 21", 22: "20240910 rotenone 22", 23: "20240911 nigericin 23",
+                     24: "20240912 azide 24", 25: "20240913 paraquat 25", 26: "20240917 metformin 26"}
+
+    for cls, color in class_colors.items():
+        str_color = str(color).replace('(', '').replace(')', '').replace(',', '')
+        print(f"{to_print_dict[int(cls.split(' ')[-1])]} {str_color}")
+
+    # Optional: Visualize the color assignments
+    plt.figure(figsize=(12, 3))
+    for i, (cls, color) in enumerate(class_colors.items()):
+        plt.scatter(i, 0, color=color, s=200, label=cls)
+    plt.legend(ncol=3, loc="upper left", bbox_to_anchor=(0, 1.2))
+    plt.axis("off")
+
+    plt.show()
 
 
 def get_drug_labels(fpath):
@@ -43,7 +174,8 @@ def load_config(config_path):
     return cfg
 
 
-def minus_one_to_one_normalization(x: Union[List[torch.Tensor], torch.Tensor]) -> Union[List[torch.Tensor], torch.Tensor]:
+def minus_one_to_one_normalization(x: Union[List[torch.Tensor], torch.Tensor]) -> Union[
+    List[torch.Tensor], torch.Tensor]:
     if isinstance(x, list):
         return [2 * var - 1 for var in x]
     return 2 * x - 1
@@ -332,3 +464,27 @@ def increase_contrast(gray_images):
     equalized_image = equalized_image * 2 - 1
 
     return equalized_image
+
+
+def get_fpaths(root_dir, seed=1123):
+    drug_labels = {}
+    with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+        drugs_to_labels = f.readlines()
+        for line in drugs_to_labels:
+            folder, drug, label = line.split()
+            drug_labels[folder] = {'drug': drug, 'label': int(label)}
+
+    drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data'))])
+
+    all_filenames = []
+
+    for drug_folder in drug_folders:
+        filenames = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data', drug_folder))])
+        filenames = [osp.join(root_dir, 'processed_data', drug_folder, file) for file in filenames]
+
+        all_filenames.extend(filenames)
+
+    random.seed(seed)
+    shuffle(all_filenames)
+
+    return all_filenames
