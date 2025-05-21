@@ -65,7 +65,7 @@ training:
   loss:
     name: InfoNCELoss
     use_normalization: True
-    temperature: 0.7
+    temperature: 0.07
   max_epochs: 300
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
