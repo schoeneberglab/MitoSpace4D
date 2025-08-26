@@ -1,0 +1,4 @@
+archive/
+runs/
+checkpoints/
+*.pyc

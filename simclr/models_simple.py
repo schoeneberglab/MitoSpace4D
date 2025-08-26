@@ -34,20 +34,23 @@ class Basic3DBlock(nn.Module):
 
 
 class Lightweight3DResNet(nn.Module):
-    def __init__(self, embedding_size=2048, cfg_aug=None, apply_aug=False):
+    def __init__(self, embedding_size=2048, cfg_aug=None, apply_aug=False, decoder_checkpoint_path=None):
         super(Lightweight3DResNet, self).__init__()
 
         self.apply_aug = apply_aug
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
-        dec_checkpoint_path = "/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
-        decoder_model = MitoSpace3DAutoencoder()
-        self.decoder = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=decoder_model)
-        self.decoder = self.decoder.model.decoder
-        self.decoder.eval()
+        # dec_checkpoint_path = "/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
+        self.with_decoder = decoder_checkpoint_path is not None
+        
+        if self.with_decoder:
+            decoder_model = MitoSpace3DAutoencoder()
+            self.decoder = AutoEncoderRunner.load_from_checkpoint(decoder_checkpoint_path, model=decoder_model)
+            self.decoder = self.decoder.model.decoder
+            self.decoder.eval()
 
-        # Freeze decoder parameters
-        for param in self.decoder.parameters():
-            param.requires_grad = False
+            # Freeze decoder parameters
+            for param in self.decoder.parameters():
+                param.requires_grad = False
 
         # Initial layer: modify for 2-channel input
         self.stem = nn.Sequential(
@@ -89,8 +92,10 @@ class Lightweight3DResNet(nn.Module):
         return x
 
     def forward(self, x):
+    
         with torch.no_grad():
-            x = self.decoder(x)
+            if self.with_decoder:
+                x = self.decoder(x)
             #x = self.scramble_time(x)
             x = self.augment_pipeline(x) if self.apply_aug else 2*x-1  # (b, t, c, d, h, w)
 
@@ -114,11 +119,11 @@ class Lightweight3DResNet(nn.Module):
         x, _ = self.lstm(x)
 
         # Use the last LSTM output
-        x = x[:, -1, :]
+        # x = x[:, -1, :]
 
         # Pass all the timesteps to the final embedding to get the temporal embeddings
-        #b, t, d = x.size()
-        #x = x.reshape(-1, d)
+        b, t, d = x.size()
+        x = x.reshape(-1, d) # Flatten the time dimension
 
         # Final embedding
         x = self.fc(x)
@@ -126,8 +131,8 @@ class Lightweight3DResNet(nn.Module):
         # Projection head
         out = self.proj(x)
 
-        #x = x.reshape(b, t, -1)
-        #out = out.reshape(b, t, -1)
+        x = x.reshape(b, t, -1)
+        out = out.reshape(b, t, -1)[:, -1]
 
         return x, out
 

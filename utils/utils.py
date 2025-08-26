@@ -468,19 +468,21 @@ def increase_contrast(gray_images):
 
 def get_fpaths(root_dir, seed=1123):
     drug_labels = {}
-    with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+    with open('/home/earkfeld/Projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
         drugs_to_labels = f.readlines()
         for line in drugs_to_labels:
             folder, drug, label = line.split()
             drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-    drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data'))])
-
+    # drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data'))])
+    drug_folders = sorted([file for file in os.listdir(root_dir) if osp.isdir(osp.join(root_dir, file))])
     all_filenames = []
 
     for drug_folder in drug_folders:
-        filenames = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data', drug_folder))])
-        filenames = [osp.join(root_dir, 'processed_data', drug_folder, file) for file in filenames]
+        # filenames = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data', drug_folder))])
+        # filenames = [osp.join(root_dir, 'processed_data', drug_folder, file) for file in filenames]
+        filenames = sorted([file for file in os.listdir(osp.join(root_dir, drug_folder))])
+        filenames = [osp.join(root_dir, drug_folder, file) for file in filenames]
 
         all_filenames.extend(filenames)
 

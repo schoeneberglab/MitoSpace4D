@@ -14,7 +14,7 @@ data_params:
     ResizedCrop:
       p: 0.5
       size: 256
-      scale: [ 0.35, 1.0 ]
+      scale: [0.35, 1.0]
     HorizontalFlip3D:
       p: 0.3
     VerticalFlip3D:
@@ -53,7 +53,7 @@ data_params:
       upper: 0.5
   filters: null
 logging_params:
-  save_path: /tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs
+  save_path: home/earkfeld/Projects/MitoSpace4D/runs
 model_params:
   arch: resnet18
   pretrained: false
@@ -79,7 +79,7 @@ training:
   continue_from_ckpt_wo_opt: None
   lr: 0.0003
   weight_decay: 0.00001
-  workers: 6
+  workers: 8 #6
   prefetch_factor: 2
   persistent_workers: True
   n_views: 2
