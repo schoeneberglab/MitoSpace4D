@@ -378,10 +378,6 @@ if __name__ == '__main__':
         else:
             image_paths_aligned = None
 
-        if args.single_frames:
-            # Get the single frame image paths
-            image_paths_aligned = get_single_frame_img_paths(image_paths_aligned)
-
         # Final visualization
         make_mitospace(
             embedding_dir=embeddings_dir,
