@@ -57,11 +57,15 @@ class MitoSpaceDataset(Dataset):
         # drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
         # drug_folders = sorted([file for file in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, file))])
 
-        #-- Kinetic dirs
-        drug_folders = ['20250722-2', '20250724-1', '20250724-2', '20250725-1', '20250728-1', '20250804-1', '20250804-2', '20250805-1', '20250805-2', '20250806-2', '20250807-1', '20250807-2', '20250813-1', '20250813-2', '20250814-1', '20250814-2']
+        #-- Kinetic dirs (v1)
+        # drug_folders = ['20250722-2', '20250724-1', '20250724-2', '20250725-1', '20250728-1', '20250804-1', '20250804-2', '20250805-1', '20250805-2', '20250806-2', '20250807-1', '20250807-2', '20250813-1', '20250813-2', '20250814-1', '20250814-2']
 
         #-- Cancer dirs
-        # drug_folders = ['20250811-1', '20250811-2', '20250812-1']
+        # drug_folders = ["20250811-1", "20250811-2", "20250812-1", "20250828-1", "20250828-2", "20250828-3"]
+        drug_folders = ["20250811-1", "20250811-2", "20250812-1"]
+
+        #--Kinetic control dir
+        # drug_folders = ["20250807-1"]
 
         self.all_filenames = []
         self.all_labels = []

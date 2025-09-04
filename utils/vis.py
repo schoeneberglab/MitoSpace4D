@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import napari
+from utils.utils import get_drug_label_maps
 
 cmap = LinearSegmentedColormap.from_list('blackgreen', ["k", "lime"], N=256)
 
@@ -42,7 +43,6 @@ def demo_crop_geometry():
     pcd = o3d.io.read_point_cloud(pcd_data.paths[0])
     o3d.visualization.draw_geometries_with_editing([pcd])
 
-
 def draw_registration_result(source, target, transformation):
     source_temp = copy.deepcopy(source)
     target_temp = copy.deepcopy(target)
@@ -51,7 +51,6 @@ def draw_registration_result(source, target, transformation):
     source_temp.transform(transformation)
     o3d.visualization.draw_geometries([source_temp, target_temp])
 
-
 def add_to_viewer(viewer, img, translate, channel=0, label=""):
     # visualising mito channel, change the index to 0 for tmrm channel
     viewer.add_image(img[:, channel], name=f"{label}", translate=translate, colormap='cyan')
@@ -59,14 +58,14 @@ def add_to_viewer(viewer, img, translate, channel=0, label=""):
 def plot_arrows(pcd, arrows):
     o3d.visualization.draw_geometries([pcd] + arrows)
 
-def get_per_frame_vals(val_list, n_frames=20):
+def get_per_frame_vals(vals, n_frames=20):
     """ Repeats the image paths by n_frames """
     frame_vals = []
-    for val in val_list:
+    for val in vals:
         frame_vals.extend(np.repeat(val, n_frames).tolist())
-    return frame_vals
+    return np.array(frame_vals)
 
-def pick_points(pcd, labels, label_names, image_paths=None, image_times=None):
+def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, label_drug_dict=None):
     print("")
     print(
         "1) Please pick at least three correspondences using [shift + left click]"
@@ -74,12 +73,12 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None):
     print("   Press [shift + right click] to undo point picking")
     print("2) After picking points, press 'Q' to close the window")
 
-    get_label_name_fn = lambda idx: label_names[(labels[idx])]
+    # get_label_name_fn = lambda idx: label_names[(labels[idx])]
 
     vis = o3d.visualization.VisualizerWithEditing()
     vis.create_window()
     vis.add_geometry(pcd)
-    vis.get_render_option().point_size = 3.0
+    # vis.get_render_option().point_size = 3.0
 
     vis.run()  # user picks points
     idxs = vis.get_picked_points()
@@ -96,12 +95,14 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None):
     imgs = []
     for i, idx in enumerate(idxs):
         # drug_names.append(label_names[(labels[idx%20]%27)])
-        drug_names.append(get_label_name_fn(idx))
-        if image_times is not None:
-            time_index = image_times[idx]
-            picked_image_paths.append(image_paths[time_index])
-        else:
-            picked_image_paths.append(image_paths[idx])
+        # drug_names.append(get_label_name_fn(idx))
+        drug_names.append(label_drug_dict[labels[idx]])
+        # if image_times is not None:
+        #     time_index = image_times[idx]
+        #     picked_image_paths.append(image_paths[time_index])
+        # else:
+            # picked_image_paths.append(image_paths[idx])
+        picked_image_paths.append(image_paths[idx])
         
         if image_paths is not None:
             img_4d = np.load(image_paths[idx])
@@ -158,18 +159,29 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None):
         print(idx)
         print(labels[idx])
         # print(label_names[int(labels[idx]%27)])
-        print(get_label_name_fn(idx))
+        # print(get_label_name_fn(idx))
+        print(label_drug_dict[labels[idx]])
         print(image_paths[idx])
         print("")
     # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_names[int(labels[idxs[i]]%27)])) for i in
     #            range(len(idxs))]
-    patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=get_label_name_fn(idxs[i]))) for i in range(len(idxs))]
+    # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=get_label_name_fn(idxs[i]))) for i in range(len(idxs))]
+
+
+    # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_drug_dict[labels[idx]])) for i in range(len(idxs))]
+
+    patches = []
+    for i, idx in enumerate(idxs):
+        l = label_drug_dict[labels[idx]]
+        ds = image_paths[idx].split("/")[-2]
+        patches.append(mpatches.Patch(color=colors[i], label="{l} ({ds})".format(l=l, ds=ds)))
+
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     plt.show()
     print("")
     return vis.get_picked_points()
 
-def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None, single_frames=False):
+def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None, single_frames=False, save_pcd=None, label_drug_dict=None, datasets=None):
     EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings_umap.npy')
     LABEL_PATH = osp.join(embedding_dir, 'labels.npy')
     LABEL_NAME_PATH = osp.join(embedding_dir, 'label_names.npy')
@@ -180,6 +192,7 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
     labels = np.load(LABEL_PATH)
     label_names = np.load(LABEL_NAME_PATH)
     image_paths = np.loadtxt(IMAGE_PATHS, dtype=str).tolist()
+    image_paths = np.array(image_paths)
     colors = color_palette
     
     if single_frames:
@@ -205,15 +218,23 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
     # pick labels present in the pick_labels list
     if pick_labels is not None:
         mask = np.isin(labels, pick_labels)
+        if datasets is not None:
+            img_datasets = [image_paths[i].split("/")[-2] for i in range(len(image_paths))]
+            img_datasets = np.array(img_datasets)
+            dataset_mask = np.isin(img_datasets, datasets)
+            mask = np.logical_and(mask, dataset_mask)
         embeddings = embeddings[mask]
         labels = labels[mask]
+        image_paths = image_paths[mask]
         image_times = image_times[mask] if single_frames else None
 
         # temporal_vectors = temporal_vectors[mask] if iv_map else None
 
+        # temporal/region colormaps
         if isinstance(color_palette, np.ndarray):
             colors = color_palette[mask]
 
+        # Label Color map
         if isinstance(color_palette, dict):
             colors = np.array([color_palette[int(label)] for label in labels])
             colors[labels < 0] = 0
@@ -232,8 +253,6 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
             colors[labels < 0] = 0
             colors = colors[:, :3]
 
-
-
     # max_label = labels.max()
     # color_palette = generate_distinct_colors(max_label + 1)
     
@@ -241,6 +260,10 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(embeddings)
     pcd.colors = o3d.utility.Vector3dVector(colors)
+
+    # Save the pcd
+    if save_pcd is not None:
+        o3d.io.write_point_cloud(save_pcd, pcd)
 
     # if iv_map:
     #     temporal_vector_objs = []
@@ -272,17 +295,17 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
     # vis.run()
 
     # Create legend for the colors and labels (possibly picked)
-    legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names)-1)]
-    plt.figure(figsize=(10, 10))
-    plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
-    plt.axis('off')
-    plt.show()
+    # legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names)-1)]
+    # plt.figure(figsize=(10, 10))
+    # plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
+    # plt.axis('off')
+    # plt.show()
 
     # if iv_map:
     #     plot_arrows(pcd, temporal_vector_objs)
     
     while True:
-        pick_points(pcd, labels, label_names, image_paths, image_times)
+        pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict)
 
 # -- Tweaked Original
 # def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None):

@@ -2,10 +2,21 @@
 ## Eric Arkfeld
 
 ### To-Do's
-- [] Set up .env and replace hard-coded paths
+- [] Set up .env and replace hard-coded paths?
+- [] Set up experiment-specific color/drug config files?
 
 
-### 20250819
+### 20250827
+- Plotting 3D frame embeddings generated using 4D mitospace (processed as independent single-frame movies)
+- Set up visualization routines for retrieving picked frames and coloring by drug as well as time by region as well as absolute frame within the imaging session 
+
+Observations
+- Consecutive frames for cells appear as paths through the down projected space
+- Central cluster appears structured with paths tracing around in the structure with some extending out radially.
+- Dead cells appear to diverge radially from the center
+  
+Experiments
+- Identify dead cells, filter those embeddings and reproject?
 
 
 

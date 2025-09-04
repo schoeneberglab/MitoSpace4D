@@ -139,12 +139,17 @@ def get_phenotypic_colors(similarity_matrix, num_clusters):
     plt.show()
 
 
-def get_drug_labels(fpath):
+def get_drug_label_maps(fpath):
+    """ 
+    Returns drug label maps.
+    :param fpath: Path to the file containing drug-label mappings.
+    :return: (drug_labels_dict, label_drug_dict)
+    """
     drug_labels_dict = {}
     label_drug_dict = {}
     with open(fpath, 'r') as f:
         for line in f:
-            drug, label = line.split()
+            folder, drug, label = line.split()
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
 

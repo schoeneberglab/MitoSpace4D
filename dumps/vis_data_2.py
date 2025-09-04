@@ -47,7 +47,8 @@ def add_to_viewer(viewer, img_path, translate, channel=0, cmap='cyan', bounding_
 
     # Add the image to the viewer
     viewer.add_image(
-        img[:, channel],
+        # img[:, channel], # for 4d
+        img[channel], # for 3d
         name=f"Image {drug_name}",
         translate=translate,
         colormap=cmap,
@@ -82,7 +83,10 @@ if __name__ == '__main__':
     #           '/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data/processed_data/20240905/000001.npy']
 
     # Replace with the paths to the images you want to visualise
-    fpaths = ["/run/user/1002/gvfs/smb-share:server=aquila0.jslab.ucsd.edu,share=ssd_processing/Others/MitoSpace4D/2025_summer/20250811-1/000005-0.npy"]
+    # fpaths = ["/run/user/1002/gvfs/smb-share:server=aquila0.jslab.ucsd.edu,share=ssd_processing/Others/MitoSpace4D/2025_summer/20250811-1/000005-0.npy"]
+    # fpaths = ["/home/earkfeld/Projects/MitoSpace4D/sample_0_decoded.npy"]
+    fpaths = ["/home/earkfeld/Downloads/c0_s10.npy",
+              "/home/earkfeld/Downloads/c8_s10.npy"]
 
     viewer = napari.Viewer()
 

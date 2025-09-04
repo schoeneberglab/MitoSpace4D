@@ -2,3 +2,4 @@ archive/
 runs/
 checkpoints/
 *.pyc
+*.bak
