@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-from autoencoder.autoencoder import AutoEncoderRunner
-from autoencoder.models import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_runner import AutoEncoderRunner
+from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
 import einops
 import os.path as osp
 import os

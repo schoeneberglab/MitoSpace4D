@@ -14,11 +14,10 @@ from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
-from resnet_model import MitoSpace3ResNetAutoEncoder
-from models import MitoSpace3DAutoencoder
-from model_params import MitoSpace3DAutoencoderHigherParams
-from autoencoder import AutoEncoderRunner
-from autoencoder_dataset import MitoSpaceAutoEncoderDataset
+from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
+from archive.model_params import MitoSpace3DAutoencoderHigherParams
+from autoencoder.autoencoder_runner import AutoEncoderRunner
+from autoencoder_dataset import MitoSpaceAutoEncoderDataset, NormalizeChannelsByPath
 
 print("Imported packages")
 
@@ -52,16 +51,35 @@ def train_model(model, train_loader):
 
 if __name__ == '__main__':
     print("Started Training Loop")
+    data_dirs = [
+        "/mnt/aquila0/others/MitoSpace4D/data/aligned",                     # Summer 2024
+        "/mnt/aquila0/ssd_processing/Others/MitoSpace4D/summer_2025_new/"   # Summer 2025
+    ]
+
+    ds_transform = NormalizeChannelsByPath(
+        path_substr='2024',
+        max_values=[25000, 10000]  # TMRM (ch0), MTG (ch1)
+    )
+
+    # Create a dataset object
     dataset = MitoSpaceAutoEncoderDataset(
-        root_dir='/home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/')
+        root_dirs=data_dirs,
+        transform=ds_transform
+    )
+    
     print("Total samples in dataset:", len(dataset))
 
-    # checkpoint_path = "/home/dhruvagarwal/projects/MitoSpace4D/autoencoder/runs/autoencoder/lightning_logs/version_2/checkpoints/epoch=31-step=43136.ckpt"
+    # checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/autoencoder/runs/autoencoder/lightning_logs/"
     # checkpoint = torch.load(checkpoint_path)
     # print(checkpoint)
+    # # load the model state dict
+    # model_state_dict = checkpoint['state_dict']
+    # print(model_state_dict)
+
 
     # Create DataLoader for training
-    train_loader = DataLoader(dataset, batch_size=1,
+    train_loader = DataLoader(dataset, 
+                              batch_size=1,
                               shuffle=True,
                               drop_last=True,
                               num_workers=4,
