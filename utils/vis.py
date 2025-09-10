@@ -88,6 +88,7 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
         vis.destroy_window()
         exit(0)
 
+    # TODO: Fix napari visualization routines
     # napari_viewer = napari.Viewer()
 
     drug_names = []
@@ -200,21 +201,6 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
         # labels = get_per_frame_vals(labels)
         image_paths = get_per_frame_vals(image_paths)
 
-    # labels = labels.repeat(20)
-
-    # if single_frames:
-    #     image_times = image_times[:, None]
-
-    # if iv_map:
-    #     # Set up an array for the vectors
-    #     temporal_vectors = []
-    #     for key, value in iv_map.items():
-    #         # get the embeddings for each key and value
-    #         key_embedding = embeddings[key]
-    #         value_embedding = embeddings[value] if value is not None else [None]*3
-    #         temporal_vectors.append([key_embedding, value_embedding])
-    #     temporal_vectors = np.array(temporal_vectors)
-
     # pick labels present in the pick_labels list
     if pick_labels is not None:
         mask = np.isin(labels, pick_labels)
@@ -306,106 +292,6 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
     
     while True:
         pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict)
-
-# -- Tweaked Original
-# def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None):
-#     EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings_umap.npy')
-#     LABEL_PATH = osp.join(embedding_dir, 'labels.npy')
-#     LABEL_NAME_PATH = osp.join(embedding_dir, 'label_names.npy')
-
-#     embeddings = np.load(EMBEDDING_PATH)
-#     labels = np.load(LABEL_PATH)
-#     # labels = labels.repeat(20)
-
-#     # pick labels present in the pick_labels list
-#     if pick_labels is not None:
-#         mask = np.isin(labels, pick_labels)
-#         embeddings = embeddings[mask]
-#         labels = labels[mask]
-        
-#         if isinstance(colors, np.ndarray):
-#             colors = colors[mask]
-
-#         # image_paths = [image_paths[i] for i in range(len(image_paths)) if mask[i]]
-#         # image_paths = image_paths.to(list)
-
-#         # to visualise the temporal progression in the embeddings
-#         # for temp, label in enumerate(labels):
-#         #     labels[temp] = (int(temp) % 20)
-#     else:
-#         if not isinstance(colors, np.ndarray):
-#             colors = np.array([color_palette[int(label)] for label in labels])
-#             colors[labels < 0] = 0
-#             colors = colors[:, :3]
-
-#     label_names = np.load(LABEL_NAME_PATH)
-
-#     max_label = labels.max()
-#     # color_palette = generate_distinct_colors(max_label + 1)
-    
-#     pcd = o3d.geometry.PointCloud()
-#     pcd.points = o3d.utility.Vector3dVector(embeddings)
-#     pcd.colors = o3d.utility.Vector3dVector(colors)
-
-#     aabb = pcd.get_axis_aligned_bounding_box()
-#     aabb.color = np.array([0, 0, 0])
-
-#     vis = o3d.visualization.Visualizer()
-#     vis.create_window()
-#     vis.add_geometry(pcd)
-
-#     # save the pcd
-#     # o3d.io.write_point_cloud('/home/dhruvagarwal/Desktop/phenotypic_4d_mitospace.pcd', pcd)
-
-#     opt = vis.get_render_option()
-#     opt.point_size = 3
-
-#     # vis.add_geometry(mesh_frame)
-#     vis.run()
-
-#     # Create legend
-#     legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names))]
-#     plt.figure(figsize=(10, 10))
-#     plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
-#     plt.axis('off')
-#     plt.show()
-
-#     while True:
-#         pick_points(pcd, labels, label_names, image_paths)
-
-def draw_arrow(start, end, color=[1, 0, 0]):
-    if start is None or end is None:
-        return None
-    
-    start = np.array(start, dtype=float)
-    end = np.array(end, dtype=float)
-    vec = end - start
-    length = np.linalg.norm(vec)
-    if length < 1e-8:
-        raise ValueError("Start and end points are too close together.")
-
-    # Arrow geometry
-    arrow = o3d.geometry.TriangleMesh.create_arrow(
-        cylinder_radius=0.01,
-        cone_radius=0.02,
-        cylinder_height=0.8 * length,
-        cone_height=0.2 * length
-    )
-    arrow.paint_uniform_color(color)
-    arrow.compute_vertex_normals()
-
-    # Align arrow (default is along +Z)
-    z_axis = np.array([0, 0, 1.0])
-    v = vec / length
-    axis = np.cross(z_axis, v)
-    angle = np.arccos(np.dot(z_axis, v))
-    if np.linalg.norm(axis) > 1e-6:
-        R = o3d.geometry.get_rotation_matrix_from_axis_angle(axis / np.linalg.norm(axis) * angle)
-        arrow.rotate(R, center=(0, 0, 0))
-
-    # Move into position
-    arrow.translate(start)
-    return arrow
 
 def plot_confusion_matrix(cm,
                           label_names,

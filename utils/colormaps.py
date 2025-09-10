@@ -333,7 +333,8 @@ def create_colormap(
 
 
 if __name__ == "__main__":
-    embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_20250828"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_20250828"
+    embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_combined_r20250905"
     df = build_sample_table(img_path_file=osp.join(embeddings_dir, "image_paths.csv"), 
                             cell_region_map=None)
 
