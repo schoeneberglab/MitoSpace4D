@@ -47,7 +47,8 @@ class SimCLRRunner(pl.LightningModule):
 
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
                                                                     T_max=cfg['training']['max_epochs'],
-                                                                    eta_min=0, last_epoch=-1)
+                                                                    eta_min=0, 
+                                                                    last_epoch=-1)
 
         self.data_bank = {"Train": [], "Val": []}
 

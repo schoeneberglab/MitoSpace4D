@@ -1,18 +1,24 @@
-from typing import Tuple, List
-
 import torch
 from torch import nn
-import numpy as np
 from kornia.augmentation import RandomResizedCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomBrightness, \
     RandomGaussianNoise, RandomGaussianBlur, RandomErasing, RandomRotation, RandomAffine, RandomHorizontalFlip3D, \
     RandomVerticalFlip3D, RandomDepthicalFlip3D, RandomRotation3D, RandomAffine3D
-from kornia.augmentation.container import AugmentationSequential
+
+def _disable_kornia_features(module: nn.Module) -> None:
+            for m in module.modules():
+                if hasattr(m, "disable_features"):
+                    try:
+                        # type: ignore[attr-defined]
+                        m.disable_features = True
+                    except Exception:
+                        pass
 
 class RandomTimeFlip(nn.Module):
     def __init__(self, p=0.5) -> None:
         super().__init__()
         self.p = p
         self.flipper = RandomDepthicalFlip3D(p=self.p)
+        _disable_kornia_features(self.flipper)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # swap time dimension with z to apply the z-flipper to time
@@ -25,25 +31,45 @@ class RandomTimeFlip(nn.Module):
         x = x.permute(0, 3, 2, 1, 4, 5) # (b, t, c, z, h, w)
         return x
 
-
 class RandomExchangeFlip(nn.Module):
-    def __init__(self, p=0.5) -> None:
+    """Randomly exchange the two halves along z/h/w by rolling by floor(N/2).
+
+    Input:  x with shape (B, C, Z, H, W)
+    Effect: For each of dims (Z,H,W), with prob p, shift by N//2 (no-op if N//2==0).
+    """
+    def __init__(self, p: float = 0.5) -> None:
         super().__init__()
-        self.p = p
+        self.p = float(p)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Expect x to be (b, c, z, h, w)
+        # Early-exits for edge probabilities
+        if self.p <= 0.0:
+            return x
 
-        slices = []
-        for dim in [2, 3, 4]:  # z, h, w
-            if np.random.uniform() < self.p:
-                mid = x.shape[dim] // 2
-                idx = torch.arange(x.shape[dim], device=x.device)
-                idx = torch.cat((idx[mid:], idx[:mid]))
-                slices.append((dim, idx))
+        device = x.device
+        dims = (2, 3, 4)  # z, h, w
 
-        for dim, idx in slices:
-            x = x.index_select(dim, idx)
+        # Decide which dims to flip with vectorized, single RNG call on the right device
+        if self.p >= 1.0:
+            sel = torch.tensor([True, True, True], device=device)
+        else:
+            sel = torch.rand(3, device=device) < self.p
+
+        if not torch.any(sel):
+            return x
+
+        # Build single multi-dim roll: shift by mid = size//2 on each selected dim
+        chosen_dims = []
+        shifts = []
+        for i, d in enumerate(dims):
+            if sel[i]:
+                mid = x.size(d) // 2
+                if mid:                      # skip if size<2
+                    chosen_dims.append(d)
+                    shifts.append(mid)
+
+        if chosen_dims:
+            x = torch.roll(x, shifts=tuple(shifts), dims=tuple(chosen_dims))
 
         return x
 
@@ -53,36 +79,49 @@ class RandomTimeMask(nn.Module):
         super().__init__()
         self.p = p  # p actually doesn't matter here; only when it's zero, we don't apply
 
-        self.time_delay = [16, 14, 12, 10, 8, 6, 4, 2, 0]
-        self.probs_time_delay = [0.03, 0.038, 0.047, 0.059, 0.074, 0.092, 0.115, 0.144, 0.401]
+        self.time_delay = torch.Tensor([16, 14, 12, 10, 8, 6, 4, 2, 0])
+        self.probs_time_delay = torch.Tensor([0.03, 0.038, 0.047, 0.059, 0.074, 0.092, 0.115, 0.144, 0.401])
 
-        self.clip_len = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11]
-        self.clip_len_probs = [0.501, 0.116,0.092,0.074,0.059,0.047,0.038,0.030,0.024,0.019]
-
+        self.clip_len = torch.Tensor([20, 19, 18, 17, 16, 15, 14, 13, 12, 11])
+        self.clip_len_probs = torch.Tensor([0.501, 0.116, 0.092, 0.074, 0.059, 0.047, 0.038, 0.030, 0.024, 0.019])
 
     def forward(self, x: torch.Tensor):
         if self.p == 0:
             return [x, x]
+        
+        # Pick a random length of the clip using the predefined probabilities and pytorch
+        idx = torch.multinomial(self.clip_len_probs, 1)
+        clip_len = int(self.clip_len[idx].item())
 
-        clip_len = np.random.choice(self.clip_len, p=self.clip_len_probs)
-
-        # select a random continuous window of length clip_len
-        start = np.random.randint(0, x.size(1) - clip_len) if x.size(1) > clip_len else 0
+        if x.size(1) > clip_len:
+            # Pick a random integer start point for the clip
+            start = torch.randint(0, (x.size(1) - clip_len), (1,), device=x.device).item()
+        else:
+            start = 0
         end = start + clip_len
+
+        # build mask for first clip
         mask = torch.zeros_like(x, device=x.device)
         mask[:, start:end, :, :, :] = 1
 
-        time_delay = np.random.choice(self.time_delay, p=self.probs_time_delay)
+        # sample time_delay with given probabilities and cap at clip_len
+        td_probs = torch.as_tensor(self.probs_time_delay, dtype=torch.float, device=x.device)
+        td_vals = torch.as_tensor(self.time_delay, dtype=torch.long, device=x.device)
+        td_idx = torch.multinomial(td_probs, 1, replacement=True).item()
+        time_delay = int(td_vals[td_idx].item())
         time_delay = min(time_delay, clip_len)
 
+        # second mask shifted by time_delay
         mask_2 = mask.clone()
-        mask_2[:, start:start + time_delay, :, :, :] = 0
-        mask_2[:, end: end + time_delay, :, :, :] = 1
+        if time_delay > 0:
+            mask_2[:, start:start + time_delay, :, :, :] = 0
+            mask_2[:, end:end + time_delay, :, :, :] = 1
 
         x_1 = x * mask
         x_2 = x * mask_2
 
         return [x_1, x_2]
+
 
 class RandomBrightness(nn.Module):
     def __init__(self, p=0.5, lower=1, upper=1) -> None:
@@ -91,22 +130,25 @@ class RandomBrightness(nn.Module):
         self.range = (lower, upper)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if np.random.uniform() < self.p:
-            factor = np.random.uniform(self.range[0], self.range[1])
-            x = x + factor  # that's what kornia's brightness augmentation does
-            #x = torch.clamp(x, 0, 1)
+        if torch.rand(1, device=x.device) < self.p:
+            factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
+            x = x + factor
         return x
 
 
 class DataAugmentation(nn.Module):
-    def __init__(self, cfg_aug=None, zero_mean_norm=True) -> None:
+    def __init__(self, cfg_aug=None, zero_mean_norm=True, n_views=2) -> None:
         super().__init__()
+        
+        assert n_views == 2, "Only two views are supported for now"
+        
+        self.n_views = n_views
+        self.zero_mean_norm = zero_mean_norm
 
         self.temporal_transform_1 = RandomTimeMask(p=cfg_aug['RandomTimeMask']['p'])
         self.temporal_transform_2 = RandomTimeFlip(p=cfg_aug['RandomTimeFlip']['p'])
 
-        # Use Kornia AugmentationSequential containers
-        self.transforms_2d = AugmentationSequential(
+        self.transforms_2d = nn.Sequential(
             RandomResizedCrop(p=cfg_aug['ResizedCrop']['p'],
                               size=(cfg_aug['ResizedCrop']['size'], cfg_aug['ResizedCrop']['size']),
                               scale=(cfg_aug['ResizedCrop']['scale'][0], cfg_aug['ResizedCrop']['scale'][1])),
@@ -124,10 +166,9 @@ class DataAugmentation(nn.Module):
             RandomGaussianNoise(p=cfg_aug['GaussianNoise']['p'],
                                 mean=cfg_aug['GaussianNoise']['mu'],
                                 std=cfg_aug['GaussianNoise']['scale']),
-            data_keys=["input"],  # default, explicit for clarity
         )
 
-        self.transforms_3d = AugmentationSequential(
+        self.transforms_3d = nn.Sequential(
             RandomHorizontalFlip3D(p=cfg_aug['HorizontalFlip3D']['p']),
             RandomVerticalFlip3D(p=cfg_aug['VerticalFlip3D']['p']),
             RandomDepthicalFlip3D(p=cfg_aug['DepthicalFlip3D']['p']),
@@ -138,28 +179,12 @@ class DataAugmentation(nn.Module):
                            translate=(cfg_aug['RandomAffine3D']['translate'][0],
                                       cfg_aug['RandomAffine3D']['translate'][1],
                                       cfg_aug['RandomAffine3D']['translate'][2])),
-            # Custom op not in Kornia sequence, but we can append here; it is nn.Module-compatible
             RandomExchangeFlip(p=cfg_aug['RandomExchangeFlip']['p']),
-            data_keys=["input"],
         )
 
-        # Disable Kornia image-module features to avoid CPU detaches
-        def _disable_kornia_features(module: nn.Module) -> None:
-            for m in module.modules():
-                if hasattr(m, "disable_features"):
-                    try:
-                        # type: ignore[attr-defined]
-                        m.disable_features = True
-                    except Exception:
-                        pass
-
+        # Disable Kornia image-module features to avoid CPU detaches ¯\_(ツ)_/¯
         _disable_kornia_features(self.transforms_2d)
         _disable_kornia_features(self.transforms_3d)
-
-        self.n_views = 2
-        assert self.n_views == 2, "Only two views are supported for now"
-
-        self.zero_mean_norm = zero_mean_norm
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -171,22 +196,9 @@ class DataAugmentation(nn.Module):
         views = [view.view(b, -1, h, w) for view in views]
 
         for i in range(self.n_views):
-            # torch.cuda.synchronize()
-            # t0 = time.time()
             views[i] = self.transforms_2d(views[i]).view(b, t, c, z, h, w)  # same 2D transforms for all t and z
-            # torch.cuda.synchronize()
-            # t1 = time.time()
             views[i] = self.transforms_3d(views[i].view(b * t, c, z, h, w)).view(b, t, c, z, h, w)  # same 3D transforms for all t
-            # torch.cuda.synchronize()
-            # t2 = time.time()
             views[i] = self.temporal_transform_2(views[i])  # (b, t, c, z, h, w)
-            # torch.cuda.synchronize()
-            # t3 = time.time()
-
-            # print(f"\nView {i}: 2D time {(t1 - t0):.3f}s")
-            # print(f"View {i}: 3D time {(t2 - t1):.3f}s")
-            # print(f"View {i}: Time flip time {(t3 - t2):.3f}s")
-            # print(f"View {i}: Total augmentation time {(t3 - t0):.3f}s")
 
         views = torch.stack(views, dim=0)  # (n_views, b, t, c, z, h, w)
         views = views.view(-1, *views.shape[2:])  # (n_views*b, t, c, z, h, w)

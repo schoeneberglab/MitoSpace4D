@@ -147,7 +147,7 @@ def process_single(args):
 def main():
     parser = argparse.ArgumentParser(description='PyTorch SimCLR')
     parser.add_argument('--checkpoint_path', help='Checkpoint path')
-    parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml',
+    parser.add_argument('--config', default='/u/earkfeld/MitoSpace4D/simclr/config.yaml',
                         type=str, help='Config path.')
     parser.add_argument('--data_path', help='Data to predict')
     parser.add_argument('--load_epoch', help='Load weights from this epoch')
@@ -157,7 +157,7 @@ def main():
     torch.multiprocessing.set_sharing_strategy('file_system')
 
     cfg = load_config(args.config)
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
+    proj_dir = "/u/earkfeld/MitoSpace4D/"
 
     save_dir = osp.join(proj_dir, "runs", "lightning_logs", cfg['experiment_name'])
     os.makedirs(save_dir, exist_ok=True)

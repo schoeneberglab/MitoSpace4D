@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#SBATCH --output %j.out
+#SBATCH --output %j.err
+
+#SBATCH --job-name  encode_data
+
+#SBATCH --partition=ghx4
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=4
+#SBATCH --time=24:00:00
+#SBATCH --account=begq-dtai-gh
+#SBATCH --gres=gpu:4
+#SBATCH --mem=0                         # Use all available memory on the node(s)
+#SBATCH --exclusive
+
+source activate deeplearning
+
+# Set environment variables for distributed training
+export MASTER_ADDR=$(scontrol show hostname $SLURM_NODELIST | head -n 1)
+export MASTER_PORT=12345  # You can choose any available port
+export WORLD_SIZE=$(($SLURM_NNODES * $SLURM_NTASKS_PER_NODE))  # Total number of tasks across nodes
+export RANK=$SLURM_PROCID  # Rank of the current process
+
+srun python train_simclr.py

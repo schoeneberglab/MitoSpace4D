@@ -28,7 +28,7 @@ random.seed(0)
 
 parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 parser.add_argument('--checkpoint_path', help='Checkpoint path')
-parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml',
+parser.add_argument('--config', default='/u/earkfeld/MitoSpace4D/simclr/config.yaml',
                     type=str, help='Config path.')
 parser.add_argument('--data_path', help='Data to predict')
 parser.add_argument('--load_epoch', help='Load weights from this epoch')
@@ -42,7 +42,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 if __name__ == '__main__':
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
+    proj_dir = "/u/earkfeld/MitoSpace4D/"
 
     print("Experiment name:", cfg['experiment_name'])
     save_dir = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}"
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     #
     # drug_labels_dict = {}
     # label_drug_dict = {}
-    # with open(f"/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
+    # with open(f"/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
     #     for line in f:
     #         folder, drug, label = line.split()
     #         drug_labels_dict[drug] = int(label)

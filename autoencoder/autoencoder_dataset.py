@@ -80,7 +80,7 @@ def save_random_image(dataset, save_dir='.'):
 if __name__ == '__main__':
     # Create a dataset object
     dataset = MitoSpaceAutoEncoderDataset(
-        root_dir='/home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/')
+        root_dir='/u/earkfeld/MitoSpace4D/data/2024_subdata/processed_data/')
     print("Total samples in dataset:", len(dataset))
 
     sample_idx = np.random.randint(len(dataset))

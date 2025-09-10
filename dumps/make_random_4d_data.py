@@ -2,8 +2,8 @@ import os
 import numpy as np
 
 if __name__ == '__main__':
-    data_dir = '/home/dhruvagarwal/projects/MitoSpace4D/data/2024_data'
-    drug_label_info = '/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt'
+    data_dir = '/u/earkfeld/MitoSpace4D/data/2024_data'
+    drug_label_info = '/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt'
 
     drug_folders = []
     with open(drug_label_info, 'r') as f:

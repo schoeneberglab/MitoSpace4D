@@ -26,7 +26,7 @@ if __name__ == '__main__':
     parser.add_argument('--drugs', type=str, nargs='+', required=True, help="List of drugs")
     args = parser.parse_args()
 
-    src_dir = "/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/data/2023_data/processed_data"
+    src_dir = "/u/earkfeld/MitoSpace4D/data/2023_data/processed_data"
     dest_dir = "/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/2023_data/processed_data"
     os.makedirs(dest_dir, exist_ok=True)
 

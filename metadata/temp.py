@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     drugs_to_labels = {}
     label_drug_dict = {}
-    with open("/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
+    with open("/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
         for line in f:
             folder, drug, label = line.split()
             drugs_to_labels[drug] = int(label)
@@ -27,12 +27,12 @@ if __name__ == '__main__':
 
 
 
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
+    proj_dir = "/u/earkfeld/MitoSpace4D/"
     colors = load_colors(osp.join(proj_dir, "extraction_utils/colors.txt"))
     colors_phenotypic = load_colors(osp.join(proj_dir, "extraction_utils/colors_phenotypic.txt"))
 
     # Load the JSON file
-    json_file_path = "/home/dhruvagarwal/projects/MitoSpace4D/metadata/points4d.json"
+    json_file_path = "/u/earkfeld/MitoSpace4D/metadata/points4d.json"
 
     with open(json_file_path, 'r') as f:
         data = json.load(f)

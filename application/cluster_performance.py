@@ -66,7 +66,7 @@ def compute_intercluster_dist(embedding, labels, label_names):
 
 
 if __name__ == '__main__':
-    exp_dir = '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal'
+    exp_dir = '/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal'
     embeddings_path = f'{exp_dir}/embeddings/embeddings_static_oligo.npy'
     labels_path = f'{exp_dir}/embeddings/labels_static_oligo.npy'
     label_names_path = f'{exp_dir}/embeddings/label_names.npy'

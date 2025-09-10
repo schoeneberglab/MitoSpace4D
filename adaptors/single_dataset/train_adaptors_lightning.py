@@ -149,7 +149,7 @@ if __name__ == "__main__":
     if args.task_type == "regression":
         min_scale, max_scale = summer_dataset.get_scaling_params()
 
-    save_dir = os.path.join('/home/dhruvagarwal/projects/MitoSpace4D/adaptors/single_dataset/figures',
+    save_dir = os.path.join('/u/earkfeld/MitoSpace4D/adaptors/single_dataset/figures',
                             f'{args.task_type}_figures', args.target_column)
     os.makedirs(save_dir, exist_ok=True)
 

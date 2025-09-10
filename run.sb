@@ -6,7 +6,7 @@
 #SBATCH --job-name  mitospace_autencoded_normal_run2
 
 #SBATCH --partition=hotel-gpu
-#SBATCH --nodes=15
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --time=24:00:00
 #SBATCH --account=htl203

@@ -5,6 +5,7 @@ from utils.utils import load_config
 import torch.nn.functional as F
 from autoencoder.autoencoder import AutoEncoderRunner
 from autoencoder.models import MitoSpace3DAutoencoder
+import time
 
 
 class Basic3DBlock(nn.Module):
@@ -38,8 +39,11 @@ class Lightweight3DResNet(nn.Module):
         super(Lightweight3DResNet, self).__init__()
 
         self.apply_aug = apply_aug
+        # self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
-        dec_checkpoint_path = "/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
+
+        # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
+        dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/autoencoder/MitospaceAutoencoder.ckpt"
         decoder_model = MitoSpace3DAutoencoder()
         self.decoder = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=decoder_model)
         self.decoder = self.decoder.model.decoder
@@ -48,6 +52,9 @@ class Lightweight3DResNet(nn.Module):
         # Freeze decoder parameters
         for param in self.decoder.parameters():
             param.requires_grad = False
+
+        self.decoder.to('cuda')
+        self.augment_pipeline.to('cuda')
 
         # Initial layer: modify for 2-channel input
         self.stem = nn.Sequential(
@@ -91,8 +98,8 @@ class Lightweight3DResNet(nn.Module):
     def forward(self, x):
         with torch.no_grad():
             x = self.decoder(x)
-            #x = self.scramble_time(x)
             x = self.augment_pipeline(x) if self.apply_aug else 2*x-1  # (b, t, c, d, h, w)
+            #x = self.scramble_time(x)
 
         batch_size, time_steps, channels, depth, height, width = x.size()
 
@@ -114,11 +121,11 @@ class Lightweight3DResNet(nn.Module):
         x, _ = self.lstm(x)
 
         # Use the last LSTM output
-        x = x[:, -1, :]
+        # x = x[:, -1, :]
 
         # Pass all the timesteps to the final embedding to get the temporal embeddings
-        #b, t, d = x.size()
-        #x = x.reshape(-1, d)
+        b, t, d = x.size()
+        x = x.reshape(-1, d)
 
         # Final embedding
         x = self.fc(x)
@@ -126,14 +133,14 @@ class Lightweight3DResNet(nn.Module):
         # Projection head
         out = self.proj(x)
 
-        #x = x.reshape(b, t, -1)
-        #out = out.reshape(b, t, -1)
+        x = x.reshape(b, t, -1)
+        out = out.reshape(b, t, -1)[:, -1]
 
         return x, out
 
 
 if __name__ == '__main__':
-    cfg = load_config("/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml")
+    cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")
     # Initialize model and print the output shape
     model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
                                  apply_aug=True).cuda()

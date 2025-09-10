@@ -13,8 +13,6 @@ import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from utils.utils import load_config
 import warnings
-from pytorch_lightning.profilers import AdvancedProfiler
-
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -23,9 +21,8 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='MitoSpace4D')
 parser.add_argument('--log-every-n-steps', default=100, type=int,
                     help='Log every n steps')
-parser.add_argument('--config', default='/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml', type=str,
+parser.add_argument('--config', default='/u/earkfeld/MitoSpace4D/simclr/config.yaml', type=str,
                     help='Config path.')
-
 
 def main():
     warnings.filterwarnings("ignore")  # supress all warnings
@@ -47,6 +44,7 @@ def main():
                                         samples_per_drug=cfg['data_params']['samples_per_drug'],
                                         timesteps=cfg['data_params']['timesteps'],
                                         zstacks=cfg['data_params']['zstacks'])
+    
     val_dataset = dataset.get_dataset(cfg['data_params']['dataset_name'],
                                       cfg['training']['n_views'],
                                       flag='val', seed=None,
@@ -63,16 +61,19 @@ def main():
                             num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
                             persistent_workers=cfg['training']['persistent_workers'])
 
-    #model = MitoSpace4DConvLSTM(
-    #    in_channels=cfg['model_params']['in_channels'],
-    #    out_dim=cfg['model_params']['out_dim'],
-    #    cfg_aug=cfg['data_params']['transforms'],
-    #    apply_aug=True
-    #)
+    # model = MitoSpace4DConvLSTM(
+    #     in_channels=cfg['model_params']['in_channels'],
+    #     out_dim=cfg['model_params']['out_dim'],
+    #     cfg_aug=cfg['data_params']['transforms'],
+    #     apply_aug=True
+    # )
 
-    #model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], apply_aug=True)
+    # model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], 
+    #                                apply_aug=True)
 
-    model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'], apply_aug=True)
+    model = Lightweight3DResNet(embedding_size=2048, 
+                                cfg_aug=cfg['data_params']['transforms'], 
+                                apply_aug=True).cuda()
 
     for param in model.augment_pipeline.parameters():
         param.requires_grad = False
@@ -95,8 +96,10 @@ def main():
     if cfg["training"]["continue_from_ckpt_wo_opt"] != 'None':
         # Note: It simply loads the checkpoint and doesn't load the optimizer or scheduler states
         # To continue training properly, add ckpt_path in the trainer.fit() call
-        train_runner = SimCLRRunner.load_from_checkpoint(cfg["training"]["continue_from_ckpt_wo_opt"], cfg=cfg,
+        train_runner = SimCLRRunner.load_from_checkpoint(cfg["training"]["continue_from_ckpt_wo_opt"], 
+                                                         cfg=cfg,
                                                          model=model)
+        
         print(f"Loading checkpoints without optimizer from {cfg['training']['continue_from_ckpt_wo_opt']}")
 
     else:
@@ -108,12 +111,14 @@ def main():
         log_every_n_steps=13,
         logger=tb_logger,
         callbacks=[ckpt_callback],
-        precision=16,  # mixed precision training,
+        # precision=16,  # mixed precision training,
+        precision="16-mixed",  # mixed precision training,
         num_nodes=cfg["distributed"]["num_nodes"],
         devices=cfg["distributed"]["num_gpus"],
         strategy=cfg["distributed"]["strategy"],
-        sync_batchnorm=True
+        sync_batchnorm=True,
     )
+
     trainer.fit(
         model=train_runner,
         train_dataloaders=train_loader,

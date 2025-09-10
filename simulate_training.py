@@ -23,7 +23,7 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='MitoSpace4D')
 parser.add_argument('--log-every-n-steps', default=100, type=int,
                     help='Log every n steps')
-parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml', type=str,
+parser.add_argument('--config', default='/u/earkfeld/MitoSpace4D/simclr/config.yaml', type=str,
                     help='Config path.')
 
 
@@ -40,32 +40,41 @@ def main():
 
     train_dataset = dataset.get_dataset(cfg['data_params']['dataset_name'],
                                         cfg['training']['n_views'],
-                                        flag='train', seed=None,
+                                        flag='train', 
+                                        seed=None,
                                         pick_labels=None,
                                         samples_per_drug=cfg['data_params']['samples_per_drug'],
                                         timesteps=cfg['data_params']['timesteps'],
                                         zstacks=cfg['data_params']['zstacks'])
+    
     val_dataset = dataset.get_dataset(cfg['data_params']['dataset_name'],
                                       cfg['training']['n_views'],
-                                      flag='val', seed=None,
+                                      flag='val', 
+                                      seed=None,
                                       pick_labels=None,
                                       samples_per_drug=cfg['data_params']['samples_per_drug'],
                                       timesteps=cfg['data_params']['timesteps'],
                                       zstacks=cfg['data_params']['zstacks'])
 
-    train_loader = DataLoader(train_dataset, batch_size=cfg['training']['batch_size'], shuffle=True,
-                                num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
-                                persistent_workers=cfg['training']['persistent_workers'])
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=cfg['training']['batch_size'], 
+                              shuffle=True,
+                              num_workers=cfg['training']['workers'], 
+                              pin_memory=True, 
+                              drop_last=True,
+                              persistent_workers=cfg['training']['persistent_workers'])
 
-    val_loader = DataLoader(val_dataset, batch_size=cfg['training']['batch_size'], shuffle=False,
-                            num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
+    val_loader = DataLoader(val_dataset, 
+                            batch_size=cfg['training']['batch_size'], 
+                            shuffle=False,
+                            num_workers=cfg['training']['workers'], 
+                            pin_memory=True, 
+                            drop_last=True,
                             persistent_workers=cfg['training']['persistent_workers'])
-
 
     pbar = tqdm(len(train_loader))
     for batch in train_loader:
         pbar.update(1)
-
     pbar.close()
 
     pbar = tqdm(len(val_loader))

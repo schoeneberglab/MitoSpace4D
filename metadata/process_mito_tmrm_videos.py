@@ -33,7 +33,7 @@ def process_video(vid_path):
 
 
 if __name__ == '__main__':
-    source_dir = '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/videos'
+    source_dir = '/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/videos'
     video_ids = [str(i).zfill(6) for i in range(13000)]
 
     mito_vids_path = [osp.join(source_dir, f"mtg_{vid_id}.mp4") for vid_id in video_ids]

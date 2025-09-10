@@ -10,7 +10,7 @@ import random
 class AdaptorDataset(Dataset):
     def __init__(self, csv_file, embeddings_file, target_column='Label', task_type='regression', transform=None,
                  data='all',
-                 drugs_to_labels='/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt'):
+                 drugs_to_labels='/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt'):
         """
         Args:
             csv_file (str): Path to the CSV file.
@@ -24,7 +24,7 @@ class AdaptorDataset(Dataset):
             raise ValueError("Pass right data parameter")
 
         self.folder_drug_dict = {}
-        with open(f"/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
+        with open(f"/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
             for line in f:
                 folder, drug, label = line.split()
                 self.folder_drug_dict[folder] = {'drug': drug, 'label': label}
@@ -133,7 +133,7 @@ class AdaptorDataset(Dataset):
 
 if __name__ == "__main__":
     # Paths to your data files
-    base_path = "/home/dhruvagarwal/projects/MitoSpace4D/adaptors/adaptor_embeddings"
+    base_path = "/u/earkfeld/MitoSpace4D/adaptors/adaptor_embeddings"
     csv_path = f'{base_path}/combined_data.csv'
     embeddings_path = f"{base_path}/combined_embeddings.npy"
     # Create a dataset for a regression task (min-max scaling is applied)

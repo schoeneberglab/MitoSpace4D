@@ -53,10 +53,10 @@ def train_model(model, train_loader):
 if __name__ == '__main__':
     print("Started Training Loop")
     dataset = MitoSpaceAutoEncoderDataset(
-        root_dir='/home/dhruvagarwal/projects/MitoSpace4D/data/2024_subdata/processed_data/')
+        root_dir='/u/earkfeld/MitoSpace4D/data/2024_subdata/processed_data/')
     print("Total samples in dataset:", len(dataset))
 
-    # checkpoint_path = "/home/dhruvagarwal/projects/MitoSpace4D/autoencoder/runs/autoencoder/lightning_logs/version_2/checkpoints/epoch=31-step=43136.ckpt"
+    # checkpoint_path = "/u/earkfeld/MitoSpace4D/autoencoder/runs/autoencoder/lightning_logs/version_2/checkpoints/epoch=31-step=43136.ckpt"
     # checkpoint = torch.load(checkpoint_path)
     # print(checkpoint)
 

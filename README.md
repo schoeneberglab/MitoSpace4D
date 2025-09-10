@@ -34,7 +34,7 @@ This repository contains the training pipeline for **MitoSpace4D**, a 4D deep le
 Edit the configuration file located at:
 
 ```
-/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml
+/u/earkfeld/MitoSpace4D/simclr/config.yaml
 ```
 
 ---

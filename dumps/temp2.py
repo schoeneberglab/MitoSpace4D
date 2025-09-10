@@ -1,11 +1,11 @@
 import os
 import numpy as np
 
-emb_dir_1 = "/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings"
-emb_dir_2 = "/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings"
-# emb_dir_3 = "/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_3"
-# emb_dir_4 = "/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_4"
-emb_dir_combined = "/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings"
+emb_dir_1 = "/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings"
+emb_dir_2 = "/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings"
+# emb_dir_3 = "/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_3"
+# emb_dir_4 = "/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_4"
+emb_dir_combined = "/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings"
 
 os.makedirs(emb_dir_combined, exist_ok=True)
 

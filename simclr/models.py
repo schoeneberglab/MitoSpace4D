@@ -184,7 +184,7 @@ class MitoSpace4DConvLSTM(nn.Module):
 
 
 if __name__ == "__main__":
-    cfg = load_config("/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml")
+    cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")
     # Example usage
     in_channels = 2  # Assuming single-channel 3D data
     model = MitoSpace4DConvLSTM(in_channels=in_channels, out_dim=512, cfg_aug=cfg['data_params']['transforms']).cuda()

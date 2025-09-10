@@ -34,7 +34,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(description='MitoSpace Evaluation')
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
-parser.add_argument('--config', default='/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml',
+parser.add_argument('--config', default='/u/earkfeld/MitoSpace4D/simclr/config.yaml',
                     type=str, help='Config path.')
 parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
@@ -285,13 +285,13 @@ def l2_distance(eval_embeddings, train_embeddings):
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
+    proj_dir = "/u/earkfeld/MitoSpace4D/"
     already_have_embeddings = True
     top_ns = cfg["evaluate"]["top_ns"]
 
     drug_labels_dict = {}
     label_drug_dict = {}
-    with open(f"/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
+    with open(f"/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:
         for line in f:
             folder, drug, label = line.split()
             drug_labels_dict[drug] = int(label)
@@ -301,9 +301,9 @@ if __name__ == "__main__":
         split_perc = 0.9
 
         embeddings = np.load(
-            '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/embeddings.npy')
+            '/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/embeddings.npy')
         labels = np.load(
-            '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/labels.npy')
+            '/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/labels.npy')
 
         # shuffle them with seed 1123
         # random.seed(1123)
@@ -320,11 +320,11 @@ if __name__ == "__main__":
         train_labels, eval_labels = labels[:train_split], labels[train_split: train_split + val_split]
 
 
-        # train_embeddings = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/embeddings.npy')
-        # train_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/labels.npy')
+        # train_embeddings = np.load('/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/embeddings.npy')
+        # train_labels = np.load('/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/labels.npy')
         #
-        # eval_embeddings = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_5/embeddings.npy')
-        # eval_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_5/labels.npy')
+        # eval_embeddings = np.load('/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_5/embeddings.npy')
+        # eval_labels = np.load('/u/earkfeld/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_5/labels.npy')
 
         if len(train_embeddings.shape) > 2:
             train_embeddings = train_embeddings[:, -1]  # take only the final time step
@@ -390,9 +390,9 @@ if __name__ == "__main__":
                                                         temperature=cfg["training"]["loss"]["temperature"])
         preds, correct_preds_idxs, incorrect_preds_idxs = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs)
 
-        with open('/home/dhruvagarwal/projects/MitoSpace4D/correct_preds_idxs.pkl', 'wb') as f:
+        with open('/u/earkfeld/MitoSpace4D/correct_preds_idxs.pkl', 'wb') as f:
             pickle.dump(correct_preds_idxs, f)
-        with open('/home/dhruvagarwal/projects/MitoSpace4D/incorrect_preds_idxs.pkl', 'wb') as f:
+        with open('/u/earkfeld/MitoSpace4D/incorrect_preds_idxs.pkl', 'wb') as f:
             pickle.dump(incorrect_preds_idxs, f)
 
         # plot confusion matrix

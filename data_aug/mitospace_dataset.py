@@ -14,8 +14,12 @@ import time
 import torch
 
 class MitoSpaceDataModule(pl.LightningDataModule):
-    def __init__(self, train_datasets: List[Dataset], val_datasets: List[Dataset], batch_size: int,
-                 num_workers: int = 0, pin_memory: bool = True, drop_last: bool = True) -> None:
+    def __init__(self, train_datasets: List[Dataset], 
+                 val_datasets: List[Dataset], 
+                 batch_size: int,
+                 num_workers: int = 0, 
+                 pin_memory: bool = True, 
+                 drop_last: bool = True) -> None:
         super().__init__()
         self.batch_size = batch_size
         self.train_datasets = train_datasets
@@ -36,19 +40,25 @@ class MitoSpaceDataModule(pl.LightningDataModule):
 
 
 class MitoSpaceDataset(Dataset):
-    def __init__(self, root_dir: str, flag: str = 'train',
-                 seed: int = None, pick_labels: List = None, samples_per_drug: int = None,
-                 timesteps=None, zstacks=None) -> None:
+    def __init__(self, 
+                 root_dir: str, 
+                 flag: str = 'train',
+                 seed: int = None,
+                 pick_labels: List = None, 
+                 samples_per_drug: int = None,
+                 timesteps=None, 
+                 zstacks=None) -> None:
+        
         self.root_dir = root_dir
         self.timesteps = timesteps
         self.zstacks = zstacks
-
+        
         self.seed = 1123 if seed is None else seed
 
         print(f'Loading {flag} Dataset with split seed = {self.seed} ...')
 
         drug_labels = {}
-        with open('/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+        with open('/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
             drugs_to_labels = f.readlines()
             for line in drugs_to_labels:
                 folder, drug, label = line.split()
@@ -141,8 +151,8 @@ class MitoSpaceDataset(Dataset):
 
         # normalize if loading the processed_data (not encoded).
         # don't normalize if loading the encoded data (because then its already normalized)
-        image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
-        image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
+        # image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
+        # image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
 
         label = self.labels[idx]
 

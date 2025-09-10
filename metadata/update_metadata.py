@@ -33,7 +33,7 @@ dose_dict = {'cccp': '10 um',
 
 
 if __name__ == '__main__':
-    proj_dir = "/home/dhruvagarwal/projects/MitoSpace4D/"
+    proj_dir = "/u/earkfeld/MitoSpace4D/"
     save_dir = osp.join(proj_dir, "runs", "lightning_logs", 'resnetbilstm_encoded_normal')
     metadata = json.load(open(f"{save_dir}/metadata.json"))
 

@@ -33,7 +33,7 @@ class ContrastiveLearningDataset:
 
 
 if __name__ == '__main__':
-    config_path = '/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml'
+    config_path = '/u/earkfeld/MitoSpace4D/simclr/config.yaml'
     cfg = load_config(config_path)
     dataset = ContrastiveLearningDataset(cfg['data_params']['data_path'], cfg)
 

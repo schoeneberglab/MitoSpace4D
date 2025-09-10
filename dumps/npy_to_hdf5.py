@@ -25,9 +25,9 @@ def make_h5_data(save_dir, num_samples, all_filenames, all_labels, split='train'
     print(f"Data saved to HDF5 for {split}.")
 
 if __name__ == '__main__':
-    root_dir = '/home/dhruvagarwal/projects/MitoSpace4D/data/dummy_data/processed_data'
-    save_dir = '/home/dhruvagarwal/projects/MitoSpace4D/data/dummy_data'
-    drug_label_path = '/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt'
+    root_dir = '/u/earkfeld/MitoSpace4D/data/dummy_data/processed_data'
+    save_dir = '/u/earkfeld/MitoSpace4D/data/dummy_data'
+    drug_label_path = '/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt'
     seed = 1123
 
     drug_labels = {}

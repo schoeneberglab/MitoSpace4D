@@ -210,7 +210,7 @@ if __name__ == '__main__':
     zs_of_interest = [60, 80, 100, 120]  # chose zs to select cell regions
     num_threads = 4  # You can adjust this number based on your system's resources
     debug = False
-    ckpt_path = "/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/cellfinder_checkpoints/best.ckpt"
+    ckpt_path = "/u/earkfeld/MitoSpace4D/extraction_utils/cellfinder_checkpoints/best.ckpt"
 
     model, device = setup(ckpt_path)
 
