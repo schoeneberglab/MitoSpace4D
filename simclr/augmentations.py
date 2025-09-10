@@ -1,12 +1,12 @@
 from typing import Tuple, List
 
 import torch
-from torch import nn, Tensor
+from torch import nn
 import numpy as np
 from kornia.augmentation import RandomResizedCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomBrightness, \
     RandomGaussianNoise, RandomGaussianBlur, RandomErasing, RandomRotation, RandomAffine, RandomHorizontalFlip3D, \
     RandomVerticalFlip3D, RandomDepthicalFlip3D, RandomRotation3D, RandomAffine3D
-
+from kornia.augmentation.container import AugmentationSequential
 
 class RandomTimeFlip(nn.Module):
     def __init__(self, p=0.5) -> None:
@@ -23,7 +23,6 @@ class RandomTimeFlip(nn.Module):
         x = self.flipper(x)
         x = x.view(b, z, c, t, h, w)
         x = x.permute(0, 3, 2, 1, 4, 5) # (b, t, c, z, h, w)
-
         return x
 
 
@@ -96,7 +95,6 @@ class RandomBrightness(nn.Module):
             factor = np.random.uniform(self.range[0], self.range[1])
             x = x + factor  # that's what kornia's brightness augmentation does
             #x = torch.clamp(x, 0, 1)
-
         return x
 
 
@@ -107,7 +105,8 @@ class DataAugmentation(nn.Module):
         self.temporal_transform_1 = RandomTimeMask(p=cfg_aug['RandomTimeMask']['p'])
         self.temporal_transform_2 = RandomTimeFlip(p=cfg_aug['RandomTimeFlip']['p'])
 
-        self.transforms_2d = nn.Sequential(
+        # Use Kornia AugmentationSequential containers
+        self.transforms_2d = AugmentationSequential(
             RandomResizedCrop(p=cfg_aug['ResizedCrop']['p'],
                               size=(cfg_aug['ResizedCrop']['size'], cfg_aug['ResizedCrop']['size']),
                               scale=(cfg_aug['ResizedCrop']['scale'][0], cfg_aug['ResizedCrop']['scale'][1])),
@@ -125,20 +124,37 @@ class DataAugmentation(nn.Module):
             RandomGaussianNoise(p=cfg_aug['GaussianNoise']['p'],
                                 mean=cfg_aug['GaussianNoise']['mu'],
                                 std=cfg_aug['GaussianNoise']['scale']),
+            data_keys=["input"],  # default, explicit for clarity
         )
 
-        self.transforms_3d = nn.Sequential(RandomHorizontalFlip3D(p=cfg_aug['HorizontalFlip3D']['p']),
-                                           RandomVerticalFlip3D(p=cfg_aug['VerticalFlip3D']['p']),
-                                           RandomDepthicalFlip3D(p=cfg_aug['DepthicalFlip3D']['p']),
-                                           RandomRotation3D(p=cfg_aug['RandomRotation3D']['p'],
-                                                            degrees=cfg_aug['RandomRotation3D']['degrees']),
-                                           RandomAffine3D(p=cfg_aug['RandomAffine3D']['p'],
-                                                          degrees=cfg_aug['RandomAffine3D']['degrees'],
-                                                          translate=(cfg_aug['RandomAffine3D']['translate'][0],
-                                                                     cfg_aug['RandomAffine3D']['translate'][1],
-                                                                     cfg_aug['RandomAffine3D']['translate'][2])),
-                                           RandomExchangeFlip(p=cfg_aug['RandomExchangeFlip']['p'])
-                                           )
+        self.transforms_3d = AugmentationSequential(
+            RandomHorizontalFlip3D(p=cfg_aug['HorizontalFlip3D']['p']),
+            RandomVerticalFlip3D(p=cfg_aug['VerticalFlip3D']['p']),
+            RandomDepthicalFlip3D(p=cfg_aug['DepthicalFlip3D']['p']),
+            RandomRotation3D(p=cfg_aug['RandomRotation3D']['p'],
+                             degrees=cfg_aug['RandomRotation3D']['degrees']),
+            RandomAffine3D(p=cfg_aug['RandomAffine3D']['p'],
+                           degrees=cfg_aug['RandomAffine3D']['degrees'],
+                           translate=(cfg_aug['RandomAffine3D']['translate'][0],
+                                      cfg_aug['RandomAffine3D']['translate'][1],
+                                      cfg_aug['RandomAffine3D']['translate'][2])),
+            # Custom op not in Kornia sequence, but we can append here; it is nn.Module-compatible
+            RandomExchangeFlip(p=cfg_aug['RandomExchangeFlip']['p']),
+            data_keys=["input"],
+        )
+
+        # Disable Kornia image-module features to avoid CPU detaches
+        def _disable_kornia_features(module: nn.Module) -> None:
+            for m in module.modules():
+                if hasattr(m, "disable_features"):
+                    try:
+                        # type: ignore[attr-defined]
+                        m.disable_features = True
+                    except Exception:
+                        pass
+
+        _disable_kornia_features(self.transforms_2d)
+        _disable_kornia_features(self.transforms_3d)
 
         self.n_views = 2
         assert self.n_views == 2, "Only two views are supported for now"
@@ -146,6 +162,7 @@ class DataAugmentation(nn.Module):
         self.zero_mean_norm = zero_mean_norm
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+
         b, t, c, z, h, w = x.size()
 
         views = self.temporal_transform_1(x) # (b, t, c, z, h, w), (b, t, c, z, h, w)
@@ -154,10 +171,22 @@ class DataAugmentation(nn.Module):
         views = [view.view(b, -1, h, w) for view in views]
 
         for i in range(self.n_views):
+            # torch.cuda.synchronize()
+            # t0 = time.time()
             views[i] = self.transforms_2d(views[i]).view(b, t, c, z, h, w)  # same 2D transforms for all t and z
-            views[i] = self.transforms_3d(views[i].view(b * t, c, z, h, w)).view(b, t, c, z, h,
-                                                                         w)  # same 3D transforms for all t
+            # torch.cuda.synchronize()
+            # t1 = time.time()
+            views[i] = self.transforms_3d(views[i].view(b * t, c, z, h, w)).view(b, t, c, z, h, w)  # same 3D transforms for all t
+            # torch.cuda.synchronize()
+            # t2 = time.time()
             views[i] = self.temporal_transform_2(views[i])  # (b, t, c, z, h, w)
+            # torch.cuda.synchronize()
+            # t3 = time.time()
+
+            # print(f"\nView {i}: 2D time {(t1 - t0):.3f}s")
+            # print(f"View {i}: 3D time {(t2 - t1):.3f}s")
+            # print(f"View {i}: Time flip time {(t3 - t2):.3f}s")
+            # print(f"View {i}: Total augmentation time {(t3 - t0):.3f}s")
 
         views = torch.stack(views, dim=0)  # (n_views, b, t, c, z, h, w)
         views = views.view(-1, *views.shape[2:])  # (n_views*b, t, c, z, h, w)
