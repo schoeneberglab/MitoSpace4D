@@ -19,7 +19,9 @@ class MitoSpaceDataModule(pl.LightningDataModule):
                  batch_size: int,
                  num_workers: int = 0, 
                  pin_memory: bool = True, 
-                 drop_last: bool = True) -> None:
+                 drop_last: bool = True,
+                 prefetch_factor: int = 2) -> None:
+        
         super().__init__()
         self.batch_size = batch_size
         self.train_datasets = train_datasets

@@ -15,7 +15,6 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
 from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
-from archive.model_params import MitoSpace3DAutoencoderHigherParams
 from autoencoder.autoencoder_runner import AutoEncoderRunner
 from autoencoder_dataset import MitoSpaceAutoEncoderDataset, NormalizeChannelsByPath
 

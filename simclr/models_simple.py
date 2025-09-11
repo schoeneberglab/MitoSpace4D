@@ -3,10 +3,8 @@ import torch.nn as nn
 from simclr.augmentations import DataAugmentation
 from utils.utils import load_config
 import torch.nn.functional as F
-from autoencoder.autoencoder import AutoEncoderRunner
-from autoencoder.models import MitoSpace3DAutoencoder
-import time
-
+from autoencoder.autoencoder_runner import AutoEncoderRunner
+from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
 
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
