@@ -14,7 +14,7 @@ data_params:
     ResizedCrop:
       p: 0.5
       size: 256
-      scale: [ 0.35, 1.0 ]
+      scale: [0.35, 1.0]
     HorizontalFlip3D:
       p: 0.3
     VerticalFlip3D:

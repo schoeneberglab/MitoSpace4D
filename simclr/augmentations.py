@@ -3,6 +3,7 @@ from torch import nn
 from kornia.augmentation import RandomResizedCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomBrightness, \
     RandomGaussianNoise, RandomGaussianBlur, RandomErasing, RandomRotation, RandomAffine, RandomHorizontalFlip3D, \
     RandomVerticalFlip3D, RandomDepthicalFlip3D, RandomRotation3D, RandomAffine3D
+import time
 
 def _disable_kornia_features(module: nn.Module) -> None:
             for m in module.modules():
@@ -205,5 +206,8 @@ class DataAugmentation(nn.Module):
 
         if self.zero_mean_norm:
             return 2 * views - 1
+        
+        end_time = time.time()
+        print(f"Data augmentation took {end_time - start_time:.4f} seconds")
 
         return views

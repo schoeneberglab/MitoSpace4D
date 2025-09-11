@@ -47,7 +47,8 @@ def add_to_viewer(viewer, img_path, translate, channel=0, cmap='cyan', bounding_
 
     # Add the image to the viewer
     viewer.add_image(
-        img[:, channel],
+        # img[:, channel], # for 4d
+        img[channel], # for 3d
         name=f"Image {drug_name}",
         translate=translate,
         colormap=cmap,
@@ -65,26 +66,31 @@ def add_to_viewer(viewer, img_path, translate, channel=0, cmap='cyan', bounding_
         )
 
 
-def visualise_samples(img_paths):
-    napari_viewer = napari.Viewer()
+# def visualise_samples(img_paths):
+#     napari_viewer = napari.Viewer()
 
-    # assuming 4 images
-    add_to_viewer(napari_viewer, img_paths[0], translate=(0, 0), channel=0)
-    add_to_viewer(napari_viewer, img_paths[1], translate=(0, 256 + 10), channel=1)
-    add_to_viewer(napari_viewer, img_paths[2], translate=(256 + 10, 0), channel=0)
-    add_to_viewer(napari_viewer, img_paths[3], translate=(256 + 10, 256 + 10), channel=1)
+#     # assuming 4 images
+#     add_to_viewer(napari_viewer, img_paths[0], translate=(0, 0), channel=0)
+#     add_to_viewer(napari_viewer, img_paths[1], translate=(0, 256 + 10), channel=1)
+#     add_to_viewer(napari_viewer, img_paths[2], translate=(256 + 10, 0), channel=0)
+#     add_to_viewer(napari_viewer, img_paths[3], translate=(256 + 10, 256 + 10), channel=1)
 
-    napari.run()
+#     napari.run()
 
 
 if __name__ == '__main__':
-    fpaths = ['/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data/processed_data/20240816/000001.npy',
-              '/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data/processed_data/20240905/000001.npy']
+    # fpaths = ['/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data/processed_data/20240816/000001.npy',
+    #           '/media/dhruvagarwal/easystore/MitoSpace4D/data/2024_data/processed_data/20240905/000001.npy']
+
     # Replace with the paths to the images you want to visualise
+    # fpaths = ["/run/user/1002/gvfs/smb-share:server=aquila0.jslab.ucsd.edu,share=ssd_processing/Others/MitoSpace4D/2025_summer/20250811-1/000005-0.npy"]
+    # fpaths = ["/home/earkfeld/Projects/MitoSpace4D/sample_0_decoded.npy"]
+    fpaths = ["/home/earkfeld/Downloads/c0_s10.npy",
+              "/home/earkfeld/Downloads/c8_s10.npy"]
 
     viewer = napari.Viewer()
 
-    for i, fpath in enumerate(fpaths[:5]):
+    for i, fpath in enumerate(fpaths):
         if not osp.exists(fpath):
             raise FileNotFoundError(f"File not found: {fpath}")
 

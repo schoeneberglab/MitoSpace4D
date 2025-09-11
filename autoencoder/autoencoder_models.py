@@ -92,11 +92,12 @@ class MitoSpace3DEncoder(nn.Module):
         batch_size, timesteps, channels, stacks, height, width = x.shape
         x = x.view(batch_size * timesteps, channels, stacks, height, width)
 
+        # Concatenate downsampled input as additional channels for stability
         noisy_x = torch.nn.functional.interpolate(x,
                                                   scale_factor=(0.25, 0.25, 0.25),
-                                                  mode='nearest',
-                                                  align_corners=None,
-                                                )
+                                                  mode='trilinear',
+                                                  align_corners=True,
+                                                  )
 
         x = self.conv1(x)
         x = self.conv2(x)
@@ -240,3 +241,16 @@ if __name__ == '__main__':
     batch_size = 1
     autoencoder = MitoSpace3DAutoencoder().cuda()
     summary(autoencoder, input_size=(10, 2, 60, 256, 256), batch_size=batch_size)
+
+    encoder = MitoSpace3DEncoder().cuda()
+    decoder = MitoSpace3DDecoder().cuda()
+
+    x = torch.randn(batch_size, 20, 2, 60, 256, 256).cuda()
+    z = encoder(x)
+    y = decoder(z)
+
+    # Print the dims of the input, latent, and output tensors and their datasizes
+    print(f'Input shape: {x.shape}, size: {x.element_size() * x.nelement() / (1024 ** 2):.2f} MB')
+    print(f'Latent shape: {z.shape}, size: {z.element_size() * z.nelement() / (1024 ** 2):.2f} MB')
+    print(f'Output shape: {y.shape}, size: {y.element_size() * y.nelement() / (1024 ** 2):.2f} MB')
+    print(f'Compression Factor: {x.element_size() * x.nelement() / (z.element_size() * z.nelement()):.2f}x')

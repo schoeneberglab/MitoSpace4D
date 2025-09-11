@@ -139,12 +139,17 @@ def get_phenotypic_colors(similarity_matrix, num_clusters):
     plt.show()
 
 
-def get_drug_labels(fpath):
+def get_drug_label_maps(fpath):
+    """ 
+    Returns drug label maps.
+    :param fpath: Path to the file containing drug-label mappings.
+    :return: (drug_labels_dict, label_drug_dict)
+    """
     drug_labels_dict = {}
     label_drug_dict = {}
     with open(fpath, 'r') as f:
         for line in f:
-            drug, label = line.split()
+            folder, drug, label = line.split()
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
 
@@ -474,13 +479,15 @@ def get_fpaths(root_dir, seed=1123):
             folder, drug, label = line.split()
             drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-    drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data'))])
-
+    # drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data'))])
+    drug_folders = sorted([file for file in os.listdir(root_dir) if osp.isdir(osp.join(root_dir, file))])
     all_filenames = []
 
     for drug_folder in drug_folders:
-        filenames = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data', drug_folder))])
-        filenames = [osp.join(root_dir, 'processed_data', drug_folder, file) for file in filenames]
+        # filenames = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data', drug_folder))])
+        # filenames = [osp.join(root_dir, 'processed_data', drug_folder, file) for file in filenames]
+        filenames = sorted([file for file in os.listdir(osp.join(root_dir, drug_folder))])
+        filenames = [osp.join(root_dir, drug_folder, file) for file in filenames]
 
         all_filenames.extend(filenames)
 

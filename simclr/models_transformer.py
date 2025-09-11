@@ -20,8 +20,16 @@ def get_sinusoidal_embedding(seq_len, dim, device):
 
 
 class MitoSpace4DTransformer(nn.Module):
-    def __init__(self, out_dim=512, feat_dim=2048, patch_size=(2, 6, 32, 32), hidden_dim=512, nheads=8, num_layers=5,
-                 cfg_aug=None, apply_aug=False):
+    def __init__(self, 
+                 out_dim=512, 
+                 feat_dim=2048, 
+                 patch_size=(2, 6, 32, 32), 
+                 hidden_dim=512, 
+                 nheads=8, 
+                 num_layers=5,
+                 cfg_aug=None, 
+                 apply_aug=False):
+        
         super(MitoSpace4DTransformer, self).__init__()
 
         self.patch_size = patch_size  # (t, d, h, w)
@@ -40,16 +48,26 @@ class MitoSpace4DTransformer(nn.Module):
                     256 // self.patch_size[3])
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, hidden_dim))
 
-        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=nheads, dim_feedforward=hidden_dim)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, 
+                                                   nhead=nheads, 
+                                                   dim_feedforward=hidden_dim)
+        
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer,
+                                                         num_layers=num_layers)
 
         self.fc = nn.Linear(hidden_dim, feat_dim)
-        self.proj = nn.Sequential(nn.Linear(feat_dim, out_dim, bias=False), nn.BatchNorm1d(out_dim),
-                                  nn.ReLU(inplace=True), nn.Linear(out_dim, out_dim, bias=True))
+        self.proj = nn.Sequential(nn.Linear(feat_dim, out_dim, bias=False), 
+                                  nn.BatchNorm1d(out_dim),
+                                  nn.ReLU(inplace=True), 
+                                  nn.Linear(out_dim, out_dim, bias=True))
 
     def patchify_and_embed(self, x):
-        x = einops.rearrange(x, 'b (t p1) c (d p2) (h p3) (w p4) -> b (t d h w) (p1 p2 p3 p4 c)',
-                             p1=self.patch_size[0], p2=self.patch_size[1], p3=self.patch_size[2], p4=self.patch_size[3])
+        x = einops.rearrange(x, 
+                             'b (t p1) c (d p2) (h p3) (w p4) -> b (t d h w) (p1 p2 p3 p4 c)',
+                             p1=self.patch_size[0], 
+                             p2=self.patch_size[1], 
+                             p3=self.patch_size[2], 
+                             p4=self.patch_size[3])
         return self.embed(x)
 
     def forward(self, x):
@@ -78,6 +96,12 @@ if __name__ == "__main__":
     # Example usage
     in_channels = 2  # Assuming single-channel 3D data
     model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms']).cuda()
+
+    # Print parameter count
+    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total trainable parameters: {total_params:.2e}")
+    model_size_mb = total_params * 2 / (1024 ** 2)  # Assuming 2 bytes per parameter (float16)
+    print(f"Estimated model size (fp16): {model_size_mb:.2f} MB")
 
     # Create a sample input tensor with shape (batch_size, sequence_length, in_channels, depth, height, width)
     input_tensor = torch.randn(6, 20, 2, 60, 256, 256).cuda()  # Example input tensor

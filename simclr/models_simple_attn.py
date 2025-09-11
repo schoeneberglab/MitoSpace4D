@@ -3,8 +3,8 @@ import torch.nn as nn
 from simclr.augmentations import DataAugmentation
 from utils.utils import load_config
 import torch.nn.functional as F
-from autoencoder.autoencoder import AutoEncoderRunner
-from autoencoder.models import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_runner import AutoEncoderRunner
+from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
 
 
 class Basic3DBlock(nn.Module):
@@ -35,7 +35,7 @@ class Basic3DBlock(nn.Module):
 
 
 class Lightweight3DResNet(nn.Module):
-    def __init__(self, embedding_size=2048, cfg_aug=None, apply_aug=False, dropout_rate=0.4):
+    def __init__(self, embedding_size=2048, cfg_aug=None, apply_aug=False, dropout_rate=0.4, decoder_checkpoint_path=None):
         super(Lightweight3DResNet, self).__init__()
 
         self.apply_aug = apply_aug
@@ -100,7 +100,8 @@ class Lightweight3DResNet(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            #x = self.decoder(x)
+            if self.with_decoder:
+                x = self.decoder(x)
             #x = self.scramble_time(x)
             x = self.augment_pipeline(x) if self.apply_aug else 2*x-1  # (b, t, c, d, h, w)
 

@@ -289,6 +289,8 @@ if __name__ == "__main__":
     already_have_embeddings = True
     top_ns = cfg["evaluate"]["top_ns"]
 
+    embeddings_dir = ""
+
     drug_labels_dict = {}
     label_drug_dict = {}
     with open(f"/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt", 'r') as f:

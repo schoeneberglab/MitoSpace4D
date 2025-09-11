@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import napari
+from utils.utils import get_drug_label_maps
 
 cmap = LinearSegmentedColormap.from_list('blackgreen', ["k", "lime"], N=256)
 
@@ -42,7 +43,6 @@ def demo_crop_geometry():
     pcd = o3d.io.read_point_cloud(pcd_data.paths[0])
     o3d.visualization.draw_geometries_with_editing([pcd])
 
-
 def draw_registration_result(source, target, transformation):
     source_temp = copy.deepcopy(source)
     target_temp = copy.deepcopy(target)
@@ -51,13 +51,21 @@ def draw_registration_result(source, target, transformation):
     source_temp.transform(transformation)
     o3d.visualization.draw_geometries([source_temp, target_temp])
 
-
 def add_to_viewer(viewer, img, translate, channel=0, label=""):
     # visualising mito channel, change the index to 0 for tmrm channel
     viewer.add_image(img[:, channel], name=f"{label}", translate=translate, colormap='cyan')
 
+def plot_arrows(pcd, arrows):
+    o3d.visualization.draw_geometries([pcd] + arrows)
 
-def pick_points(pcd, labels, label_names, image_paths=None):
+def get_per_frame_vals(vals, n_frames=20):
+    """ Repeats the image paths by n_frames """
+    frame_vals = []
+    for val in vals:
+        frame_vals.extend(np.repeat(val, n_frames).tolist())
+    return np.array(frame_vals)
+
+def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, label_drug_dict=None):
     print("")
     print(
         "1) Please pick at least three correspondences using [shift + left click]"
@@ -65,46 +73,66 @@ def pick_points(pcd, labels, label_names, image_paths=None):
     print("   Press [shift + right click] to undo point picking")
     print("2) After picking points, press 'Q' to close the window")
 
+    # get_label_name_fn = lambda idx: label_names[(labels[idx])]
+
     vis = o3d.visualization.VisualizerWithEditing()
     vis.create_window()
     vis.add_geometry(pcd)
+    # vis.get_render_option().point_size = 3.0
 
     vis.run()  # user picks points
     idxs = vis.get_picked_points()
 
-    napari_viewer = napari.Viewer()
+    if len(idxs) == 0:
+        print("No points picked, closing the visualizer.")
+        vis.destroy_window()
+        exit(0)
+
+    # TODO: Fix napari visualization routines
+    # napari_viewer = napari.Viewer()
 
     drug_names = []
     picked_image_paths = []
     imgs = []
     for i, idx in enumerate(idxs):
-        drug_names.append(label_names[(labels[idx]%27)])
+        # drug_names.append(label_names[(labels[idx%20]%27)])
+        # drug_names.append(get_label_name_fn(idx))
+        drug_names.append(label_drug_dict[labels[idx]])
+        # if image_times is not None:
+        #     time_index = image_times[idx]
+        #     picked_image_paths.append(image_paths[time_index])
+        # else:
+            # picked_image_paths.append(image_paths[idx])
         picked_image_paths.append(image_paths[idx])
+        
         if image_paths is not None:
             img_4d = np.load(image_paths[idx])
 
             # skimage.io.imsave("/home/dhruvagarwal/Desktop/p110.tiff", img_4d[0, 0])
 
-            add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 0), channel=0, label=label_names[(labels[idx]%27)])
-            add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 256 + 10), channel=1, label=label_names[(labels[idx]%27)])
+            # add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 0), channel=0, label=label_names[(labels[idx]%27)])
+            # add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 256 + 10), channel=1, label=label_names[(labels[idx]%27)])
 
             img_4d = img_4d.astype(np.float32)
-            img_4d[:, 0] = np.clip(img_4d[:, 0], 0., 25000) / 25000
-            img_4d[:, 1] = np.clip(img_4d[:, 1], 0., 10000) / 10000
+            # img_4d[:, 0] = np.clip(img_4d[:, 0], 0., 25000) / 25000
+            # img_4d[:, 1] = np.clip(img_4d[:, 1], 0., 10000) / 10000
 
-            imgs.append((img_4d[0, :, :].max(axis=1)))
+            if image_times is not None:
+                # Get the corresponding image by index
+                time_index = image_times[idx]
+                # imgs.append(img_4d[time_index, :, :].max(axis=1))
+                imgs.append(img_4d[:, time_index, ...].max(axis=1))
+            else:
+                # imgs.append(img_4d[0, :, :].max(axis=1))
+                imgs.append(img_4d[:, 0, ...].max(axis=1))
 
-    napari_viewer.window.add_plugin_dock_widget(
-        plugin_name="napari-matplotlib", widget_name="FeaturesHistogram"
-    )
-
-    napari.run()
+    # napari_viewer.window.add_plugin_dock_widget(
+    #     plugin_name="napari-matplotlib", widget_name="FeaturesHistogram"
+    # )
+    # napari.run()
 
     print(drug_names)
     print(picked_image_paths)
-
-    if len(idxs) == 0:
-        return
 
     colors = np.array(pcd.colors)[idxs]
 
@@ -131,73 +159,139 @@ def pick_points(pcd, labels, label_names, image_paths=None):
     for idx in idxs:
         print(idx)
         print(labels[idx])
-        print(label_names[int(labels[idx]%27)])
+        # print(label_names[int(labels[idx]%27)])
+        # print(get_label_name_fn(idx))
+        print(label_drug_dict[labels[idx]])
+        print(image_paths[idx])
         print("")
-    patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_names[int(labels[idxs[i]]%27)])) for i in
-               range(len(idxs))]
+    # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_names[int(labels[idxs[i]]%27)])) for i in
+    #            range(len(idxs))]
+    # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=get_label_name_fn(idxs[i]))) for i in range(len(idxs))]
+
+
+    # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_drug_dict[labels[idx]])) for i in range(len(idxs))]
+
+    patches = []
+    for i, idx in enumerate(idxs):
+        l = label_drug_dict[labels[idx]]
+        ds = image_paths[idx].split("/")[-2]
+        patches.append(mpatches.Patch(color=colors[i], label="{l} ({ds})".format(l=l, ds=ds)))
+
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     plt.show()
     print("")
     return vis.get_picked_points()
 
-
-def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None):
+def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None, single_frames=False, save_pcd=None, label_drug_dict=None, datasets=None):
     EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings_umap.npy')
     LABEL_PATH = osp.join(embedding_dir, 'labels.npy')
     LABEL_NAME_PATH = osp.join(embedding_dir, 'label_names.npy')
+    IMAGE_PATHS = osp.join(embedding_dir, 'image_paths.csv')
+    IMAGE_TIME_PATH = osp.join(embedding_dir, 'image_times.npy')
 
     embeddings = np.load(EMBEDDING_PATH)
     labels = np.load(LABEL_PATH)
-    # labels = labels.repeat(20)
+    label_names = np.load(LABEL_NAME_PATH)
+    image_paths = np.loadtxt(IMAGE_PATHS, dtype=str).tolist()
+    image_paths = np.array(image_paths)
+    colors = color_palette
+    
+    if single_frames:
+        image_times = np.load(IMAGE_TIME_PATH) if single_frames else None
+        # labels = get_per_frame_vals(labels)
+        image_paths = get_per_frame_vals(image_paths)
 
     # pick labels present in the pick_labels list
     if pick_labels is not None:
         mask = np.isin(labels, pick_labels)
+        if datasets is not None:
+            img_datasets = [image_paths[i].split("/")[-2] for i in range(len(image_paths))]
+            img_datasets = np.array(img_datasets)
+            dataset_mask = np.isin(img_datasets, datasets)
+            mask = np.logical_and(mask, dataset_mask)
         embeddings = embeddings[mask]
         labels = labels[mask]
-        image_paths = [image_paths[i] for i in range(len(image_paths)) if mask[i]]
+        image_paths = image_paths[mask]
+        image_times = image_times[mask] if single_frames else None
+
+        # temporal_vectors = temporal_vectors[mask] if iv_map else None
+
+        # temporal/region colormaps
+        if isinstance(color_palette, np.ndarray):
+            colors = color_palette[mask]
+
+        # Label Color map
+        if isinstance(color_palette, dict):
+            colors = np.array([color_palette[int(label)] for label in labels])
+            colors[labels < 0] = 0
+            colors = colors[:, :3]
+            # colors = colors[mask]
+
+        # image_paths = [image_paths[i] for i in range(len(image_paths)) if mask[i]]
+        # image_paths = image_paths.to(list)
 
         # to visualise the temporal progression in the embeddings
         # for temp, label in enumerate(labels):
         #     labels[temp] = (int(temp) % 20)
+    else:
+        if not isinstance(color_palette, np.ndarray):
+            colors = np.array([color_palette[int(label)] for label in labels])
+            colors[labels < 0] = 0
+            colors = colors[:, :3]
 
-    label_names = np.load(LABEL_NAME_PATH)
-
-    max_label = labels.max()
+    # max_label = labels.max()
+    # color_palette = generate_distinct_colors(max_label + 1)
+    
+    # Set up the point cloud
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(embeddings)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
 
-    # color_palette = generate_distinct_colors(max_label + 1)
-    colors = np.array([color_palette[int(label)] for label in labels])
-    colors[labels < 0] = 0
-    pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+    # Save the pcd
+    if save_pcd is not None:
+        o3d.io.write_point_cloud(save_pcd, pcd)
 
-    aabb = pcd.get_axis_aligned_bounding_box()
-    aabb.color = np.array([0, 0, 0])
+    # if iv_map:
+    #     temporal_vector_objs = []
+    #     for i in range(temporal_vectors.shape[0]):
+    #         vec = temporal_vectors[i]
+    #         # Draw the arrows in gray
+    #         origin = vec[0]
+    #         extent = vec[1]
 
-    vis = o3d.visualization.Visualizer()
-    vis.create_window()
-    vis.add_geometry(pcd)
+    #         arrow = draw_arrow(origin, extent, color=[0.5, 0.5, 0.5])
+    #         temporal_vector_objs.append(arrow)
+    # else:
+    #     temporal_vector_objs = []
+
+    # aabb = pcd.get_axis_aligned_bounding_box()
+    # aabb.color = np.array([0, 0, 0])
+
+    # vis = o3d.visualization.Visualizer()
+    # vis.create_window()
+    # vis.add_geometry(pcd)
 
     # save the pcd
-    o3d.io.write_point_cloud('/home/dhruvagarwal/Desktop/phenotypic_4d_mitospace.pcd', pcd)
+    # o3d.io.write_point_cloud('/home/dhruvagarwal/Desktop/phenotypic_4d_mitospace.pcd', pcd)
 
-    opt = vis.get_render_option()
-    opt.point_size = 3
+    # opt = vis.get_render_option()
+    # opt.point_size = 3
 
     # vis.add_geometry(mesh_frame)
-    vis.run()
+    # vis.run()
 
-    # Create legend
-    legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names))]
-    plt.figure(figsize=(10, 10))
-    plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
-    plt.axis('off')
-    plt.show()
+    # Create legend for the colors and labels (possibly picked)
+    # legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names)-1)]
+    # plt.figure(figsize=(10, 10))
+    # plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
+    # plt.axis('off')
+    # plt.show()
 
+    # if iv_map:
+    #     plot_arrows(pcd, temporal_vector_objs)
+    
     while True:
-        pick_points(pcd, labels, label_names, image_paths)
-
+        pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict)
 
 def plot_confusion_matrix(cm,
                           label_names,
@@ -248,7 +342,6 @@ def plot_cm(gt_labels, pred_labels, label_drug_dict, verbose=True, make_plot=Tru
                               cmap=None,
                               normalize=True,
                               k=100)
-
     return cm
 
 

@@ -13,7 +13,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from typing import Any, Dict, List, Tuple
 import matplotlib.pyplot as plt
-from autoencoder.models import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
 import io
 from pytorch_msssim import ssim, ms_ssim, SSIM, MS_SSIM
 from PIL import Image

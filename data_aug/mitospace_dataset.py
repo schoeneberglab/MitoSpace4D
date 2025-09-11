@@ -27,17 +27,17 @@ class MitoSpaceDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.drop_last = drop_last
+        self.prefetch_factor = prefetch_factor
 
     def train_dataloader(self):
         # Return dataloader for training
         return DataLoader(ConcatDataset(self.train_datasets), batch_size=self.batch_size, shuffle=True,
-                          num_workers=self.num_workers, pin_memory=self.pin_memory, drop_last=self.drop_last)
+                          num_workers=self.num_workers, pin_memory=self.pin_memory, drop_last=self.drop_last, prefetch_factor=self.prefetch_factor)
 
     def val_dataloader(self):
         # Return dataloader for validation
         return DataLoader(ConcatDataset(self.val_datasets), batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.num_workers, pin_memory=self.pin_memory, drop_last=self.drop_last)
-
+                          num_workers=self.num_workers, pin_memory=self.pin_memory, drop_last=self.drop_last, prefetch_factor=self.prefetch_factor)
 
 class MitoSpaceDataset(Dataset):
     def __init__(self, 
@@ -64,14 +64,30 @@ class MitoSpaceDataset(Dataset):
                 folder, drug, label = line.split()
                 drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
+        #-- encoded data dir
+        # drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
+
+        #-- All Dirs
+        drug_folders = sorted([file for file in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, file))])
+
+        #-- Kinetic dirs (v1)
+        # drug_folders = ['20250722-2', '20250724-1', '20250724-2', '20250725-1', '20250728-1', '20250804-1', '20250804-2', '20250805-1', '20250805-2', '20250806-2', '20250807-1', '20250807-2', '20250813-1', '20250813-2', '20250814-1', '20250814-2']
+
+        #-- Cancer dirs
+        # drug_folders = ["20250811-1", "20250811-2", "20250812-1", "20250828-1", "20250828-2", "20250828-3"]
+        # drug_folders = ["20250811-1", "20250811-2", "20250812-1"]
+
+        #--Kinetic control dir
+        # drug_folders = ["20250807-1"]
 
         self.all_filenames = []
         self.all_labels = []
 
         for drug_folder in drug_folders:
-            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data', drug_folder)) if osp.isfile(osp.join(self.root_dir, 'encoded_data', drug_folder, file))])
-            filenames = [osp.join(self.root_dir, 'encoded_data', drug_folder, file) for file in filenames]
+            # filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data', drug_folder)) if osp.isfile(osp.join(self.root_dir, 'encoded_data', drug_folder, file))])
+            # filenames = [osp.join(self.root_dir, 'encoded_data', drug_folder, file) for file in filenames]
+            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, drug_folder)) if osp.isfile(osp.join(self.root_dir, drug_folder, file))])
+            filenames = [osp.join(self.root_dir, drug_folder, file) for file in filenames]
 
             if samples_per_drug != 'None' and samples_per_drug is not None:
                 print(f"Limiting the number of samples per drug to {samples_per_drug}")
@@ -156,6 +172,9 @@ class MitoSpaceDataset(Dataset):
 
         label = self.labels[idx]
 
-        #print(img_name, label)
+        # -- normalize if loading the processed_data (not encoded).
+        # don't normalize if loading the encoded data (because then its already normalized)
+        # image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
+        # image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
 
         return {"images": image, "classes": label, "image_paths": img_name}

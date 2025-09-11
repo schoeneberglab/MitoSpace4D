@@ -7,19 +7,21 @@ import matplotlib.pyplot as plt
 
 
 class MitoSpaceAutoEncoderDataset(Dataset):
-    def __init__(self, root_dir):
+    def __init__(self, root_dirs, transform=None):
         """
+        Custom Dataset for loading .npy files from multiple subfolders within given root directories.
         Args:
-            root_dir (string): Directory with all the subfolders and npy files.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
+            root_dirs (str or list of str): Root directory or list of root directories containing subfolders with .npy files.
+            transform (callable, optional): Optional transform to be applied on a sample.
         """
-        self.root_dir = root_dir
+        self.root_dirs = root_dirs if isinstance(root_dirs, list) else [root_dirs]
         self.data_files = []
+        self.transform = transform
 
         # Traverse all subfolders and gather npy files
-        for subfolder in sorted(os.listdir(root_dir)):
-            subfolder_path = os.path.join(root_dir, subfolder)
+        for root_dir in root_dirs:
+            for subfolder in sorted(os.listdir(root_dir)):
+                subfolder_path = os.path.join(root_dir, subfolder)
             if os.path.isdir(subfolder_path):
                 for file in sorted(os.listdir(subfolder_path)):
                     if file.endswith('.npy'):
@@ -33,19 +35,39 @@ class MitoSpaceAutoEncoderDataset(Dataset):
         img_name = self.data_files[idx]
         image = np.load(img_name)
         image = image.astype(np.float32)
-        max_value_tmrm = 25000
-        max_value_tracker = 10000
 
-        image[:, 0] = np.clip(image[:, 0], 0, max_value_tmrm)
-        image[:, 0] = image[:, 0] / max_value_tmrm
-
-        image[:, 1] = np.clip(image[:, 1], 0, max_value_tracker)
-        image[:, 1] = image[:, 1] / max_value_tracker
-
-        image = image.astype(np.float32)
-
+        if self.transform:
+            image = self.transform(image, img_name)
         return {'image': image, 'fpath': img_name}
 
+
+class NormalizeChannelsByPath(object):
+    """
+    Transform that clips and normalizes images by channel if the path string contains a specified substring.
+
+    Args:
+        path_substr (str): Substring to look for in the file path.
+        max_values (list of float): List of maximum values for each channel to use for clipping and normalization.
+    """
+
+    def __init__(self, path_substr, max_values):
+        self.path_substr = path_substr
+        self.max_values = max_values
+
+    def __call__(self, image, path):
+        if self.path_substr in path:
+            for c, max_val in enumerate(self.max_values):
+                if c < image.shape[1]:  # safeguard for channel count
+                    image[:, c] = torch.clamp(image[:, c], 0, max_val) / max_val
+
+            image = image.to(dtype=torch.float32)
+        return image
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(path_substr='{self.path_substr}', "
+            f"max_values={self.max_values})"
+        )
 
 def save_random_image(dataset, save_dir='.'):
     # Ensure the save directory exists
@@ -78,9 +100,22 @@ def save_random_image(dataset, save_dir='.'):
 
 
 if __name__ == '__main__':
+
+    data_dirs = [
+        "/mnt/aquila0/others/MitoSpace4D/data/aligned",  # Summer 2024
+        "/mnt/aquila0/ssd_processing/Others/MitoSpace4D/summer_2025_new/"
+    ]
+
+    ds_transform = NormalizeChannelsByPath(
+        path_substr='2024',
+        max_values=[25000, 10000]  # TMRM (ch0), MTG (ch1)
+    )
+
     # Create a dataset object
     dataset = MitoSpaceAutoEncoderDataset(
-        root_dir='/u/earkfeld/MitoSpace4D/data/2024_subdata/processed_data/')
+        root_dirs=data_dirs,
+        transform=ds_transform
+    )
     print("Total samples in dataset:", len(dataset))
 
     sample_idx = np.random.randint(len(dataset))
