@@ -34,7 +34,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(description='MitoSpace Evaluation')
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
-parser.add_argument('--config', default='/home/earkfeld/projects/MitoSpace4D/simclr/config.yaml',
+parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml',
                     type=str, help='Config path.')
 parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
@@ -281,15 +281,37 @@ def l2_distance(eval_embeddings, train_embeddings):
 
     return dist_matrix
 
+def balance_label_counts(embeddings, labels):
+    unique_labels = np.unique(labels)
+    # Count the number of occurences of each label
+    label_counts = {lbl: np.sum(labels == lbl) for lbl in unique_labels}
+    print(label_counts)
+    min_count = min(label_counts.values())
+    
+    indices = []
+    for lbl in unique_labels:
+        # Get all indices for this label
+        lbl_indices = np.where(labels == lbl)[0]
+        # Randomly select min_count indices
+        selected_indices = np.random.choice(lbl_indices, min_count, replace=False)
+        indices.extend(selected_indices)
+
+    return embeddings[indices], labels[indices]
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
     proj_dir = "/home/earkfeld/Projects/MitoSpace4D"
+    
     already_have_embeddings = True
+    balance_classes = True
+    
+    split_perc = 0.9
     top_ns = cfg["evaluate"]["top_ns"]
 
-    embeddings_dir = ""
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames"
+    embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames_modified_labels_for_eval"
 
     drug_labels_dict = {}
     label_drug_dict = {}
@@ -299,13 +321,23 @@ if __name__ == "__main__":
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
 
-    if already_have_embeddings:
-        split_perc = 0.9
+    # pick_labels = [30, 31]
+    pick_labels = list(label_drug_dict.keys())
 
+    # Remove any labels not in pick_labels
+    drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in pick_labels}
+    label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in pick_labels}
+
+    if already_have_embeddings:
         embeddings = np.load(
-            f'{embeddings_dir}/embeddings.npy')
+            f'{embeddings_dir}/embeddings_raw.npy')
         labels = np.load(
             f'{embeddings_dir}/labels.npy')
+        
+        if balance_classes:
+            embeddings, labels = balance_label_counts(embeddings, labels)
+            # balance_label_counts(embeddings, labels)
+            # print(f"Balanced to {len(np.unique(labels))} classes with {np.bincount(labels)} samples each")
 
         # shuffle them with seed 1123
         # random.seed(1123)
@@ -315,8 +347,8 @@ if __name__ == "__main__":
         # embeddings, labels = np.array(embeddings), np.array(labels)
 
         len_all_data = round(len(labels) * 1.)
-        train_split = round(len_all_data * 0.9)
-        val_split = round(len_all_data * 0.1)
+        train_split = round(len_all_data * split_perc)
+        val_split = round(len_all_data * (1 - split_perc))
 
         train_embeddings, eval_embeddings = embeddings[:train_split], embeddings[train_split: train_split + val_split]
         train_labels, eval_labels = labels[:train_split], labels[train_split: train_split + val_split]
@@ -334,10 +366,12 @@ if __name__ == "__main__":
             eval_embeddings = eval_embeddings[:, -1]  # take only the final time step
 
     else:
-        model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
+        model = Lightweight3DResNet(embedding_size=2048, 
+                                    cfg_aug=cfg['data_params']['transforms'],
                                     apply_aug=False)
 
-        checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
+        # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
+        checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt"
         dataset_name = cfg["evaluate"]["dataset"]
 
         # print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
@@ -387,9 +421,10 @@ if __name__ == "__main__":
 
     # Evaluation on cosine similarity
     if args.dist_metric == 'cosine':
+        print("Evaluating full dimensional embeddings using cosine distance")
         dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings, train_embeddings, weighted=False,
                                                         temperature=cfg["training"]["loss"]["temperature"])
-        preds, correct_preds_idxs, incorrect_preds_idxs = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs)
+        preds, correct_preds_idxs, incorrect_preds_idxs = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs=dist_matrix_idxs)
 
         with open(f'{proj_dir}/correct_preds_idxs.pkl', 'wb') as f:
             pickle.dump(correct_preds_idxs, f)
@@ -437,8 +472,9 @@ if __name__ == "__main__":
 
     # Evaluation on cosine similarity
     if args.dist_metric == 'cosine':
-        dist_matrix = cosine_distance(eval_embeddings_reduced, train_embeddings_reduced)
-        preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, num_neighbors=[1000])
+        print("Evaluating umap projected embeddings using cosine distance")
+        dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings_reduced, train_embeddings_reduced)
+        preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, num_neighbors=[100], dist_matrix_idxs=dist_matrix_idxs)
 
         # plot confusion matrix
         # cm = plot_cm(eval_labels, preds[1], label_drug_dict)
@@ -487,3 +523,4 @@ if __name__ == "__main__":
     kl_divergence = entropy(original_distances_flat, reduced_distances_flat)
 
     print("KL Divergence:", kl_divergence)
+
