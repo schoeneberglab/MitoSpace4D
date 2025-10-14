@@ -18,7 +18,6 @@ from utils.utils import get_drug_label_maps
 
 cmap = LinearSegmentedColormap.from_list('blackgreen', ["k", "lime"], N=256)
 
-
 def generate_distinct_colors(n):
     colors = []
     for i in range(int(n)):
@@ -78,7 +77,8 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
     vis = o3d.visualization.VisualizerWithEditing()
     vis.create_window()
     vis.add_geometry(pcd)
-    # vis.get_render_option().point_size = 3.0
+    print(f"Number of Points: {len(pcd.points)}")
+    vis.get_render_option().point_size = 5.0
 
     vis.run()  # user picks points
     idxs = vis.get_picked_points()
@@ -92,17 +92,22 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
     # napari_viewer = napari.Viewer()
 
     drug_names = []
+    time_indices = []
     picked_image_paths = []
     imgs = []
     for i, idx in enumerate(idxs):
         # drug_names.append(label_names[(labels[idx%20]%27)])
         # drug_names.append(get_label_name_fn(idx))
         drug_names.append(label_drug_dict[labels[idx]])
+        if image_times is not None:
+            time_indices.append(image_times[idx])
+        
         # if image_times is not None:
         #     time_index = image_times[idx]
         #     picked_image_paths.append(image_paths[time_index])
         # else:
             # picked_image_paths.append(image_paths[idx])
+        
         picked_image_paths.append(image_paths[idx])
         
         if image_paths is not None:
@@ -123,6 +128,7 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
                 # imgs.append(img_4d[time_index, :, :].max(axis=1))
                 imgs.append(img_4d[:, time_index, ...].max(axis=1))
             else:
+                print("Image times is None")
                 # imgs.append(img_4d[0, :, :].max(axis=1))
                 imgs.append(img_4d[:, 0, ...].max(axis=1))
 
@@ -163,7 +169,10 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
         # print(get_label_name_fn(idx))
         print(label_drug_dict[labels[idx]])
         print(image_paths[idx])
+        if image_times is not None:
+            print(f"Time index: {image_times[idx]}")
         print("")
+
     # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_names[int(labels[idxs[i]]%27)])) for i in
     #            range(len(idxs))]
     # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=get_label_name_fn(idxs[i]))) for i in range(len(idxs))]
@@ -174,12 +183,15 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
     patches = []
     for i, idx in enumerate(idxs):
         l = label_drug_dict[labels[idx]]
-        ds = image_paths[idx].split("/")[-2]
-        patches.append(mpatches.Patch(color=colors[i], label="{l} ({ds})".format(l=l, ds=ds)))
+        ds_id = image_paths[idx].split("/")[-2]
+        sample_id = image_paths[idx].split("/")[-1].split(".npy")[0]
+        sample_caption = f"{ds_id}/{sample_id}"
+        patches.append(mpatches.Patch(color=colors[i], label="{l} ({sc})".format(l=l, sc=sample_caption)))
 
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     plt.show()
     print("")
+
     return vis.get_picked_points()
 
 def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None, single_frames=False, save_pcd=None, label_drug_dict=None, datasets=None):
@@ -197,34 +209,56 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
     colors = color_palette
     
     if single_frames:
-        image_times = np.load(IMAGE_TIME_PATH) if single_frames else None
-        # labels = get_per_frame_vals(labels)
-        image_paths = get_per_frame_vals(image_paths)
+        if osp.exists(IMAGE_TIME_PATH):
+            print(f"Loading image times from {IMAGE_TIME_PATH}")
+            image_times = np.load(IMAGE_TIME_PATH) if single_frames else None
+
+            if labels.shape != image_times.shape:
+                labels = get_per_frame_vals(labels)
+                image_paths = get_per_frame_vals(image_paths)
+        else:
+            # Create a dummy array of 0-19 repeated for each sample
+            print(f"Image times file {IMAGE_TIME_PATH} does not exist, creating a dummy array")
+            image_times = np.arange(20)
+            # Repeat the image times for each sample
+            image_times = np.tile(image_times, int(len(labels)))
+            # Save to the IMAGE_TIME_PATH
+            # np.save(IMAGE_TIME_PATH, image_times)
+            print(f"Saved dummy image times to {IMAGE_TIME_PATH}")
+            # colors = get_per_frame_vals(color_palette)
+            labels = get_per_frame_vals(labels)
+            image_paths = get_per_frame_vals(image_paths)
+    else:
+        image_times = None
 
     # pick labels present in the pick_labels list
     if pick_labels is not None:
         mask = np.isin(labels, pick_labels)
+        
         if datasets is not None:
             img_datasets = [image_paths[i].split("/")[-2] for i in range(len(image_paths))]
             img_datasets = np.array(img_datasets)
             dataset_mask = np.isin(img_datasets, datasets)
             mask = np.logical_and(mask, dataset_mask)
+        
         embeddings = embeddings[mask]
         labels = labels[mask]
         image_paths = image_paths[mask]
-        image_times = image_times[mask] if single_frames else None
-
-        # temporal_vectors = temporal_vectors[mask] if iv_map else None
+        if single_frames:
+            image_times = image_times[mask]
 
         # temporal/region colormaps
         if isinstance(color_palette, np.ndarray):
-            colors = color_palette[mask]
+            if single_frames:
+                colors = get_per_frame_vals(color_palette)
+            colors = colors[mask]
 
         # Label Color map
         if isinstance(color_palette, dict):
             colors = np.array([color_palette[int(label)] for label in labels])
             colors[labels < 0] = 0
             colors = colors[:, :3]
+            # colors = colors[:3]
             # colors = colors[mask]
 
         # image_paths = [image_paths[i] for i in range(len(image_paths)) if mask[i]]
@@ -249,46 +283,10 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
 
     # Save the pcd
     if save_pcd is not None:
+        if not save_pcd.endswith('.pcd'):
+            save_pcd += '.pcd'
+        print(f"Saving the pcd to {save_pcd}")
         o3d.io.write_point_cloud(save_pcd, pcd)
-
-    # if iv_map:
-    #     temporal_vector_objs = []
-    #     for i in range(temporal_vectors.shape[0]):
-    #         vec = temporal_vectors[i]
-    #         # Draw the arrows in gray
-    #         origin = vec[0]
-    #         extent = vec[1]
-
-    #         arrow = draw_arrow(origin, extent, color=[0.5, 0.5, 0.5])
-    #         temporal_vector_objs.append(arrow)
-    # else:
-    #     temporal_vector_objs = []
-
-    # aabb = pcd.get_axis_aligned_bounding_box()
-    # aabb.color = np.array([0, 0, 0])
-
-    # vis = o3d.visualization.Visualizer()
-    # vis.create_window()
-    # vis.add_geometry(pcd)
-
-    # save the pcd
-    # o3d.io.write_point_cloud('/home/dhruvagarwal/Desktop/phenotypic_4d_mitospace.pcd', pcd)
-
-    # opt = vis.get_render_option()
-    # opt.point_size = 3
-
-    # vis.add_geometry(mesh_frame)
-    # vis.run()
-
-    # Create legend for the colors and labels (possibly picked)
-    # legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names)-1)]
-    # plt.figure(figsize=(10, 10))
-    # plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
-    # plt.axis('off')
-    # plt.show()
-
-    # if iv_map:
-    #     plot_arrows(pcd, temporal_vector_objs)
     
     while True:
         pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict)
@@ -298,22 +296,33 @@ def plot_confusion_matrix(cm,
                           title='Confusion matrix',
                           cmap=None,
                           normalize=True,
-                          k=100):
+                          k=100,
+                          vmin=None,
+                          vmax=None):
     cm_unnorm = cm.copy()
 
-    cmap = plt.get_cmap('Blues')
-    plt.figure(figsize=(20, 20))
+    if cmap is None:
+        cmap = plt.get_cmap('Blues')
+    # plt.figure(figsize=(20, 20))
+    plt.figure(figsize=(3, 3), dpi=300)
 
-    tickmarks = np.arange(cm.shape[0])
-    plt.xticks(tickmarks, label_names, rotation=45)
-    plt.yticks(tickmarks, label_names)
+    # tickmarks = np.arange(cm.shape[0])
+    # plt.xticks(tickmarks, label_names, rotation=45)
+    # plt.yticks(tickmarks, label_names)
+    
+    # Set no ticks nor labels
+    plt.xticks([])
+    plt.yticks([])
 
-    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
 
-    plt.imshow(cm, cmap=cmap, interpolation='nearest')
-    plt.title('Confusion Matrix')
-    plt.colorbar()
-    thresh = cm.max() / 1.5
+    im = plt.imshow(cm, cmap=cmap, interpolation='nearest',
+                    vmin=vmin, vmax=vmax)
+    plt.title(title)
+    plt.colorbar(im)
+
+    thresh = cm.max() / 1.5 if cm.max() > 0 else 0.0
 
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
@@ -322,27 +331,35 @@ def plot_confusion_matrix(cm,
                      color="white" if cm[i, j] > thresh else "black")
 
     plt.tight_layout()
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
+    # plt.ylabel('True label')
+    # plt.xlabel('Predicted label')
     plt.show()
 
 
-def plot_cm(gt_labels, pred_labels, label_drug_dict, verbose=True, make_plot=True):
-    cm = confusion_matrix(gt_labels, pred_labels, labels=sorted(list(label_drug_dict.keys())))
+def plot_cm(gt_labels, pred_labels, label_drug_dict,
+            verbose=True, make_plot=True, vmin=None, vmax=None):
+    cm = confusion_matrix(gt_labels, pred_labels,
+                          labels=sorted(list(label_drug_dict.keys())))
 
     if verbose:
         print("per class accuracy Top-1")
         for i in range(cm.shape[0]):
-            print(f"{label_drug_dict[i]}: {cm[i, i] * 100. / np.sum(cm[i, :])}%")
+            acc = cm[i, i] * 100.0 / np.sum(cm[i, :]) if np.sum(cm[i, :]) > 0 else 0.0
+            print(f"{label_drug_dict[i]}: {acc:.2f}%")
 
     if make_plot:
-        plot_confusion_matrix(cm,
-                              list(label_drug_dict.values()),
-                              title='Confusion matrix',
-                              cmap=None,
-                              normalize=True,
-                              k=100)
+        plot_confusion_matrix(
+            cm,
+            list(label_drug_dict.values()),
+            title='Confusion matrix',
+            cmap=None,
+            normalize=True,
+            k=100,
+            vmin=vmin,
+            vmax=vmax
+        )
     return cm
+
 
 
 def visualise_images_oldData(data_paths, save_dir, drug_names, num_images_per_drug=200, seed=1123):
