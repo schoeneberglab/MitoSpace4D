@@ -13,6 +13,8 @@ import random
 import yaml
 import tqdm
 import umap
+from cuml.manifold import UMAP
+
 import argparse
 import os.path as osp
 import time
@@ -41,17 +43,25 @@ random.seed(0)
 parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 parser.add_argument('--checkpoint_path', help='Checkpoint path', default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt")
 parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str, help='Config path.')
-parser.add_argument('--data_path', help='Data to predict', default="/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer")
+# parser.add_argument('--data_path', help='Data to predict', default="/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer_new")
+parser.add_argument('--data_path', help='Data to Predict', default="/mnt/aquila0/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data")
+
+parser.add_argument('--embeddings_dir', help='Directory to save/load embeddings', default=None)
 # parser.add_argument('--embeddings_dir', help='Directory to save/load embeddings', default=None)
 
 parser.add_argument('--visualize', default=False, action='store_true', help="Visualize UMAP'd MitoSpace embeddings")
 parser.add_argument('--save_embeddings', default=False, action='store_true', help='Save embeddings')
 parser.add_argument('--save_pcd', default=None, help='Path to save the point cloud')
+
+# parser.add_argument('--n_frames', default=-1, type=int, help='Number of frames to use for spatiotemporal embeddings. Defaults to all frames (if < 0).')
+parser.add_argument('--frame_start', default=0, type=int, help='Start frame index (inclusive) for spatiotemporal embeddings. Default is 0.')
+parser.add_argument('--frame_end', default=-1, type=int, help='End frame index (exclusive) for spatiotemporal embeddings. Default is -1 (use all frames).')
+
 parser.add_argument('--single_frames', default=False, action='store_true', help='Generates frame embeddings independently.')
 
 parser.add_argument('--labels', default=None, type=int, nargs='+', help='Labels to pick. Default is all labels.')
 parser.add_argument('--datasets', default=None, type=str, nargs='+', help='Datasets to use. Default is all datasets.')
-parser.add_argument('--cmap', default='label', help='Color map to use.', choices=['label', 'time', 'region', 'dataset'])
+parser.add_argument('--cmap', default='label', help='Color map to use.', choices=['label', 'temporal', 'region', 'dataset'])
 
 parser.add_argument('--reproject', default=False, action='store_true', help='Reproject embeddings')
 parser.add_argument('--batch_size', type=int, default=1, help='Batch size for dataloaders')
@@ -133,9 +143,18 @@ if __name__ == '__main__':
     save_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/"
     
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_20250828')
-    embeddings_dir = osp.join(save_dir, 'embeddings_cancer_combined_r20250905')
+    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_combined_r20250905')
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_20250811')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics')
+    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_r20250920')
+    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20250929_10frames')
+    embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251002_single_frames')
+
+    # if args.embeddings_dir is not None:
+    #     embeddings_dir = osp.join(save_dir, args.embeddings_dir)
+    # else:
+    #     # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_full_single_frames')
+    #     embeddings_dir = osp.join(save_dir, 'embeddings_kinetics')
+    #     # embeddings_dir = osp.join(save_dir, "embeddings_cancer_umap_testing")
     
     os.makedirs(embeddings_dir, exist_ok=True)
 
@@ -151,13 +170,13 @@ if __name__ == '__main__':
             label_drug_dict[int(label)] = drug
     
     labels = [args.labels] if args.labels else [list(drug_labels_dict.values())]  # Default to all conditions in the drug label dict
-    # labels = [[27]]
+    # labels = [[5]]
 
     batch_size = args.batch_size
     t_slice = 0
     z_slice = 30
 
-    if args.cmap == 'time':
+    if args.cmap == 'temporal':
         colors = get_temporal_colormap(embeddings_dir)
     elif args.cmap == 'region':
         colors = get_region_colormap(embeddings_dir)
@@ -214,6 +233,11 @@ if __name__ == '__main__':
                 else:
                     im, lbl, img_pth = batch["images"], batch["classes"], batch["image_paths"]
 
+                # -- [EXPERIMENT] Keep only the first 10 timesteps for the images
+                # im = im[:, :, :10, :, :, :]  # (B, C, T, D, H, W)
+
+                im = im[:, :, args.frame_start:args.frame_end, :, :, :]  # (B, C, T, D, H, W)
+
                 B = im.shape[0]
 
                 if n_frames is None:
@@ -222,9 +246,10 @@ if __name__ == '__main__':
                 # im: (B, C, T, D, H, W) -> (B, T, C, D, H, W)
                 im = im.permute(0, 2, 1, 3, 4, 5).contiguous()
 
-                # ---- Generate spatial (single-frame) embeddings ----
+                #-- generating per-frame (3D spatial only) embeddings
                 if args.single_frames:
                     # labels for each frame in the batch
+                    # print(f"Generating single-frame embeddings for batch {i+1}/{len(loader)} of dataset {loader_idx+1}/{n_datasets}...")
                     frame_labels = np.repeat(
                         lbl.detach().cpu().numpy().reshape(-1).astype(np.int32),
                         n_frames
@@ -233,6 +258,7 @@ if __name__ == '__main__':
                     with torch.no_grad():
                         for t in range(n_frames):
                             img_pth_list.extend(img_pth)
+
                             # Select the t-th frame: (B, 1, C, D, H, W)
                             frame = im[:, t:t+1, :, :, :, :]
 
@@ -251,7 +277,7 @@ if __name__ == '__main__':
                     img_pth_list.extend(img_pth)
 
                     with torch.no_grad():
-                        # Forward pass (model expects (B, T, C, D, H, W) as given)
+                        # model expects (B, T, C, D, H, W)
                         features, _ = model(im.to(device)) 
                         features = F.normalize(features, dim=-1)  # (B, 2048) or (B, T, 2048)
 
@@ -277,7 +303,7 @@ if __name__ == '__main__':
 
         np.save(osp.join(embeddings_dir, 'label_names.npy'), np.array(list(drug_labels_dict.keys())))
 
-        # Set up colormaps
+        # TODO: integrate colormaps
         # cell_region_map = osp.join(args.data_path, "cell_to_region_new.csv")
         # create_colormap(img_pathfile, cell_region_map, embedding_dir=embeddings_dir)
 
@@ -286,9 +312,13 @@ if __name__ == '__main__':
         feats = np.load(emb_raw_path)  # (N, T, D) fully loaded
         print(f"Features shape: {feats.shape}, dtype: {feats.dtype}")
         
-        feats = feats[:, -1, :] # Get last frame
-        # feats = einops.reduce(feats, 'n, t, d -> n d', 'mean') # Mean over time
-        # feats = einops.rearrange(feats, 'n t d -> (n t) d') # Treat each frame independently
+        if not args.single_frames:
+            feats = feats[:, -1, :]  # Get last frame
+            # feats = np.mean(feats, axis=1)  # Average over time
+        else:
+            if len(feats.shape) == 3:
+                # Flatten (N, T, D) -> (N*T, D)
+                feats = einops.rearrange(feats, 'n t d -> (n t) d')
 
         print(f"Features shape: {feats.shape}, dtype: {feats.dtype}")
 
@@ -298,7 +328,8 @@ if __name__ == '__main__':
                                 np.load(lbl_path),
                                 np.loadtxt(img_pathfile, dtype=str).tolist(),
                                 np.array(list(drug_labels_dict.keys())),
-                                scope="global")
+                                scope="global",
+                                control_label="NTC")
             # try:
                 # labels_all = np.load(lbl_path)  # (N,)
                 # ctrl_mask = np.array([label_drug_dict.get(int(l)) == 'control' for l in labels_all], dtype=bool)
@@ -330,14 +361,15 @@ if __name__ == '__main__':
             sample_red = feats[idx]
             feats_red = feats
 
+        # #-- original umap
         reducer = umap.UMAP(
             verbose=True,
             n_components=3,
             n_neighbors=25,
             min_dist=0.01,
             metric='cosine',
-            low_memory=True,
         )
+
         emb3d = reducer.fit_transform(feats_red).astype(np.float32)
         emb_umap_path = osp.join(embeddings_dir, 'embeddings_umap.npy')
         np.save(emb_umap_path, emb3d)
