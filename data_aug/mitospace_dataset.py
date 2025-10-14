@@ -36,9 +36,15 @@ class MitoSpaceDataModule(pl.LightningDataModule):
                           num_workers=self.num_workers, pin_memory=self.pin_memory, drop_last=self.drop_last, prefetch_factor=self.prefetch_factor)
 
 class MitoSpaceDataset(Dataset):
-    def __init__(self, root_dir: str, flag: str = 'train',
-                 seed: int = None, pick_labels: List = None, samples_per_drug: int = None,
-                 timesteps=None, zstacks=None) -> None:
+    def __init__(self, 
+                 root_dir: str, 
+                 flag: str = 'train',
+                 seed: int = None, 
+                 pick_labels: List = None, 
+                 samples_per_drug: int = None,
+                 timesteps=None, 
+                 zstacks=None) -> None:
+        
         self.root_dir = root_dir
         self.timesteps = timesteps
         self.zstacks = zstacks
@@ -55,10 +61,10 @@ class MitoSpaceDataset(Dataset):
                 drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
         #-- encoded data dir
-        # drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
+        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
 
         #-- All Dirs
-        drug_folders = sorted([file for file in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, file))])
+        # drug_folders = sorted([file for file in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, file))])
 
         #-- Kinetic dirs (v1)
         # drug_folders = ['20250722-2', '20250724-1', '20250724-2', '20250725-1', '20250728-1', '20250804-1', '20250804-2', '20250805-1', '20250805-2', '20250806-2', '20250807-1', '20250807-2', '20250813-1', '20250813-2', '20250814-1', '20250814-2']
@@ -66,6 +72,7 @@ class MitoSpaceDataset(Dataset):
         #-- Cancer dirs
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1", "20250828-1", "20250828-2", "20250828-3"]
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1"]
+        # drug_folders = ["20250922-1", "20250922-2", "20250922-3", "20250924-1", "20250924-2", "20250924-3", "20250925-1", "20250925-2", "20250925-3"]
 
         #--Kinetic control dir
         # drug_folders = ["20250807-1"]
@@ -76,6 +83,7 @@ class MitoSpaceDataset(Dataset):
         for drug_folder in drug_folders:
             # filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data', drug_folder)) if osp.isfile(osp.join(self.root_dir, 'encoded_data', drug_folder, file))])
             # filenames = [osp.join(self.root_dir, 'encoded_data', drug_folder, file) for file in filenames]
+
             filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, drug_folder)) if osp.isfile(osp.join(self.root_dir, drug_folder, file))])
             filenames = [osp.join(self.root_dir, drug_folder, file) for file in filenames]
 
