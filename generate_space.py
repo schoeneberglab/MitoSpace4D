@@ -44,7 +44,8 @@ parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 parser.add_argument('--checkpoint_path', help='Checkpoint path', default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt")
 parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str, help='Config path.')
 # parser.add_argument('--data_path', help='Data to predict', default="/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer_new")
-parser.add_argument('--data_path', help='Data to Predict', default="/mnt/aquila0/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data")
+parser.add_argument('--data_path', help='Data to Predict', default="/run/user/1002/gvfs/smb-share:server=jslab-server1.local,share=others/MitoSpace4D/cancer_drug_resistance_data")
+# parser.add_argument('--data_path', help='Data to Predict', default="/run/user/1002/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/leukemia_drug_resistance_data")
 
 parser.add_argument('--embeddings_dir', help='Directory to save/load embeddings', default=None)
 # parser.add_argument('--embeddings_dir', help='Directory to save/load embeddings', default=None)
@@ -54,8 +55,8 @@ parser.add_argument('--save_embeddings', default=False, action='store_true', hel
 parser.add_argument('--save_pcd', default=None, help='Path to save the point cloud')
 
 # parser.add_argument('--n_frames', default=-1, type=int, help='Number of frames to use for spatiotemporal embeddings. Defaults to all frames (if < 0).')
-parser.add_argument('--frame_start', default=0, type=int, help='Start frame index (inclusive) for spatiotemporal embeddings. Default is 0.')
-parser.add_argument('--frame_end', default=-1, type=int, help='End frame index (exclusive) for spatiotemporal embeddings. Default is -1 (use all frames).')
+# parser.add_argument('--frame_start', default=0, type=int, help='Start frame index (inclusive) for spatiotemporal embeddings. Default is 0.')
+# parser.add_argument('--frame_end', default=-1, type=int, help='End frame index (exclusive) for spatiotemporal embeddings. Default is -1 (use all frames).')
 
 parser.add_argument('--single_frames', default=False, action='store_true', help='Generates frame embeddings independently.')
 
@@ -68,6 +69,7 @@ parser.add_argument('--batch_size', type=int, default=1, help='Batch size for da
 parser.add_argument('--use_pca', default=False, action='store_true', help='Use PCA for dimensionality reduction before UMAP. Default is False.')
 parser.add_argument('--densmap', default=False, action='store_true', help='Use densMAP instead of UMAP. Default is False.')
 parser.add_argument('--tvn', default=False, action='store_true', help='Apply Typical Variation Normalization (TVN) using controls before UMAP.')  # <-- added flag
+parser.add_argument('--control_label', default='control', type=str, help='Label name for the control samples for performing typical variation normalization (TVN). Default is "control".')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -147,7 +149,11 @@ if __name__ == '__main__':
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_20250811')
     # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_r20250920')
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20250929_10frames')
-    embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251002_single_frames')
+    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251002_single_frames') 
+    # embeddings_dir = osp.join(save_dir, 'embeddings_leukemia_r20251014_all_frames')
+    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_ds20251009-20251010_r20251015_all_frames')
+    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251016_10frames')
+    embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251016_10frames_mtg-only')
 
     # if args.embeddings_dir is not None:
     #     embeddings_dir = osp.join(save_dir, args.embeddings_dir)
@@ -234,9 +240,10 @@ if __name__ == '__main__':
                     im, lbl, img_pth = batch["images"], batch["classes"], batch["image_paths"]
 
                 # -- [EXPERIMENT] Keep only the first 10 timesteps for the images
-                # im = im[:, :, :10, :, :, :]  # (B, C, T, D, H, W)
+                im = im[:, :, :10, :, :, :]  # (B, C, T, D, H, W)
 
-                im = im[:, :, args.frame_start:args.frame_end, :, :, :]  # (B, C, T, D, H, W)
+                # -- [EXPERIMENT] Copy mitotracker channel over the TMRM
+                im[:, 0, :, :, :, :] = im[:, 1, :, :, :, :]
 
                 B = im.shape[0]
 
@@ -329,7 +336,7 @@ if __name__ == '__main__':
                                 np.loadtxt(img_pathfile, dtype=str).tolist(),
                                 np.array(list(drug_labels_dict.keys())),
                                 scope="global",
-                                control_label="NTC")
+                                control_label=args.control_label,)
             # try:
                 # labels_all = np.load(lbl_path)  # (N,)
                 # ctrl_mask = np.array([label_drug_dict.get(int(l)) == 'control' for l in labels_all], dtype=bool)

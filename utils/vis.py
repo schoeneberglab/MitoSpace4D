@@ -176,8 +176,7 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
     # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_names[int(labels[idxs[i]]%27)])) for i in
     #            range(len(idxs))]
     # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=get_label_name_fn(idxs[i]))) for i in range(len(idxs))]
-
-
+    #
     # patches = [mpatches.Patch(color=colors[i], label="{l}".format(l=label_drug_dict[labels[idx]])) for i in range(len(idxs))]
 
     patches = []

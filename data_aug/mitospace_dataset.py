@@ -61,7 +61,7 @@ class MitoSpaceDataset(Dataset):
                 drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
         #-- encoded data dir
-        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
+        # drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
 
         #-- All Dirs
         # drug_folders = sorted([file for file in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, file))])
@@ -73,9 +73,17 @@ class MitoSpaceDataset(Dataset):
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1", "20250828-1", "20250828-2", "20250828-3"]
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1"]
         # drug_folders = ["20250922-1", "20250922-2", "20250922-3", "20250924-1", "20250924-2", "20250924-3", "20250925-1", "20250925-2", "20250925-3"]
+        drug_folders = [
+            "20250922-1", "20250922-2", "20250922-3", # dataset 1 day 1
+            "20250924-1", "20250924-2", "20250924-3", # dataset 1 day 2 - outlier vs other days
+            "20250925-1", "20250925-2", "20250925-3", # dataset 1 day 3
+            "20251009-1", "20251009-2", "20251009-3", # dataset 2 day 1
+            "20251010-1", "20251010-2", "20251010-3"  # dataset 2 day 2
+            ]
+        # drug_folders = ["20251009-1", "20251009-2", "20251009-3", "20251010-1", "20251010-2", "20251010-3"]
 
-        #--Kinetic control dir
-        # drug_folders = ["20250807-1"]
+        #-- Leukemia dirs
+        # drug_folders = ["20251007-1", "20251007-2", "20251008-1", "20251008-2"]
 
         self.all_filenames = []
         self.all_labels = []
