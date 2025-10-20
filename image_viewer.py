@@ -1,6 +1,47 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
+import torch
+import torch.nn.functional as F
+from matplotlib.widgets import Button
+import matplotlib.animation as animation
+def normalize_and_mask(img, eps=1e-6, mask_threshold=0.1):
+    """
+    Remove morphology-related brightness (TMRM) from MitoTracker
+    to emphasize functional membrane potential signal.
+
+    Args:
+        img: Tensor [B, C, Z, H, W]
+             channel 0 = TMRM (morphology)
+             channel 1 = MitoTracker (function + morphology)
+        eps: small value to prevent divide-by-zero
+        mask_threshold: relative threshold for mitochondrial mask
+    """
+    tmrm = img[0, :, :]      # morphology only
+    mitotk = img[1, :, :]    # morphology + function
+
+    # --- Step 1: background subtraction ---
+    tmrm = tmrm - tmrm.min()
+    mitotk = mitotk - mitotk.min()
+
+    # --- Step 2: normalize both to [0, 1] ---
+    tmrm = tmrm / (tmrm.max() + eps)
+    mitotk = mitotk / (mitotk.max() + eps)
+
+    # --- Step 3: remove morphology contribution ---
+    # Divide MitoTracker by TMRM to isolate functional signal
+    functional = mitotk / (tmrm + eps)
+    functional = functional / (functional.max() + eps)
+
+    # --- Step 4: create mitochondrial mask ---
+    mask = (tmrm > mask_threshold * tmrm.max()).astype(np.float32)
+
+    # --- Step 5: apply mask ---
+    functional_masked = functional * mask
+
+    return functional_masked, mask
+
+
 
 def view_4d_image_with_sliders(image_filepath):
     """
@@ -18,6 +59,7 @@ def view_4d_image_with_sliders(image_filepath):
     except Exception as e:
         print(f"Error loading image data: {e}")
         return
+    
 
     # Assuming data shape is (time_points, z_slices, y_dim, x_dim, channels)
     # Adjust this if your data has a different channel position
@@ -35,7 +77,7 @@ def view_4d_image_with_sliders(image_filepath):
     initial_time = 0
     initial_z = 0
 
-    fig, ax = plt.subplots(1, 2, figsize=(12, 6)) # One subplot for each channel
+    fig, ax = plt.subplots(1, 3, figsize=(12, 6)) # One subplot for each channel
     plt.subplots_adjust(left=0.1, bottom=0.25)
 
     # Display initial images for both channels
@@ -46,6 +88,11 @@ def view_4d_image_with_sliders(image_filepath):
     im2 = ax[1].imshow(image_data[initial_time,1, initial_z, :, :], cmap='gray')
     ax[1].set_title(f"Channel 2 (Time: {initial_time}, Z: {initial_z})")
     ax[1].axis('off')
+
+    # im3 = ax[2].imshow(image_data[initial_time,1, initial_z, :, :]-image_data[initial_time,0, initial_z, :, :], cmap='gray')
+    im3 = ax[2].imshow(normalize_and_mask(image_data[initial_time,:, initial_z, :, :])[0], cmap = 'gray')
+    ax[2].set_title(f"Channel 2-1 (Time: {initial_time}, Z: {initial_z})")
+    ax[2].axis('off')
 
     # Create slider axes
     ax_time = plt.axes([0.1, 0.1, 0.8, 0.03], facecolor='lightgoldenrodyellow')
@@ -65,9 +112,15 @@ def view_4d_image_with_sliders(image_filepath):
         if num_channels >= 2:
             im2.set_data(image_data[current_time, 1,current_z, :, :])
             ax[1].set_title(f"Channel 2 (Time: {current_time}, Z: {current_z})")
+            # im3.set_data(image_data[current_time, 1,current_z, :, :]-image_data[current_time, 0,current_z, :, :])
+            im3.set_data(normalize_and_mask(image_data[current_time, :,current_z, :, :])[0])
+            ax[2].set_title(f"Channel 2-1 (Time: {current_time}, Z: {current_z})")
         else:
             ax[1].set_title(f"Channel 2 (Not available)")
             im2.set_data(np.zeros_like(image_data[current_time, 0,current_z, :, :])) # Show black if no second channel
+            ax[2].set_title(f"Channel 2-1 (Not available)")
+            im3.set_data(np.zeros_like(image_data[current_time, 0,current_z, :, :])) # Show black if no second channel
+            
 
 
         fig.canvas.draw_idle()
@@ -75,6 +128,49 @@ def view_4d_image_with_sliders(image_filepath):
     time_slider.on_changed(update)
     z_slider.on_changed(update)
 
+    # --- Add Save Movie Button ---
+    ax_save = plt.axes([0.8, 0.9, 0.15, 0.05])
+    btn_save = Button(ax_save, 'Save Movie', color='lightblue', hovercolor='skyblue')
+
+    def save_movie(event):
+        print("Preparing movie export...")
+
+        mode = input("Animate over [time/z]? ").strip().lower()
+        if mode not in ["time", "z"]:
+            print("Invalid choice. Please type 'time' or 'z'.")
+            return
+
+        save_path = input("Enter output filename (e.g. movie.mp4): ").strip()
+        fps = 5  # frames per second
+
+        frames = range(time_points) if mode == "time" else range(z_slices)
+
+        def animate(i):
+            if mode == "time":
+                t, z = i, int(z_slider.val)
+            else:
+                t, z = int(time_slider.val), i
+
+            im1.set_data(image_data[t, 0, z, :, :])
+            im2.set_data(image_data[t, 1, z, :, :])
+            im3.set_data(normalize_and_mask(image_data[t, :, z, :, :])[0])
+
+            ax[0].set_title(f"Ch1 (t={t}, z={z})")
+            ax[1].set_title(f"Ch2 (t={t}, z={z})")
+            ax[2].set_title(f"Ch2-1 (t={t}, z={z})")
+            return [im1, im2, im3]
+
+        ani = animation.FuncAnimation(fig, animate, frames=frames, blit=False, repeat=False)
+
+        try:
+            ani.save(save_path, fps=fps, writer='ffmpeg')
+            print(f"✅ Movie saved successfully: {save_path}")
+        except Exception as e:
+            print(f"❌ Error saving movie: {e}")
+            print("Make sure FFmpeg is installed (e.g., `sudo apt install ffmpeg`).")
+
+    btn_save.on_clicked(save_movie)
+    
     plt.show()
 
 if __name__ == "__main__":
