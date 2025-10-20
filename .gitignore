@@ -3,3 +3,4 @@ runs/
 checkpoints/
 *.pyc
 *.bak
+*.ckpt
