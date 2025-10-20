@@ -39,15 +39,20 @@ if __name__ == '__main__':
 
     train_dataset = dataset.get_dataset(cfg['data_params']['dataset_name'],
                                         cfg['training']['n_views'],
-                                        flag='train', seed=None,
+                                        flag='train', 
+                                        seed=None,
                                         pick_labels=None,
                                         samples_per_drug=cfg['data_params']['samples_per_drug'],
                                         timesteps=cfg['data_params']['timesteps'],
                                         zstacks=cfg['data_params']['zstacks'])
 
-    train_loader = DataLoader(train_dataset, batch_size=cfg['training']['batch_size'], shuffle=True,
-               num_workers=cfg['training']['workers'], pin_memory=True, drop_last=True,
-               prefetch_factor=cfg['training']['prefetch_factor'])
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=cfg['training']['batch_size'], 
+                              shuffle=True,
+                              num_workers=cfg['training']['workers'], 
+                              pin_memory=True, 
+                              drop_last=True,
+                              prefetch_factor=cfg['training']['prefetch_factor'])
 
     # do a dummy loading of the dataset
     pbar = tqdm(train_loader)
