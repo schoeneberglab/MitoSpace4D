@@ -4,7 +4,7 @@ from simclr.augmentations import DataAugmentation
 from utils.utils import load_config
 import torch.nn.functional as F
 from autoencoder.autoencoder_runner import AutoEncoderRunner
-from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
 
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
@@ -41,7 +41,7 @@ class Lightweight3DResNet(nn.Module):
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
 
         # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
-        dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/autoencoder/MitospaceAutoencoder.ckpt"
+        dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/checkpoints/MitospaceAutoencoder_Summer2024.ckpt"
         decoder_model = MitoSpace3DAutoencoder()
         self.decoder = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=decoder_model)
         self.decoder = self.decoder.model.decoder
@@ -77,8 +77,12 @@ class Lightweight3DResNet(nn.Module):
         # Final fully connected layer for embedding
         self.fc = nn.Linear(1024 * 2, embedding_size)
 
-        self.proj = nn.Sequential(nn.Linear(2048, 512, bias=False), nn.BatchNorm1d(512),
-                                  nn.ReLU(inplace=True), nn.Linear(512, 512, bias=True))
+        self.proj = nn.Sequential(
+            nn.Linear(2048, 512, bias=False), 
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, 512, bias=True)
+        )
 
     def _make_layer(self, in_channels, out_channels, num_blocks, stride):
         layers = []
@@ -141,8 +145,10 @@ class Lightweight3DResNet(nn.Module):
 if __name__ == '__main__':
     cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")
     # Initialize model and print the output shape
-    model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
-                                 apply_aug=True).cuda()
+    model = Lightweight3DResNet(embedding_size=2048, 
+                                cfg_aug=cfg['data_params']['transforms'],
+                                apply_aug=True).cuda()
+    
     # print number of parameters
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     sample_input = torch.randn(1, 20, 2, 30, 256, 256).cuda()  # Example input

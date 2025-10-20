@@ -76,7 +76,7 @@ training:
     mode: min
     save_top_k: 1
     save_last: True
-  continue_from_ckpt_wo_opt: None
+  continue_from_ckpt_wo_opt: /u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt # None
   lr: 0.0003
   weight_decay: 0.00001
   workers: 24 # 16 # 4

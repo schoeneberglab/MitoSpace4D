@@ -123,8 +123,8 @@ def main():
         model=train_runner,
         train_dataloaders=train_loader,
         val_dataloaders=val_loader,
-        #ckpt_path="/tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal_run2/checkpoints/epoch=1-step=512-val_loss=0.00.ckpt"
         # use this to load optimizer as well as model states
+        # ckpt_path="/u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt"
     )
 
 

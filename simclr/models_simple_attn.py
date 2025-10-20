@@ -4,7 +4,7 @@ from simclr.augmentations import DataAugmentation
 from utils.utils import load_config
 import torch.nn.functional as F
 from autoencoder.autoencoder_runner import AutoEncoderRunner
-from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
 
 
 class Basic3DBlock(nn.Module):
