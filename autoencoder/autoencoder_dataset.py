@@ -4,29 +4,46 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import matplotlib.pyplot as plt
-
+import einops
+import pandas as pd
 
 class MitoSpaceAutoEncoderDataset(Dataset):
-    def __init__(self, root_dirs, transform=None):
+    def __init__(self, root_dir, transform=None):
         """
         Custom Dataset for loading .npy files from multiple subfolders within given root directories.
         Args:
             root_dirs (str or list of str): Root directory or list of root directories containing subfolders with .npy files.
             transform (callable, optional): Optional transform to be applied on a sample.
         """
-        self.root_dirs = root_dirs if isinstance(root_dirs, list) else [root_dirs]
+        
+        self.root_dir = root_dir
         self.data_files = []
         self.transform = transform
+        self.metadata = pd.read_csv(os.path.join(root_dir, 'metadata_flagged.csv'))
 
+        # Set the file paths based on the metadata
+        self.metadata['file_path'] = self.metadata.apply(
+            lambda row: os.path.join(root_dir, row['sample id'], f"{int(row['cell id']):06d}-{row['movie id']}.npy"), axis=1
+        )
+        n_start = len(self.metadata)
+        print(f"Initial number of entries in metadata: {n_start}")
+        # drop any rows where the "frames with stage issue" column has an entry
+        self.metadata = self.metadata[self.metadata['frames with stage issue'].isna()]
+        n_final = len(self.metadata)
+        print(f"Final number of entries in metadata: {n_final} ({n_start - n_final} entries flagged and removed)")
+
+        self.data_files = self.metadata['file_path'].tolist()
+
+        #-- For multiple root dirs (not currently used)
         # Traverse all subfolders and gather npy files
-        for root_dir in root_dirs:
-            for subfolder in sorted(os.listdir(root_dir)):
-                subfolder_path = os.path.join(root_dir, subfolder)
-            if os.path.isdir(subfolder_path):
-                for file in sorted(os.listdir(subfolder_path)):
-                    if file.endswith('.npy'):
-                        file_path = os.path.join(subfolder_path, file)
-                        self.data_files.append(file_path)
+        # for root_dir in root_dirs:
+        #     for subfolder in sorted(os.listdir(root_dir)):
+        #         subfolder_path = os.path.join(root_dir, subfolder)
+        #         if os.path.isdir(subfolder_path):
+        #             for file in sorted(os.listdir(subfolder_path)):
+        #                 if file.endswith('.npy'):
+        #                     file_path = os.path.join(subfolder_path, file)
+        #                     self.data_files.append(file_path)
 
     def __len__(self):
         return len(self.data_files)
@@ -34,12 +51,13 @@ class MitoSpaceAutoEncoderDataset(Dataset):
     def __getitem__(self, idx):
         img_name = self.data_files[idx]
         image = np.load(img_name)
-        image = image.astype(np.float32)
-
+        
         if self.transform:
             image = self.transform(image, img_name)
-        return {'image': image, 'fpath': img_name}
-
+        
+        image = einops.rearrange(torch.from_numpy(image).to(torch.float32), 't c z y x -> c t z y x')
+        
+        return image
 
 class NormalizeChannelsByPath(object):
     """
@@ -47,7 +65,8 @@ class NormalizeChannelsByPath(object):
 
     Args:
         path_substr (str): Substring to look for in the file path.
-        max_values (list of float): List of maximum values for each channel to use for clipping and normalization.
+        max_values (list of float): List of maximum values for each channel to use for
+         clipping and normalization.
     """
 
     def __init__(self, path_substr, max_values):
@@ -70,8 +89,6 @@ class NormalizeChannelsByPath(object):
         )
 
 def save_random_image(dataset, save_dir='.'):
-    # Ensure the save directory exists
-    # os.makedirs(save_dir, exist_ok=True)
 
     # Get a random index
     idx = np.random.randint(0, len(dataset))
