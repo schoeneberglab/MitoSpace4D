@@ -130,9 +130,19 @@ class RandomBrightness(nn.Module):
         self.range = (lower, upper)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # if torch.rand(1, device=x.device) < self.p:
+        #     factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
+        #     x = x + factor
+
+        # Channel 0
         if torch.rand(1, device=x.device) < self.p:
             factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
-            x = x + factor
+            x[:, :, 0, :, :, :] = x[:, :, 0, :, :, :] + factor
+
+        # Channel 1
+        if torch.rand(1, device=x.device) < self.p:
+            factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
+            x[:, :, 1, :, :, :] = x[:, :, 1, :, :, :] + factor
         return x
 
 
