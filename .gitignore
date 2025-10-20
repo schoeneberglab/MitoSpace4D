@@ -1,5 +1,8 @@
 runs/*
 *.pyc
-archive/*
+archive/
 *.ckpt
-*.bak
+*.bak*
+**/runs/
+checkpoints/
+dev_*/
