@@ -206,6 +206,6 @@ if __name__ == "__main__":
     # print(f"Dummy file '{dummy_filename}' created successfully.")
 
     # --- Run the viewer with the dummy file ---
-    your_image_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000059.npy"
+    your_image_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000079.npy"
     view_4d_image_with_sliders(your_image_path)
     # view_4d_image_with_sliders(dummy_filename)
