@@ -72,20 +72,36 @@ def normalize_and_mask(img_slice_2d, eps=1e-6, mask_threshold=0.1):
     return functional_masked, mask
 
 
+# Conditions to train on:
+# 20240729 control 0
+# 20240730 p110 1
+# 20240826 nocodazole 17
+# 20240830 colchicine 18
 # --- 1. Configuration ---
 class Config:
     # --- Dataset specific ---
     # List of .npy file paths
+    base_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240830/"
     image_filepaths = [
-        "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000059.npy",
-        "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000069.npy",
-        "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000079.npy",
-        "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000089.npy",
-        "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000099.npy",
-        # Add more file paths here as needed for multiple datasets
-        # "/path/to/your/another_image.npy",
+
+        # f"{base_path}{i}" for i in os.listdir(base_path)
+        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000059.npy",
+        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000069.npy",
+        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000079.npy",
+        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000089.npy",
+        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000099.npy",
+        # # Add more file paths here as needed for multiple datasets
+        # # "/path/to/your/another_image.npy",
     ]
-    
+
+    files = os.listdir(base_path)
+    for i in files[0:150]:
+        image_filepaths.append(f"{base_path}{i}")
+
+    val_filepaths = []
+
+    for i in files:
+        val_filepaths.append(f"{base_path}{i}")
     # --- Channel Handling ---
     # True to create a 3rd channel from 'functional_masked' output of normalize_and_mask
     create_third_channel = True 
@@ -97,12 +113,12 @@ class Config:
     # --- Training specific ---
     test_size_z = 0.3 # 30% of Z-slices for testing, 70% for training
     batch_size = 16 # Reduced batch size, especially if creating 3 channels and multiple files
-    num_epochs = 50
+    num_epochs = 20
     learning_rate = 1e-5
     random_seed = 42
     do_rescale = False
     device = "cuda:0"
-    save_path = "checkpoints"
+    save_path = "checkpoint_20240830"
 
 # Set random seeds for reproducibility
 def set_seed(seed):

@@ -22,7 +22,7 @@ from videomae_zslicer import (
     ZVolumeAccuracyLoss
 )
 import umap
-
+import seaborn as sns
 
 '''
 1. We want to load the existing model
@@ -37,7 +37,9 @@ import umap
 def validate_saved_model(model_path, device=None, 
                         visualize_umap=True, 
                         save_umap_path=None, 
-                        concatenate_embeddings=False):
+                        concatenate_embeddings=True,
+                        save_embeddings=True,
+                        cfg=Config):
 
     """
     Validate a saved model on the entire dataset volume-by-volume.
@@ -70,7 +72,7 @@ def validate_saved_model(model_path, device=None,
     model.eval()
 
     # Initialize image processor and model
-    image_processor = AutoImageProcessor.from_pretrained(Config.image_processor_name, do_rescale=False)
+    image_processor = AutoImageProcessor.from_pretrained(cfg.image_processor_name, do_rescale=False)
 
     #-------------------------------------------------------------
     # 2 Load Data volume by volume
@@ -83,7 +85,7 @@ def validate_saved_model(model_path, device=None,
     global_volume_counter = []
 
 
-    for volume_id , filepath in enumerate(Config.image_filepaths):
+    for volume_id , filepath in enumerate(cfg.val_filepaths_2):
         try:
             full_image_data_np = np.load(filepath)
             # Ensure it's a PyTorch tensor
@@ -191,14 +193,33 @@ def validate_saved_model(model_path, device=None,
         for emb_v in all_embeds:
             concat_emb = np.mean(emb_v, axis=0)  # average across z for now
             concatenated_embeds.append(concat_emb)
-        concatenated_embeds = np.stack(concatenated_embeds)
-        print(f"✅ Concatenated embeddings shape: {concatenated_embeds.shape}")
-
     else:
         concatenated_embeds = all_embeds
+        
+
+    # Save embeddings
+    if save_embeddings:
+        # Extract filename from the last validation filepath
+        filepaths = map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2)
+        # filepaths_2 = map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2        
+        # Create save directory if it doesn't exist
+        save_dir = os.path.join(cfg.save_path, "embeddings")
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Save concatenated embeddings
+        for i, filename in enumerate(filepaths):
+            embed_save_path = os.path.join(save_dir, f"embeddings_{filename}.npy")
+            np.save(embed_save_path, concatenated_embeds[i])
+        print(f"✅ Saved embeddings to {embed_save_path}")
+        
+
+    concatenated_embeds = np.stack(concatenated_embeds)
+    print(f"✅ Concatenated embeddings shape: {concatenated_embeds.shape}")
+
     
     if visualize_umap:
         print("🔹 Running UMAP projection...")
+        
         reducer = umap.UMAP(n_neighbors=10, min_dist=0.2, metric="cosine", random_state=42)
         umap_embeds = reducer.fit_transform(concatenated_embeds)
 
@@ -213,7 +234,7 @@ def validate_saved_model(model_path, device=None,
         plt.tight_layout()
 
         if save_umap_path:
-            plt.savefig(save_umap_path, dpi=300)
+            plt.savefig(f"{cfg.save_path}/{save_umap_path}_{filepaths[0]}_{filepaths[-1]}.png", dpi=300)
             print(f"✅ Saved UMAP plot to {save_umap_path}")
         else:
             plt.show()
@@ -275,8 +296,27 @@ def extract_embeddings(model, dataloader, device, layer_name="pooler"):
 
 
 if __name__ == "__main__":
-    model_path = "checkpoints/z_predictor_custom_loss.pth"
+    model_path = "checkpoint_20240826/z_pred_0.03.pth"
     device = "cuda:0"
     visualize_umap = True
-    validate_saved_model(model_path, device =device, 
-    visualize_umap = visualize_umap)
+    save_embeddings = True
+    concatenate_embeddings = True
+    save_umap_path = "umap_validation_20240826"
+    cfg = Config()
+    # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
+    for i in range(100, len(cfg.val_filepaths), 100):
+        cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
+        validate_saved_model(model_path, 
+                            device =device, 
+                            visualize_umap = visualize_umap,
+                            save_embeddings = save_embeddings,
+                            save_umap_path = save_umap_path,
+                            concatenate_embeddings = concatenate_embeddings,
+                            cfg = cfg)
+    # validate_saved_model(model_path, 
+    #                     device =device, 
+    #                     visualize_umap = visualize_umap,
+    #                     save_embeddings = save_embeddings,
+    #                     save_umap_path = save_umap_path,
+    #                     concatenate_embeddings = concatenate_embeddings,
+    #                     cfg = cfg)

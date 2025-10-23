@@ -34,7 +34,7 @@ from videomae_zslicer import (
     ZVolumeAccuracyLoss
 )
 
-
+from validation_zslices import validate_saved_model
 # ------------------------------------------------------------
 # 2️⃣ Training Loop using the Custom Loss
 # ------------------------------------------------------------
@@ -178,6 +178,9 @@ def train_z_predictor_with_custom_loss():
 
     history = {"total": [], "ce": [], "vol": [], "val_slice": [], "val_vol": []}
 
+    if not os.path.exists(Config.save_path):
+            os.makedirs(Config.save_path)
+
     for epoch in range(Config.num_epochs):
         model.train()
         epoch_total, epoch_ce, epoch_vol = 0.0, 0.0, 0.0
@@ -217,6 +220,13 @@ def train_z_predictor_with_custom_loss():
         history["vol"].append(avg_vol)
         history["val_slice"].append(val_slice)
         history["val_vol"].append(val_vol)
+        
+        
+
+        if min(history["vol"]) == avg_vol and ((epoch+1)%5)==0 :
+            torch.save(model.state_dict(), f"{Config.save_path}/z_pred_{avg_vol:0.2f}.pth")
+            print("✅ Model saved with custom Z-loss!")
+
 
     # Optional validation step
     evaluate_z_predictor(model, val_loader, device)
@@ -282,3 +292,24 @@ def evaluate_z_predictor(model, dataloader, device):
 # ------------------------------------------------------------
 if __name__ == "__main__":
     train_z_predictor_with_custom_loss()
+
+    cfg = Config()
+    # model_path = "checkpoint_20240826/z_pred_0.03.pth"
+    model_path = f"{cfg.save_path}/z_predictor_custom_loss.pth"
+    device = "cuda:0"
+    visualize_umap = True
+    save_embeddings = True
+    concatenate_embeddings = True
+    exp_name = cfg.save_path.split("_")[1]
+    save_umap_path = f"umap_validation_{exp_name}"
+    
+    # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
+    for i in range(100, len(cfg.val_filepaths), 100):
+        cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
+        validate_saved_model(model_path, 
+                            device =device, 
+                            visualize_umap = visualize_umap,
+                            save_embeddings = save_embeddings,
+                            save_umap_path = save_umap_path,
+                            concatenate_embeddings = concatenate_embeddings,
+                            cfg = cfg)
