@@ -1,0 +1,60 @@
+#!/bin/bash
+
+#SBATCH --job-name=autoencoder-ddp
+#SBATCH --output autoencoder/runs/%j/slurm%j-%N.out
+#SBATCH --error  autoencoder/runs/%j/slurm%j-%N.err
+#SBATCH --partition=ghx4
+#SBATCH --account=begq-dtai-gh
+#SBATCH --nodes=8
+#SBATCH --gpus-per-node=4          # GPUs per node
+#SBATCH --ntasks-per-node=1        # one task (rank launcher) per node
+#SBATCH --cpus-per-task=96         # CPU cores usable by that task
+#SBATCH --time=24:00:00
+#SBATCH --exclusive
+#SBATCH --mem=0                    # use all memory on the node(s)
+
+# ---- Environment & modules ----
+# export EXPERIMENT_NAME="8_reflect_padding_nomask"
+export PYTHONPATH="$PWD:$PYTHONPATH"
+export LOGLEVEL=INFO
+
+# Helpful NCCL / Torch diagnostics
+export NCCL_DEBUG=INFO
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
+
+# Slingshot11 fabric: use HSN (high-speed network) for NCCL sockets
+export NCCL_SOCKET_IFNAME=hsn
+
+# Reasonable default to avoid oversubscription; tune if needed
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+
+# ---- Make a per-job run directory for logs/checkpoints ----
+RUN_DIR="${SLURM_SUBMIT_DIR}/runs/"
+mkdir -p "${RUN_DIR}"
+echo "Run directory: ${RUN_DIR}"
+echo "Job is starting on $(hostname)"
+
+# ---- Determine rendezvous endpoint (head node IP) ----
+nodes=( $( scontrol show hostnames "${SLURM_JOB_NODELIST}" ) )
+nodes_array=("${nodes[@]}")
+head_node=${nodes_array[0]}
+head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname -I | awk '{print $1}')
+
+echo "Head node: $head_node"
+echo "Head node IP: $head_node_ip"
+
+# Print all environment variables for debugging
+printenv | sort
+
+# ---- Launch multi-node DDP via torchrun ----
+# --nnodes comes from SLURM, processes per node equals GPUs per node
+# Use a stable rendezvous id per job for easier debugging
+time srun torchrun \
+  --nnodes="${SLURM_NNODES}" \
+  --nproc_per_node="${SLURM_GPUS_PER_NODE}" \
+  --rdzv_id="${SLURM_JOB_ID}" \
+  --rdzv_backend="c10d" \
+  --rdzv_endpoint="${head_node_ip}:29500" \
+  --tee 3 \
+  --module autoencoder.train_model_ddp

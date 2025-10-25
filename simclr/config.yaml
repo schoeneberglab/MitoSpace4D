@@ -1,13 +1,16 @@
-experiment_name: resnetbilstm_encoded_normal
+# experiment_name: resnetbilstm_encoded_resumed2024ckpt_kinetics_r20251024
+# experiment_name: resnetbilstm_encoded_kinetics_ablated-tmrm_r20251024
+# experiment_name: resnetbilstm_encoded_kinetics_ablated-tmrm_coslr_r20251024_v2
+experiment_name: debug_resnetbilstm_encoded_kinetics_ablated-tmrm_r20251025_3
 data_params:
   timesteps:
     start: 0
     end: 20
   zstacks:
-    start: 20
-    end: 80
+    start: 0
+    end: 60
   dataset_name: mitospace
-  data_path: /work/nvme/begq/MitoSpace4D/data/2024_data
+  data_path: /work/nvme/begq/MitoSpace4D/data/2025_data_encoded
   patch_size: 256
   samples_per_drug: None
   transforms:
@@ -51,6 +54,7 @@ data_params:
       p: 0.5
       lower: -0.5
       upper: 0.5
+      per_channel: False # Original mitospace trained w/ False
   filters: null
 logging_params:
   save_path: /u/earkfeld/MitoSpace4D/runs
@@ -58,7 +62,8 @@ model_params:
   arch: resnet18
   pretrained: false
   out_dim: 512
-  in_channels: 2
+  in_channels: 1 # 2
+  channels: [1] # [0, 1] # Working on integrating; 0: TMRM, 1: Morphology
   num_z: 60
   timesteps: 20
 training:
@@ -66,21 +71,24 @@ training:
     name: InfoNCELoss
     use_normalization: True
     temperature: 0.07
-  max_epochs: 300
+  max_epochs: 50 # 300
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 8 # 4 # 2
+  batch_size: 6 # 4 # 2
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
     mode: min
-    save_top_k: 1
+    save_top_k: 3
     save_last: True
-  continue_from_ckpt_wo_opt: /u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt # None
+  checkpoint_path: None # /u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt
+  continue_with_optimizer: False
+  # continue_from_ckpt_wo_opt: None # /u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt # None
   lr: 0.0003
+  warmup_epochs: 10
   weight_decay: 0.00001
   workers: 24 # 16 # 4
-  prefetch_factor: 4 # 2
+  prefetch_factor: 2 # 4 # 2
   persistent_workers: True
   n_views: 2
 distributed:
@@ -88,7 +96,7 @@ distributed:
   num_gpus: -1
   accelerator: gpu
   strategy: ddp
-  num_nodes: 1 # 8
+  num_nodes: 1 # 1 # 8
   backend: nccl
 evaluate:
   top_ns: [1, 3]

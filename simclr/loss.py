@@ -9,8 +9,10 @@ import diffdist
 
 
 class InfoNCELoss(nn.Module):
-    def __init__(self, temperature: float = 0.07, use_normalization: bool = True,
-                 n_views: int = 2, distributed: bool = True) -> None:
+    def __init__(self, temperature: float = 0.07, 
+                 use_normalization: bool = True,
+                 n_views: int = 2, 
+                 distributed: bool = True) -> None:
         """
         Initialize the loss function for InfoNCE loss.
         """
@@ -75,13 +77,15 @@ class InfoNCELoss(nn.Module):
 
         return loss, (acc[0].item(), acc[1].item())
 
-
 class SupConLoss(nn.Module):
     """Supervised Contrastive Learning: https://arxiv.org/pdf/2004.11362.pdf.
     It also supports the unsupervised contrastive loss in SimCLR"""
 
-    def __init__(self, temperature: float = 0.07, contrast_mode: str = 'all',
-                 base_temperature: float = 0.07, use_normalization: bool = True) -> None:
+    def __init__(self, 
+                 temperature: float = 0.07, 
+                 contrast_mode: str = 'all',
+                 base_temperature: float = 0.07, 
+                 use_normalization: bool = True) -> None:
         super(SupConLoss, self).__init__()
         self.temperature = temperature
         self.contrast_mode = contrast_mode
@@ -96,7 +100,7 @@ class SupConLoss(nn.Module):
 
         Note: The accuracies computed doesn't make a lot of sense and is just a proxy of the model's performance.
         Do not rely on it for any meaningful metric. It's computed just so that InfoNCE loss and SupConLoss
-         both have same return type.
+        both have same return type.
 
         Args:
             features: hidden vector of shape [bsz, n_views, ...].

@@ -71,14 +71,16 @@ def main():
     # model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], 
     #                                apply_aug=True)
 
-    model = Lightweight3DResNet(embedding_size=2048, 
-                                cfg_aug=cfg['data_params']['transforms'], 
+    model = Lightweight3DResNet(embedding_size=2048,
+                                cfg=cfg, 
+                                # cfg_aug=cfg['data_params']['transforms'], 
                                 apply_aug=True).cuda()
 
     for param in model.augment_pipeline.parameters():
         param.requires_grad = False
-    for param in model.decoder.parameters():
-        param.requires_grad = False
+        
+    # for param in model.decoder.parameters():
+    #     param.requires_grad = False
 
     tb_logger = pl_loggers.TensorBoardLogger(
         version=cfg["experiment_name"], save_dir=cfg["logging_params"]["save_path"]
@@ -93,14 +95,14 @@ def main():
     )
 
     # load from checkpoint
-    if cfg["training"]["continue_from_ckpt_wo_opt"] != 'None':
+    if cfg["training"]["checkpoint_path"] != 'None' and not cfg["training"]["continue_with_optimizer"]:
+        print(f"Loading checkpoints without optimizer from {cfg['training']['checkpoint_path']}")
         # Note: It simply loads the checkpoint and doesn't load the optimizer or scheduler states
         # To continue training properly, add ckpt_path in the trainer.fit() call
-        train_runner = SimCLRRunner.load_from_checkpoint(cfg["training"]["continue_from_ckpt_wo_opt"], 
+        train_runner = SimCLRRunner.load_from_checkpoint(cfg["training"]["checkpoint_path"], 
                                                          cfg=cfg,
-                                                         model=model)
-        
-        print(f"Loading checkpoints without optimizer from {cfg['training']['continue_from_ckpt_wo_opt']}")
+                                                         model=model,
+                                                         strict=False)
 
     else:
         train_runner = SimCLRRunner(cfg, model)
@@ -111,7 +113,6 @@ def main():
         log_every_n_steps=13,
         logger=tb_logger,
         callbacks=[ckpt_callback],
-        # precision=16,  # mixed precision training,
         precision="16-mixed",  # mixed precision training,
         num_nodes=cfg["distributed"]["num_nodes"],
         devices=cfg["distributed"]["num_gpus"],
@@ -119,14 +120,21 @@ def main():
         sync_batchnorm=True,
     )
 
-    trainer.fit(
-        model=train_runner,
-        train_dataloaders=train_loader,
-        val_dataloaders=val_loader,
-        # use this to load optimizer as well as model states
-        # ckpt_path="/u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt"
-    )
-
+    if cfg["training"]["checkpoint_path"] != 'None' and cfg["training"]["continue_with_optimizer"]:
+        print(f"Continuing training with optimizer states from {cfg['training']['checkpoint_path']}")
+        trainer.fit(
+            model=train_runner,
+            train_dataloaders=train_loader,
+            val_dataloaders=val_loader,
+            # use this to load optimizer as well as model states
+            ckpt_path="runs/lightning_logs/resnetbilstm_encoded_resumed2024ckpt_kinetics_r20251024/checkpoints/last.ckpt"
+        )
+    else:
+        trainer.fit(
+            model=train_runner,
+            train_dataloaders=train_loader,
+            val_dataloaders=val_loader,
+        )
 
 if __name__ == "__main__":
     main()

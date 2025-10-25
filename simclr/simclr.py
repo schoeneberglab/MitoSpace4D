@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
+
 import umap
 from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from sklearn.metrics import davies_bouldin_score
@@ -11,6 +13,8 @@ import pytorch_lightning as pl
 from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
 from utils.utils import minus_one_to_one_normalization
+from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_runner import AutoEncoderRunner
 
 torch.manual_seed(0)
 
@@ -31,9 +35,11 @@ def load_resnet_model(cfg, ckpt_path, device='cuda', eval_mode=True):
 
     return model
 
-
 class SimCLRRunner(pl.LightningModule):
-    def __init__(self, cfg: Dict, model: torch.nn.Module) -> None:
+    def __init__(self, 
+                 cfg: Dict, 
+                 model: torch.nn.Module,
+                 ) -> None:
         super().__init__()
         self.cfg = cfg
         self.model = model
@@ -45,10 +51,11 @@ class SimCLRRunner(pl.LightningModule):
                                           cfg['training']['lr'],
                                           weight_decay=cfg['training']['weight_decay'])
 
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
-                                                                    T_max=cfg['training']['max_epochs'],
-                                                                    eta_min=0, 
-                                                                    last_epoch=-1)
+        # warmup = LinearLR(self.optimizer, start_factor=0.001, total_iters=cfg['training'].get('warmup_epochs', 5))
+        # cosine = CosineAnnealingLR(self.optimizer, T_max=cfg['training']['max_epochs'], eta_min=0, last_epoch=-1)
+        # self.scheduler = SequentialLR(self.optimizer, schedulers=[warmup, cosine], milestones=[cfg['training'].get('warmup_epochs', 5)])
+
+        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=cfg['training']['max_epochs'], eta_min=0, last_epoch=-1)
 
         self.data_bank = {"Train": [], "Val": []}
 
@@ -123,45 +130,76 @@ class SimCLRRunner(pl.LightningModule):
         random_timestep = torch.randint(high=num_timesteps, size=(1,))[0]
         random_z = torch.randint(high=num_z, size=(1,))[0]
 
-        #  random positive pair
-        idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
-        pos1_mito = images[0, idx, 1, random_timestep, random_z]  # aug-1
-        pos2_mito = images[1, idx, 1, random_timestep, random_z]  # aug-2
-        pos1_tmrm = images[0, idx, 0, random_timestep, random_z]  # aug-1
-        pos2_tmrm = images[1, idx, 0, random_timestep, random_z]  # aug-2
+        channels = self.cfg['model_params']['channels']
+        
+        for ch in channels:
+            ch_id = str(ch)
+            idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
+            
+            # Random positive pair
+            pos1 = images[0, idx, ch, random_timestep, random_z]  # aug-1
+            pos2 = images[1, idx, ch, random_timestep, random_z]  # aug-2
 
-        #  random negative pair
-        neg1_mito = images[0, idx, 1, random_timestep, random_z]  # normal
-        neg1_tmrm = images[0, idx, 0, random_timestep, random_z]  # normal
-        neg_idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
-        while neg_idx == idx:
+            # Random negative pair
+            neg1 = images[0, idx, ch, random_timestep, random_z]
             neg_idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
-        neg2_mito = images[1, neg_idx, 1, random_timestep, random_z]  # aug
-        neg2_tmrm = images[1, neg_idx, 0, random_timestep, random_z]  # aug
+            while neg_idx == idx:
+                neg_idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
+            neg2 = images[1, neg_idx, ch, random_timestep, random_z]
 
-        # concat positive and negative pairs
-        sep = 10
-        pos_mito_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        pos_mito_pair[:, :images[0].shape[-2]] = pos1_mito
-        pos_mito_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = pos2_mito
+            # concat positive and negative pairs
+            sep = 10
+            pos_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
+            pos_pair[:, :images[0].shape[-2]] = pos1
+            pos_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = pos2
+            neg_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
+            neg_pair[:, :images[0].shape[-2]] = neg1
+            neg_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = neg2
 
-        neg_mito_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        neg_mito_pair[:, :images[0].shape[-2]] = neg1_mito
-        neg_mito_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = neg2_mito
+            # plot images
+            self.plot_img(f"{key}/Channel_{ch_id}_Positive_Pair", pos_pair)
+            self.plot_img(f"{key}/Channel_{ch_id}_Negative_Pair", neg_pair)
 
-        pos_tmrm_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        pos_tmrm_pair[:, :images[0].shape[-2]] = pos1_tmrm
-        pos_tmrm_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = pos2_tmrm
+        #-- Original
+        # #  random positive pair
+        # idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
+        # pos1_mito = images[0, idx, 1, random_timestep, random_z]  # aug-1
+        # pos2_mito = images[1, idx, 1, random_timestep, random_z]  # aug-2
+        # pos1_tmrm = images[0, idx, 0, random_timestep, random_z]  # aug-1
+        # pos2_tmrm = images[1, idx, 0, random_timestep, random_z]  # aug-2
 
-        neg_tmrm_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
-        neg_tmrm_pair[:, :images[0].shape[-2]] = neg1_tmrm
-        neg_tmrm_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = neg2_tmrm
+        # #  random negative pair
+        # neg1_mito = images[0, idx, 1, random_timestep, random_z]  # normal
+        # neg1_tmrm = images[0, idx, 0, random_timestep, random_z]  # normal
+        # neg_idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
+        # while neg_idx == idx:
+        #     neg_idx = torch.randint(high=images[0].shape[0], size=(1,))[0]
+        # neg2_mito = images[1, neg_idx, 1, random_timestep, random_z]  # aug
+        # neg2_tmrm = images[1, neg_idx, 0, random_timestep, random_z]  # aug
 
-        # plot images
-        self.plot_img(f"{key}/Positive MitoTracker", pos_mito_pair)
-        self.plot_img(f"{key}/Negative MitoTracker", neg_mito_pair)
-        self.plot_img(f"{key}/Positive TMRM", pos_tmrm_pair)
-        self.plot_img(f"{key}/Negative TMRM", neg_tmrm_pair)
+        # # concat positive and negative pairs
+        # sep = 10
+        # pos_mito_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
+        # pos_mito_pair[:, :images[0].shape[-2]] = pos1_mito
+        # pos_mito_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = pos2_mito
+
+        # neg_mito_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
+        # neg_mito_pair[:, :images[0].shape[-2]] = neg1_mito
+        # neg_mito_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = neg2_mito
+
+        # pos_tmrm_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
+        # pos_tmrm_pair[:, :images[0].shape[-2]] = pos1_tmrm
+        # pos_tmrm_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = pos2_tmrm
+
+        # neg_tmrm_pair = torch.zeros((images[0].shape[-2], images[0].shape[-1] * 2 + sep))
+        # neg_tmrm_pair[:, :images[0].shape[-2]] = neg1_tmrm
+        # neg_tmrm_pair[:, images[0].shape[-2] + 10:images[0].shape[-2] * 2 + sep] = neg2_tmrm
+
+        # # plot images
+        # self.plot_img(f"{key}/Positive MitoTracker", pos_mito_pair)
+        # self.plot_img(f"{key}/Negative MitoTracker", neg_mito_pair)
+        # self.plot_img(f"{key}/Positive TMRM", pos_tmrm_pair)
+        # self.plot_img(f"{key}/Negative TMRM", neg_tmrm_pair)
 
     def log_mitospace(self, batch):
         if isinstance(batch, Dict):
@@ -234,18 +272,28 @@ class SimCLRRunner(pl.LightningModule):
 
         images, classes = batch["images"], batch["classes"]
 
+        # if self.decoder is not None:
+        #     with torch.no_grad():
+        #         images = self.decoder(images)
+
         features, out = self.model(images)
 
         loss, cross_entropy, acc = None, None, None
         if self.loss == 'InfoNCELoss':
-            loss, acc = self.criterion(out, bs=self.cfg['training']['batch_size'])
-            cross_entropy = self.cross_entropy_2d(features.detach().cpu(), labels=classes.detach().cpu(),
+            loss, acc = self.criterion(out, 
+                                       bs=self.cfg['training']['batch_size'])
+            
+            cross_entropy = self.cross_entropy_2d(features.detach().cpu(), 
+                                                  labels=classes.detach().cpu(),
                                                   batch_size=self.cfg['training']['batch_size'],
                                                   n_views=self.cfg['training']['n_views'])
         elif self.loss == 'SupConLoss':
-            loss, acc = self.criterion(out, labels=classes,
+            loss, acc = self.criterion(out, 
+                                       labels=classes,
                                        bs=self.cfg['training']['batch_size'])
-            cross_entropy = self.cross_entropy_2d(features.detach().cpu(), labels=classes.detach().cpu(),
+            
+            cross_entropy = self.cross_entropy_2d(features.detach().cpu(), 
+                                                  labels=classes.detach().cpu(),
                                                   batch_size=self.cfg['training']['batch_size'],
                                                   n_views=self.cfg['training']['n_views'])
 
@@ -271,9 +319,9 @@ class SimCLRRunner(pl.LightningModule):
         self.log('Train/acc/top5', acc[1])
         self.log('Train/db_score', db)
 
-        # if self.global_step % self.train_draw_period == 0:
-        #     self.additional_log(batch, "Train")
-        #     self.val_draw = True
+        if self.global_step % self.train_draw_period == 0:
+            self.additional_log(batch, "Train")
+            self.val_draw = True
 
         # if self.global_step % self.projector_period == 0 and self.global_step != 0:
         #     self.log_mitospace(batch)
@@ -291,8 +339,8 @@ class SimCLRRunner(pl.LightningModule):
         self.log('Val/acc/top5', acc[1])
         self.log('Val/db_score', db)
 
-        # if self.val_draw:
-        #     self.additional_log(batch, "Val")
+        if self.val_draw:
+            self.additional_log(batch, "Val")
         #     self.val_draw = False
 
         return loss[0]

@@ -5,6 +5,7 @@ from utils.utils import load_config
 import torch.nn.functional as F
 from autoencoder.autoencoder_runner import AutoEncoderRunner
 from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
+import einops
 
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
@@ -31,32 +32,59 @@ class Basic3DBlock(nn.Module):
         out += identity
         return F.relu(out)
 
-
 class Lightweight3DResNet(nn.Module):
-    def __init__(self, embedding_size=2048, cfg_aug=None, apply_aug=False, decoder_checkpoint_path=None):
+    def __init__(self, 
+                 embedding_size=2048,
+                 cfg=None, 
+                #  cfg_aug=None, 
+                 apply_aug=False, 
+                 decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
+                 ) -> None:
         super(Lightweight3DResNet, self).__init__()
 
         self.apply_aug = apply_aug
         # self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
-        self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
+        self.augment_pipeline = DataAugmentation(cfg['data_params']['transforms'], zero_mean_norm=True)
+        self._with_decoder = True if decoder_checkpoint_path is not None else False
+        # self._n_channels = cfg['model_params']['in_channels']
+
+        # Get the channels to use from config and convert to tensor for on-device indexing
+        self._channels = cfg['model_params']['channels']
+        print(f"Using channels: {self._channels} for input.")
+        
+        in_channels = len(self._channels)
+        self._channels = torch.tensor(self._channels).to(torch.int32)
+
+        # # generate a tensor to test the channel indexing
+        # test_tensor = torch.randn(1, 10, 2, 30, 64, 64) # (b, t, c, d, h, w)
+        # print(f"Test tensor shape before indexing: {test_tensor.shape}")
+        # indexed_tensor = test_tensor[:, :, self._channels, ...]
+        # print(f"Test tensor shape after indexing: {indexed_tensor.shape}")
 
         # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
-        dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/checkpoints/MitospaceAutoencoder_Summer2024.ckpt"
-        decoder_model = MitoSpace3DAutoencoder()
-        self.decoder = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=decoder_model)
-        self.decoder = self.decoder.model.decoder
-        self.decoder.eval()
+        # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/checkpoints/MitospaceAutoencoder_Summer2024.ckpt"
+        # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
+        
+        if self._with_decoder:
+            dec_checkpoint_path = decoder_checkpoint_path
+            ae_model = MitoSpace3DAutoencoder()
+            ae_model = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=ae_model)
+        
+            self.decoder = ae_model.model.decoder
+            self.decoder.eval()
 
-        # Freeze decoder parameters
-        for param in self.decoder.parameters():
-            param.requires_grad = False
+            del ae_model # Delete the model to free up memory
 
-        self.decoder.to('cuda')
+            # Freeze decoder parameters
+            for param in self.decoder.parameters():
+                param.requires_grad = False
+
+            self.decoder.to('cuda')
         self.augment_pipeline.to('cuda')
 
         # Initial layer: modify for 2-channel input
         self.stem = nn.Sequential(
-            nn.Conv3d(2, 16, kernel_size=3, stride=(1, 2, 2), padding=1, bias=False),
+            nn.Conv3d(in_channels, 16, kernel_size=3, stride=(1, 2, 2), padding=1, bias=False),
             nn.BatchNorm3d(16),
             nn.ReLU(inplace=True),
             nn.MaxPool3d(kernel_size=3, stride=(1, 2, 2), padding=1)
@@ -98,11 +126,28 @@ class Lightweight3DResNet(nn.Module):
         return x
 
     def forward(self, x):
-    
-        with torch.no_grad():
-            x = self.decoder(x)
-            x = self.augment_pipeline(x) if self.apply_aug else 2*x-1  # (b, t, c, d, h, w)
-            #x = self.scramble_time(x)
+        if self._with_decoder:
+            with torch.no_grad():
+                # x: (b, t, c, d, h, w)
+                b = x.size(0)
+                micro_bs = 2  # decode two batch elements at a time
+
+                decoded_chunks = []
+                for i in range(0, b, micro_bs):
+                    chunk = x[i:i + micro_bs]          # (micro_bs, t, c, d, h, w)
+                    out   = self.decoder(chunk)        # same shape, (micro_bs, t, c, d, h, w)
+                    decoded_chunks.append(out)
+
+                # Concatenate all decoded chunks back along the batch dimension
+                x = torch.cat(decoded_chunks, dim=0)   # (b, t, c, d, h, w)
+
+        print(f"Input shape before augment/normalize: {x.size()}")
+        # Augment or normalize
+        x = self.augment_pipeline(x) if self.apply_aug else (2 * x - 1)
+        print(f"Input shape after augment/normalize: {x.size()}")
+        # keep only the specified channels while retaining the channel dimension
+        x = x[:, :, self._channels, ...] # (b, t, c, d, h, w)
+        print(f"Input shape after channel indexing: {x.size()}")
 
         batch_size, time_steps, channels, depth, height, width = x.size()
 
@@ -140,7 +185,7 @@ class Lightweight3DResNet(nn.Module):
         out = out.reshape(b, t, -1)[:, -1]
 
         return x, out
-
+    
 
 if __name__ == '__main__':
     cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")

@@ -10,9 +10,9 @@ from utils.utils import load_config
 
 
 class ContrastiveLearningDataset:
-    def __init__(self, root_folder: str, args: Dict) -> None:
+    def __init__(self, root_folder: str, cfg: Dict) -> None:
         self.root_folder = root_folder
-        self.args = args
+        self.args = cfg
 
     def get_dataset(self, name: str, n_views: int, flag: str = 'train', seed: int = None,
                     pick_labels: List = None, samples_per_drug: int = None,

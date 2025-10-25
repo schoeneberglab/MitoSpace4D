@@ -124,25 +124,22 @@ class RandomTimeMask(nn.Module):
 
 
 class RandomBrightness(nn.Module):
-    def __init__(self, p=0.5, lower=1, upper=1) -> None:
+    def __init__(self, p=0.5, lower=1, upper=1, per_channel=False) -> None:
         super().__init__()
         self.p = p
         self.range = (lower, upper)
+        self.per_channel = per_channel
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # if torch.rand(1, device=x.device) < self.p:
-        #     factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
-        #     x = x + factor
-
-        # Channel 0
-        if torch.rand(1, device=x.device) < self.p:
-            factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
-            x[:, :, 0, :, :, :] = x[:, :, 0, :, :, :] + factor
-
-        # Channel 1
-        if torch.rand(1, device=x.device) < self.p:
-            factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
-            x[:, :, 1, :, :, :] = x[:, :, 1, :, :, :] + factor
+        if self.per_channel:
+            for ch in range(x.size(2)):
+                if torch.rand(1, device=x.device) < self.p:
+                    factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
+                    x[:, :, ch, :, :, :] = x[:, :, ch, :, :, :] + factor
+        else:
+            if torch.rand(1, device=x.device) < self.p:
+                factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
+                x = x + factor
         return x
 
 
@@ -172,6 +169,7 @@ class DataAugmentation(nn.Module):
             RandomBrightness(p=cfg_aug['RandomBrightness']['p'],
                              lower=cfg_aug['RandomBrightness']['lower'],
                              upper=cfg_aug['RandomBrightness']['upper'],
+                             per_channel=cfg_aug['RandomBrightness']['per_channel'],
                              ),
             RandomGaussianNoise(p=cfg_aug['GaussianNoise']['p'],
                                 mean=cfg_aug['GaussianNoise']['mu'],
@@ -215,5 +213,4 @@ class DataAugmentation(nn.Module):
 
         if self.zero_mean_norm:
             return 2 * views - 1  # scale to [-1, 1]
-
         return views
