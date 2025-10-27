@@ -39,7 +39,7 @@ from validation_zslices import validate_saved_model
 # 2️⃣ Training Loop using the Custom Loss
 # ------------------------------------------------------------
 
-def train_z_predictor_with_custom_loss():
+def train_z_predictor_with_custom_loss(cfg):
     """
     Loads model, data, and trains with both CrossEntropy + VolumeAccuracy loss
     """
@@ -51,7 +51,7 @@ def train_z_predictor_with_custom_loss():
     global_z_idx_counter = 0 
     global_volume_counter = []
 
-    for volume_id , filepath in enumerate(Config.image_filepaths):
+    for volume_id , filepath in enumerate(cfg.image_filepaths):
         try:
             full_image_data_np = np.load(filepath)
             # Ensure it's a PyTorch tensor
@@ -87,12 +87,12 @@ def train_z_predictor_with_custom_loss():
     all_data_combined_tensor = torch.stack(all_z_video_clips, dim=0) # Shape: (Total_Z_slices_across_files, T, C_orig, H, W)
     total_z_samples = all_data_combined_tensor.shape[0]
     
-    print(f"Total {total_z_samples} Z-slice video samples loaded from {len(Config.image_filepaths)} files.")
+    print(f"Total {total_z_samples} Z-slice video samples loaded from {len(cfg.image_filepaths)} files.")
 
     # Split the *indices* of these samples into train and test sets
     sample_indices = global_slice_counter
     train_sample_indices, test_sample_indices = train_test_split(
-        sample_indices, test_size=Config.test_size_z, random_state=Config.random_seed
+        sample_indices, test_size=cfg.test_size_z, random_state=Config.random_seed
     )
     
     # Get the actual original Z-indices for the train/test splits
@@ -120,13 +120,13 @@ def train_z_predictor_with_custom_loss():
     print(f"Number of Z-slice samples for testing: {len(test_sample_indices)}")
 
     # Initialize image processor and model
-    image_processor = AutoImageProcessor.from_pretrained(Config.image_processor_name, do_rescale=False)
+    image_processor = AutoImageProcessor.from_pretrained(cfg.image_processor_name, do_rescale=False)
     
     # Determine the number of input channels for the model
     # If create_third_channel is True, it will be 3, otherwise 2 (assuming original input has 2)
-    model_in_channels = 2 + (1 if Config.create_third_channel else 0)
+    model_in_channels = 2 + (1 if cfg.create_third_channel else 0)
     
-    model = AutoModelForVideoClassification.from_pretrained(Config.model_name, num_labels=num_labels)
+    model = AutoModelForVideoClassification.from_pretrained(cfg.model_name, num_labels=num_labels)
     # print("Shape of all data: ", all_data_combined_tensor.shape, train_sample_indices)
     all_data_combined_tensor = all_data_combined_tensor.to(torch.int32)
 
@@ -136,32 +136,32 @@ def train_z_predictor_with_custom_loss():
         train_original_z_indices,
         train_volume_ids, 
         image_processor,
-        create_third_channel=Config.create_third_channel,
+        create_third_channel=cfg.create_third_channel,
     )
     test_dataset = ZSliceDataset(
         all_data_combined_tensor[test_sample_indices],
         test_original_z_indices,
         test_volume_ids,
         image_processor,
-        create_third_channel=Config.create_third_channel
+        create_third_channel=cfg.create_third_channel
     )
     complete_set = ZSliceDataset(
         all_data_combined_tensor,
         all_original_z_indices,
         global_volume_counter,
         image_processor,
-        create_third_channel=Config.create_third_channel
+        create_third_channel=cfg.create_third_channel
     )
     # Set the global label mapping for both datasets
     train_dataset.set_label_mapping(z_to_label_mapping)
     test_dataset.set_label_mapping(z_to_label_mapping)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=Config.batch_size, shuffle=False, num_workers=4)
-    val_loader = DataLoader(test_dataset, batch_size=Config.batch_size, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=False, num_workers=4)
+    val_loader = DataLoader(test_dataset, batch_size=cfg.batch_size, shuffle=False, num_workers=4)
 
-    test_loader = DataLoader(test_dataset, batch_size=Config.batch_size, shuffle=False, num_workers=4)
-    complete_loader = DataLoader(complete_set, batch_size = Config.batch_size , shuffle = False, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=cfg.batch_size, shuffle=False, num_workers=4)
+    complete_loader = DataLoader(complete_set, batch_size = cfg.batch_size , shuffle = False, num_workers=4)
     # Set up device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -174,18 +174,18 @@ def train_z_predictor_with_custom_loss():
 
 
     # ✅ Optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), lr=Config.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
 
     history = {"total": [], "ce": [], "vol": [], "val_slice": [], "val_vol": []}
 
-    if not os.path.exists(Config.save_path):
-            os.makedirs(Config.save_path)
+    if not os.path.exists(cfg.save_path):
+            os.makedirs(cfg.save_path)
 
-    for epoch in range(Config.num_epochs):
+    for epoch in range(cfg.num_epochs):
         model.train()
         epoch_total, epoch_ce, epoch_vol = 0.0, 0.0, 0.0
 
-        for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{Config.num_epochs}"):
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.num_epochs}"):
             pixel_values = batch["pixel_values"].to(device)
             labels = batch["labels"].to(device)
             volume_ids = batch["volume_id"].to(device)
@@ -224,20 +224,20 @@ def train_z_predictor_with_custom_loss():
         
 
         if min(history["vol"]) == avg_vol and ((epoch+1)%5)==0 :
-            torch.save(model.state_dict(), f"{Config.save_path}/z_pred_{avg_vol:0.2f}.pth")
+            torch.save(model.state_dict(), f"{cfg.save_path}/z_pred_{avg_vol:0.2f}.pth")
             print("✅ Model saved with custom Z-loss!")
 
 
     # Optional validation step
     evaluate_z_predictor(model, val_loader, device)
 
-    torch.save(model.state_dict(), f"{Config.save_path}/z_predictor_custom_loss.pth")
+    torch.save(model.state_dict(), f"{cfg.save_path}/z_predictor_custom_loss.pth")
     print("✅ Model saved with custom Z-loss!")
 
      # --------------------------------------------------------
     # 4️⃣ Plot Loss History
     # --------------------------------------------------------
-    out_dir = Path(Config.save_path)
+    out_dir = Path(cfg.save_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     plt.figure(figsize=(7, 5))
@@ -291,9 +291,37 @@ def evaluate_z_predictor(model, dataloader, device):
 # 4️⃣ Entry point
 # ------------------------------------------------------------
 if __name__ == "__main__":
-    train_z_predictor_with_custom_loss()
 
+    # class Config:
+    # # --- Dataset specific ---
+    # # List of .npy file paths
     cfg = Config()
+    cfg.base_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/"
+    cfg.image_filepaths = []
+    files = os.listdir(cfg.base_path)
+    for i in files[0:100]:
+        cfg.image_filepaths.append(f"{cfg.base_path}{i}")
+
+    cfg.val_filepaths = []
+    for i in files:
+        cfg.val_filepaths.append(f"{cfg.base_path}{i}")
+   
+    cfg.model_name = "MCG-NJU/videomae-base" # A good choice for video classification
+    cfg.image_processor_name = "MCG-NJU/videomae-base" # The associated image processor
+    
+    # --- Training specific ---
+    cfg.test_size_z = 0.3 # 30% of Z-slices for testing, 70% for training
+    cfg.batch_size = 16 # Reduced batch size, especially if creating 3 channels and multiple files
+    cfg.num_epochs = 20
+    cfg.learning_rate = 1e-5
+    cfg.random_seed = 42
+    cfg.do_rescale = False
+    cfg.device = "cuda:0"
+    cfg.save_path = "checkpoint_20240729"
+
+    train_z_predictor_with_custom_loss(cfg)
+
+    # cfg = Config()
     # model_path = "checkpoint_20240826/z_pred_0.03.pth"
     model_path = f"{cfg.save_path}/z_predictor_custom_loss.pth"
     device = "cuda:0"

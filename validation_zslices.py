@@ -232,6 +232,7 @@ def validate_saved_model(model_path, device=None,
         plt.ylabel("UMAP-2")
         plt.legend(title="Vol Accuracy", bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
+        filepaths = list(map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2))
 
         if save_umap_path:
             plt.savefig(f"{cfg.save_path}/{save_umap_path}_{filepaths[0]}_{filepaths[-1]}.png", dpi=300)
@@ -296,13 +297,22 @@ def extract_embeddings(model, dataloader, device, layer_name="pooler"):
 
 
 if __name__ == "__main__":
-    model_path = "checkpoint_20240826/z_pred_0.03.pth"
+    # model_path = "checkpoint_20240826/z_pred_0.03.pth"
+    # device = "cuda:0"
+    # visualize_umap = True
+    # save_embeddings = True
+    # concatenate_embeddings = True
+    # save_umap_path = "umap_validation_20240826"
+    # cfg = Config()
+    cfg = Config()
+    # model_path = "checkpoint_20240826/z_pred_0.03.pth"
+    model_path = f"{cfg.save_path}/z_predictor_custom_loss.pth"
     device = "cuda:0"
     visualize_umap = True
     save_embeddings = True
     concatenate_embeddings = True
-    save_umap_path = "umap_validation_20240826"
-    cfg = Config()
+    exp_name = cfg.save_path.split("_")[1]
+    save_umap_path = f"umap_validation_{exp_name}"
     # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
     for i in range(100, len(cfg.val_filepaths), 100):
         cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]

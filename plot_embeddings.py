@@ -21,32 +21,65 @@ class Config_embeddings:
     save_paths: list  # List of checkpoint paths
     base_paths: list  # List of corresponding base paths
     embeddings_filepaths: list  # Will be populated for each save_path
+    batch_size: int = 200  # Number of embeddings to load at a time
 
 def plot_embeddings(cfg):
-    all_embeddings = []
-    all_labels = []
-    drug_names = []  # To store drug names for the legend
+    # Step 1: Collect all file paths and metadata first
+    all_file_info = []
+    drug_names = []
+    volume_id_counter = 0
     
-    # Load embeddings from all checkpoint directories
-    for save_path in cfg.save_paths:
+    for checkpoint_idx, save_path in enumerate(cfg.save_paths):
         embeddings_dir = f"{save_path}/embeddings"
         if not os.path.exists(embeddings_dir):
             print(f"Warning: Directory {embeddings_dir} does not exist. Skipping...")
             continue
             
-        embeddings_files = os.listdir(embeddings_dir)
+        embeddings_files = sorted(os.listdir(embeddings_dir))  # Sort for consistency
+        drug_label = save_path.split("_")[1]
+        
+        if drug_label not in drug_names:
+            drug_names.append(drug_label)
         
         for filepath in embeddings_files:
-            embedding = np.load(f"{embeddings_dir}/{filepath}").reshape(1, -1)
-            label = save_path.split("_")[1]
-            
-            all_embeddings.append(embedding)
-            all_labels.append(label)
-            if label not in drug_names:
-                drug_names.append(label)
-
-    # Combine all embeddings
-    combined_embeddings = np.concatenate(all_embeddings, axis=0)
+            all_file_info.append({
+                'filepath': f"{embeddings_dir}/{filepath}",
+                'drug_label': drug_label,
+                'checkpoint_idx': checkpoint_idx,
+                'volume_id': volume_id_counter
+            })
+            volume_id_counter += 1
+    
+    print(f"Total embeddings to load: {len(all_file_info)}")
+    
+    # Step 2: Load embeddings in batches
+    all_embeddings_batches = []
+    all_labels = []
+    
+    for i in range(0, len(all_file_info), cfg.batch_size):
+        batch = all_file_info[i:i + cfg.batch_size]
+        batch_num = i // cfg.batch_size + 1
+        total_batches = (len(all_file_info) + cfg.batch_size - 1) // cfg.batch_size
+        print(f"Loading batch {batch_num}/{total_batches} ({len(batch)} files)")
+        
+        batch_embeddings = []
+        
+        for file_info in batch:
+            try:
+                embedding = np.load(file_info['filepath']).reshape(1, -1)
+                batch_embeddings.append(embedding)
+                all_labels.append(file_info['drug_label'])
+            except Exception as e:
+                print(f"Error loading {file_info['filepath']}: {e}")
+                continue
+        
+        if batch_embeddings:
+            batch_array = np.concatenate(batch_embeddings, axis=0)
+            all_embeddings_batches.append(batch_array)
+    
+    # Step 3: Combine all batches into final array
+    print("Combining all embedding batches...")
+    combined_embeddings = np.concatenate(all_embeddings_batches, axis=0)
     
     # Fit UMAP on combined embeddings
     umap_embeddings = umap.UMAP(
@@ -117,6 +150,7 @@ if __name__ == "__main__":
             "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240826/",
             "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240830/"
         ],
-        embeddings_filepaths=[]  # Will be populated automatically for each save_path
+        embeddings_filepaths=[],  # Will be populated automatically for each save_path
+        batch_size=200  # Load 200 embeddings at a time to manage memory
     )
     plot_embeddings(cfg)
