@@ -78,34 +78,44 @@ def normalize_and_mask(img_slice_2d, eps=1e-6, mask_threshold=0.1):
 # 20240826 nocodazole 17
 # 20240830 colchicine 18
 # --- 1. Configuration ---
+
+# class Config_batch:
+#     master_base_path ="/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/"
+#     base_paths = [f"{master_base_path}{i}" for i in os.listdir(master_base_path)]
+#     image_filepaths = []
+#     val_filepaths = []
+#     for base_path in base_paths:
+#         files = sorted(os.listdir(base_path))
+#         for i in files[0:200]:
+#             image_filepaths.append(f"{base_path}{i}")
+#         for i in files[200:]:
+#             val_filepaths.append(f"{base_path}{i}")     
+
+#     model_name = "MCG-NJU/videomae-base" # A good choice for video classification
+#     image_processor_name = "MCG-NJU/videomae-base" # The associated image processor
+#     test_size_z = 0.3 # 30% of Z-slices for testing, 70% for training
+#     batch_size = 16 # Reduced batch size, especially if creating 3 channels and multiple files
+#     num_epochs = 20
+#     learning_rate = 1e-5
+#     random_seed = 42
+#     do_rescale = False
+#     device = "cuda:0"
+#     save_path = "checkpoint_combined_drugs"
+#     create_third_channel = True 
+#     use_only_mitotracker = True
+
+
+
+
 class Config:
-    # --- Dataset specific ---
-    # List of .npy file paths
-    base_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240830/"
-    image_filepaths = [
-
-        # f"{base_path}{i}" for i in os.listdir(base_path)
-        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000059.npy",
-        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000069.npy",
-        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000079.npy",
-        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000089.npy",
-        # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000099.npy",
-        # # Add more file paths here as needed for multiple datasets
-        # # "/path/to/your/another_image.npy",
-    ]
-
-    files = os.listdir(base_path)
-    for i in files[0:150]:
-        image_filepaths.append(f"{base_path}{i}")
-
-    val_filepaths = []
-
-    for i in files:
-        val_filepaths.append(f"{base_path}{i}")
+    # --- Path Configuration ---
+    master_base_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/"
+    
     # --- Channel Handling ---
     # True to create a 3rd channel from 'functional_masked' output of normalize_and_mask
     create_third_channel = True 
     use_only_mitotracker = True
+    
     # --- Model specific ---
     model_name = "MCG-NJU/videomae-base" # A good choice for video classification
     image_processor_name = "MCG-NJU/videomae-base" # The associated image processor
@@ -118,7 +128,18 @@ class Config:
     random_seed = 42
     do_rescale = False
     device = "cuda:0"
-    save_path = "checkpoint_20240830"
+    save_path = "checkpoint_combined_drugs"
+
+# Initialize file paths after class definition
+Config.base_paths = [f"{Config.master_base_path}{i}" for i in os.listdir(Config.master_base_path)]
+Config.image_filepaths = []
+Config.val_filepaths = []
+for base_path in Config.base_paths:
+    files = sorted(os.listdir(base_path))
+    for i in files[0:200]:
+        Config.image_filepaths.append(f"{base_path}/{i}")
+    for i in files[200:]:
+        Config.val_filepaths.append(f"{base_path}/{i}")
 
 # Set random seeds for reproducibility
 def set_seed(seed):

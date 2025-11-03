@@ -199,6 +199,49 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
         pick_points(pcd, labels, label_names, image_paths)
 
 
+def make_mitospace_minimal(embedding_dir, pick_labels=None, color_palette=None):
+    EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings_umap.npy')
+    LABEL_PATH = osp.join(embedding_dir, 'labels.npy')
+    LABEL_NAME_PATH = osp.join(embedding_dir, 'label_names.npy')
+
+    embeddings = np.load(EMBEDDING_PATH)
+    labels = np.load(LABEL_PATH)
+
+    if pick_labels is not None:
+        mask = np.isin(labels, pick_labels)
+        embeddings = embeddings[mask]
+        labels = labels[mask]
+
+    label_names = np.load(LABEL_NAME_PATH, allow_pickle=True)
+    print(embeddings.shape, labels.shape, label_names.shape)
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(embeddings)
+
+    colors = np.array([color_palette[int(label)] for label in labels]) if color_palette is not None else generate_distinct_colors(int(labels.max()) + 1)
+    if isinstance(colors, list):
+        colors = np.array([colors[int(label)] for label in labels])
+    colors[labels < 0] = 0
+    pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+
+    aabb = pcd.get_axis_aligned_bounding_box()
+    aabb.color = np.array([0, 0, 0])
+
+    
+    vis = o3d.visualization.Visualizer()
+    vis.create_window()
+    vis.add_geometry(pcd)
+    vis.add_geometry(aabb)
+    opt = vis.get_render_option()
+    opt.point_size = 6
+    vis.run()
+
+    legend_patches = [mpatches.Patch(color=color_palette[i], label=label_names[i]) for i in range(len(label_names))] if color_palette is not None else []
+    if legend_patches:
+        plt.figure(figsize=(10, 10))
+        plt.legend(handles=legend_patches, loc='center', bbox_to_anchor=(0.5, 0.5))
+        plt.axis('off')
+        plt.show()
+
 def plot_confusion_matrix(cm,
                           label_names,
                           title='Confusion matrix',

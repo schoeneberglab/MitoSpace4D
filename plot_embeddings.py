@@ -27,6 +27,7 @@ def plot_embeddings(cfg):
     # Step 1: Collect all file paths and metadata first
     all_file_info = []
     drug_names = []
+    drug_labels = []
     volume_id_counter = 0
     
     for checkpoint_idx, save_path in enumerate(cfg.save_paths):
@@ -36,15 +37,18 @@ def plot_embeddings(cfg):
             continue
             
         embeddings_files = sorted(os.listdir(embeddings_dir))  # Sort for consistency
-        drug_label = save_path.split("_")[1]
+        # drug_label = save_path.split("_")[1]
         
-        if drug_label not in drug_names:
-            drug_names.append(drug_label)
+       
         
         for filepath in embeddings_files:
+            drug_folder = os.path.basename(filepath).split("_")[1]
+            if drug_folder not in drug_names:
+                drug_names.append(folder_to_drug[drug_folder])
+                drug_labels.append(folder_to_label[drug_folder])
             all_file_info.append({
                 'filepath': f"{embeddings_dir}/{filepath}",
-                'drug_label': drug_label,
+                'drug_label': folder_to_label[drug_folder],
                 'checkpoint_idx': checkpoint_idx,
                 'volume_id': volume_id_counter
             })
@@ -93,20 +97,31 @@ def plot_embeddings(cfg):
     fig = go.Figure()
 
     # Add traces for each drug
-    for drug_name in drug_names:
-        mask = [label == drug_name for label in all_labels]
+    for drug_label, drug_name in zip(drug_labels, drug_names):
+        mask = [label == drug_label for label in all_labels]
         drug_points = umap_embeddings[mask]
-        
-        fig.add_trace(go.Scatter(
-            x=drug_points[:, 0],
-            y=drug_points[:, 1],
-            mode='markers',
-            name=f"{drug_name} ({folder_to_drug[drug_name]})",
-            marker=dict(
-                size=8,
-                opacity=0.7
-            )
-        ))
+        try:
+            fig.add_trace(go.Scatter(
+                x=drug_points[:, 0],
+                y=drug_points[:, 1],
+                mode='markers',
+                name=f"{drug_name} ({folder_to_drug[drug_name]})",
+                marker=dict(
+                    size=8,
+                    opacity=0.7
+                )
+            ))
+        except Exception as e:
+            fig.add_trace(go.Scatter(
+                x=drug_points[:, 0],
+                y=drug_points[:, 1],
+                mode='markers',
+                name=f"{drug_name} (combined)",
+                marker=dict(
+                    size=8,
+                    opacity=0.7
+                )
+            ))
 
     # Update layout
     fig.update_layout(
@@ -141,9 +156,10 @@ def plot_embeddings(cfg):
 if __name__ == "__main__":
     cfg = Config_embeddings(
         save_paths=[
-            "checkpoint_20240729",
-            "checkpoint_20240826",
-            "checkpoint_20240830"
+            # "checkpoint_20240729",
+            # "checkpoint_20240826",
+            # "checkpoint_20240830"
+            "checkpoint_combined_drugs"
         ],
         base_paths=[
             "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/",

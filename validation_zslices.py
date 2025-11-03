@@ -1,3 +1,4 @@
+from typing import Any
 import numpy as np
 import torch
 import torch.nn as nn
@@ -49,19 +50,20 @@ def validate_saved_model(model_path, device=None,
     # 1️⃣ Load model
     # ------------------------------------------------------------
     print(f"🔹 Loading model from {model_path}")
-    if model_path.endswith(".pt") or model_path.endswith(".pth"):
+    if model_path.endswith(".pt") or model_path.endswith(".pth") and "incremental" not in model_path:
         checkpoint = torch.load(model_path, map_location="cpu")
         
-        try:
-            model = AutoModelForVideoClassification.from_pretrained(checkpoint)
-            model.load_state_dict(checkpoint)
-        except:
-            
-            model = AutoModelForVideoClassification.from_pretrained(Config.model_name, num_labels=3)
-            model.load_state_dict(checkpoint)
+        model = AutoModelForVideoClassification.from_pretrained(checkpoint)
+        model.load_state_dict(checkpoint)
 
+    elif model_path.endswith(".pt") or model_path.endswith(".pth") and "incremental" in model_path:
+        # checkpoint = torch.load(model_path, map_location="cpu")
+        # model = AutoModelForVideoClassification.from_pretrained(Config.model_name, num_labels=3)
+        # model.load_state_dict(checkpoint)
+        checkpoint = torch.load(model_path, map_location=device)
+        model = AutoModelForVideoClassification.from_pretrained(cfg.model_name, num_labels=3)
+        model.load_state_dict(checkpoint["model_state"])
 
-        
     else:
         model = AutoModelForVideoClassification.from_pretrained(model_path)
 
@@ -142,15 +144,18 @@ def validate_saved_model(model_path, device=None,
     # ------------------------------------------------------------
     print("🔹 Running validation over full volumes...")
     model.eval()
-    all_volume_ids = global_volume_counter
-    unique_vols = sorted(set(all_volume_ids))
 
+    unique_vols = sorted(set(global_volume_counter))
+
+    assert len(unique_vols) == len(cfg.val_filepaths_2), "Number of unique volumes should be equal to the number of validation filepaths"
+    assert len(unique_vols)*60 == len(global_volume_counter), "Number of unique volumes should be equal to the number of unique volume ids multiplied by 60"
+    
     per_volume_acc = {}
     all_preds, all_labels, all_embeds, all_vol_ids = [], [], [], []
 
     for vol in tqdm(unique_vols, desc="Evaluating volumes"):
         # get indices belonging to this volume
-        vol_indices = [i for i, vid in enumerate(all_volume_ids) if vid == vol]
+        vol_indices = [i for i, vid in enumerate(global_volume_counter) if vid == vol]
 
         preds_v, labels_v, embeds_v = [], [], []
 
@@ -201,14 +206,18 @@ def validate_saved_model(model_path, device=None,
     if save_embeddings:
         # Extract filename from the last validation filepath
         filepaths = map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2)
-        # filepaths_2 = map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2        
+        # filepaths_2 = map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2    
+        # get drug label from the filepath 
+        # drug_label_list = [
+        drug_label_list = list(map(lambda x: os.path.split(x)[-2].split("/")[-1], cfg.val_filepaths_2))
+        assert len(drug_label_list) == len(cfg.val_filepaths_2), "Number of drug labels should be equal to the number of filepaths"
         # Create save directory if it doesn't exist
         save_dir = os.path.join(cfg.save_path, "embeddings")
         os.makedirs(save_dir, exist_ok=True)
         
         # Save concatenated embeddings
         for i, filename in enumerate(filepaths):
-            embed_save_path = os.path.join(save_dir, f"embeddings_{filename}.npy")
+            embed_save_path = os.path.join(save_dir, f"embeddings_{drug_label_list[i]}_{filename}.npy")
             np.save(embed_save_path, concatenated_embeds[i])
         print(f"✅ Saved embeddings to {embed_save_path}")
         
@@ -306,16 +315,22 @@ if __name__ == "__main__":
     # cfg = Config()
     cfg = Config()
     # model_path = "checkpoint_20240826/z_pred_0.03.pth"
-    model_path = f"{cfg.save_path}/z_predictor_custom_loss.pth"
+    
+    cfg.save_path = "checkpoint_combined_drugs"
+    model_path = f"{cfg.save_path}/z_predictor_incremental.pth"
+    cfg.val_filepaths_2 = cfg.val_filepaths[0::100]
+    print(len(cfg.val_filepaths_2))
     device = "cuda:0"
-    visualize_umap = True
+    visualize_umap = False
     save_embeddings = True
     concatenate_embeddings = True
     exp_name = cfg.save_path.split("_")[1]
     save_umap_path = f"umap_validation_{exp_name}"
     # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
-    for i in range(100, len(cfg.val_filepaths), 100):
-        cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
+    start_idx = int(0* len(cfg.val_filepaths))
+    for i in tqdm(range(start_idx, len(cfg.val_filepaths), 1000)):
+        cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100:10]
+        print(len(cfg.val_filepaths_2))
         validate_saved_model(model_path, 
                             device =device, 
                             visualize_umap = visualize_umap,
