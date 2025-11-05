@@ -2,9 +2,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import torch
+import os
 import torch.nn.functional as F
 from matplotlib.widgets import Button
 import matplotlib.animation as animation
+
+def load_folder_label_maps(drugs_to_labels_path = f"/home/mayunagupta/experiments/MitoSpace4D/extraction_utils/drugs_to_labels.txt"):
+    # Load drug to label mappings
+    drug_to_labels_dict = {}
+    folder_to_label = {}
+    folder_to_drug = {}
+    with open(drugs_to_labels_path, 'r') as f:
+        for line in f:
+            folder, drug, label = line.split()
+            drug_to_labels_dict[drug] = int(label)
+            folder_to_label[folder] = int(label)
+            folder_to_drug[folder] = drug
+
+    return drug_to_labels_dict, folder_to_label, folder_to_drug
+
 def normalize_and_mask(img, eps=1e-6, mask_threshold=0.1):
     """
     Remove morphology-related brightness (TMRM) from MitoTracker
@@ -43,7 +59,7 @@ def normalize_and_mask(img, eps=1e-6, mask_threshold=0.1):
 
 
 
-def view_4d_image_with_sliders(image_filepath):
+def view_4d_image_with_sliders(image_filepath, position = None):
     """
     Views a 4D (time, z, y, x, channels) image from a .npy file with sliders
     for time and z-slice selection.
@@ -77,9 +93,15 @@ def view_4d_image_with_sliders(image_filepath):
     initial_time = 0
     initial_z = 0
 
-    fig, ax = plt.subplots(1, 3, figsize=(12, 6)) # One subplot for each channel
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6)) # One subplot for each channel
     plt.subplots_adjust(left=0.1, bottom=0.25)
+    folder , basename = os.path.split(image_filepath)
+    
+    folder = os.path.basename(folder)
+    _, folder_to_label, folder_to_drug = load_folder_label_maps()
 
+    drug = folder_to_drug[folder]
+    # Load folder_to_label and label_names from the drugs_to_labels.txt mapping file,
     # Display initial images for both channels
     im1 = ax[0].imshow(image_data[initial_time,0, initial_z, :, :], cmap='gray')
     ax[0].set_title(f"Channel 1 (Time: {initial_time}, Z: {initial_z})")
@@ -88,11 +110,16 @@ def view_4d_image_with_sliders(image_filepath):
     im2 = ax[1].imshow(image_data[initial_time,1, initial_z, :, :], cmap='gray')
     ax[1].set_title(f"Channel 2 (Time: {initial_time}, Z: {initial_z})")
     ax[1].axis('off')
+    if position is None:
 
-    # im3 = ax[2].imshow(image_data[initial_time,1, initial_z, :, :]-image_data[initial_time,0, initial_z, :, :], cmap='gray')
-    im3 = ax[2].imshow(normalize_and_mask(image_data[initial_time,:, initial_z, :, :])[0], cmap = 'gray')
-    ax[2].set_title(f"Channel 2-1 (Time: {initial_time}, Z: {initial_z})")
-    ax[2].axis('off')
+        plt.suptitle(f"Folder: {folder}, Basename: {basename}")
+    else:
+        plt.suptitle(f"Folder: {folder}, Basename: {basename}, Position: {position}, Drug: {drug}")
+
+    # # im3 = ax[2].imshow(image_data[initial_time,1, initial_z, :, :]-image_data[initial_time,0, initial_z, :, :], cmap='gray')
+    # im3 = ax[2].imshow(normalize_and_mask(image_data[initial_time,:, initial_z, :, :])[0], cmap = 'gray')
+    # ax[2].set_title(f"Channel 2-1 (Time: {initial_time}, Z: {initial_z})")
+    # ax[2].axis('off')
 
     # Create slider axes
     ax_time = plt.axes([0.1, 0.1, 0.8, 0.03], facecolor='lightgoldenrodyellow')
@@ -113,13 +140,13 @@ def view_4d_image_with_sliders(image_filepath):
             im2.set_data(image_data[current_time, 1,current_z, :, :])
             ax[1].set_title(f"Channel 2 (Time: {current_time}, Z: {current_z})")
             # im3.set_data(image_data[current_time, 1,current_z, :, :]-image_data[current_time, 0,current_z, :, :])
-            im3.set_data(normalize_and_mask(image_data[current_time, :,current_z, :, :])[0])
-            ax[2].set_title(f"Channel 2-1 (Time: {current_time}, Z: {current_z})")
+            # im3.set_data(normalize_and_mask(image_data[current_time, :,current_z, :, :])[0])
+            # ax[2].set_title(f"Channel 2-1 (Time: {current_time}, Z: {current_z})")
         else:
             ax[1].set_title(f"Channel 2 (Not available)")
             im2.set_data(np.zeros_like(image_data[current_time, 0,current_z, :, :])) # Show black if no second channel
-            ax[2].set_title(f"Channel 2-1 (Not available)")
-            im3.set_data(np.zeros_like(image_data[current_time, 0,current_z, :, :])) # Show black if no second channel
+            # ax[2].set_title(f"Channel 2-1 (Not available)")
+            # im3.set_data(np.zeros_like(image_data[current_time, 0,current_z, :, :])) # Show black if no second channel
             
 
 
@@ -129,8 +156,8 @@ def view_4d_image_with_sliders(image_filepath):
     z_slider.on_changed(update)
 
     # --- Add Save Movie Button ---
-    ax_save = plt.axes([0.8, 0.9, 0.15, 0.05])
-    btn_save = Button(ax_save, 'Save Movie', color='lightblue', hovercolor='skyblue')
+    # ax_save = plt.axes([0.8, 0.9, 0.15, 0.05])
+    # btn_save = Button(ax_save, 'Save Movie', color='lightblue', hovercolor='skyblue')
 
     def save_movie(event):
         print("Preparing movie export...")
@@ -153,12 +180,12 @@ def view_4d_image_with_sliders(image_filepath):
 
             im1.set_data(image_data[t, 0, z, :, :])
             im2.set_data(image_data[t, 1, z, :, :])
-            im3.set_data(normalize_and_mask(image_data[t, :, z, :, :])[0])
+            # im3.set_data(normalize_and_mask(image_data[t, :, z, :, :])[0])
 
             ax[0].set_title(f"Ch1 (t={t}, z={z})")
             ax[1].set_title(f"Ch2 (t={t}, z={z})")
-            ax[2].set_title(f"Ch2-1 (t={t}, z={z})")
-            return [im1, im2, im3]
+            # ax[2].set_title(f"Ch2-1 (t={t}, z={z})")
+            return [im1, im2] # im3
 
         ani = animation.FuncAnimation(fig, animate, frames=frames, blit=False, repeat=False)
 
@@ -169,7 +196,7 @@ def view_4d_image_with_sliders(image_filepath):
             print(f"❌ Error saving movie: {e}")
             print("Make sure FFmpeg is installed (e.g., `sudo apt install ffmpeg`).")
 
-    btn_save.on_clicked(save_movie)
+    # btn_save.on_clicked(save_movie)
     
     plt.show()
 
@@ -206,6 +233,6 @@ if __name__ == "__main__":
     # print(f"Dummy file '{dummy_filename}' created successfully.")
 
     # --- Run the viewer with the dummy file ---
-    your_image_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240729/000079.npy"
+    your_image_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240815/000079.npy"
     view_4d_image_with_sliders(your_image_path)
     # view_4d_image_with_sliders(dummy_filename)
