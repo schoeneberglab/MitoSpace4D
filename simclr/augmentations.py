@@ -3,6 +3,7 @@ from torch import nn
 from kornia.augmentation import RandomResizedCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomBrightness, \
     RandomGaussianNoise, RandomGaussianBlur, RandomErasing, RandomRotation, RandomAffine, RandomHorizontalFlip3D, \
     RandomVerticalFlip3D, RandomDepthicalFlip3D, RandomRotation3D, RandomAffine3D
+from utils.utils import load_config
 
 def _disable_kornia_features(module: nn.Module) -> None:
             for m in module.modules():
@@ -70,7 +71,7 @@ class RandomExchangeFlip(nn.Module):
 
         if chosen_dims:
             x = torch.roll(x, shifts=tuple(shifts), dims=tuple(chosen_dims))
-
+            
         return x
 
 
@@ -122,29 +123,43 @@ class RandomTimeMask(nn.Module):
 
         return [x_1, x_2]
 
-
 class RandomBrightness(nn.Module):
-    def __init__(self, p=0.5, lower=1, upper=1, per_channel=False) -> None:
+    def __init__(self, p=0.5, lower=-0.1, upper=0.1, per_channel=True) -> None:
+        """3D random brightness; x expected as (b, t, c, z, h, w)."""
         super().__init__()
-        self.p = p
-        self.range = (lower, upper)
-        self.per_channel = per_channel
+        self.p = float(p)
+        self.lower = float(lower)
+        self.upper = float(upper)
+        self.per_channel = bool(per_channel)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.per_channel:
-            for ch in range(x.size(2)):
-                if torch.rand(1, device=x.device) < self.p:
-                    factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
-                    x[:, :, ch, :, :, :] = x[:, :, ch, :, :, :] + factor
-        else:
-            if torch.rand(1, device=x.device) < self.p:
-                factor = torch.empty(1, device=x.device).uniform_(self.range[0], self.range[1]).item()
-                x = x + factor
-        return x
+        # x: (b, t, c, z, h, w)
+        B, T, C = x.shape[:3]
 
+        if self.per_channel:
+            # different factor per (sample, channel), shared across time/spatial
+            shape = (B, 1, C, 1, 1, 1)
+        else:
+            # single factor per sample, shared across channels/time/spatial
+            shape = (B, 1, 1, 1, 1, 1)
+
+        # Bernoulli mask for applying the augmentation
+        apply_mask = (torch.rand(shape, device=x.device) < self.p).to(x.dtype)
+
+        # Sample factors in [lower, upper], broadcast to x
+        factors = torch.empty(shape, device=x.device, dtype=x.dtype).uniform_(self.lower, self.upper)
+        factors = factors * apply_mask
+
+        return x + factors
 
 class DataAugmentation(nn.Module):
     def __init__(self, cfg_aug=None, zero_mean_norm=True, n_views=2) -> None:
+        """
+        Data augmentation module for 3D microscopy images.
+
+        returns:
+        torch.Tensor: Augmented tensor with shape (n_views*B, T, C, Z, H, W)
+        """
         super().__init__()
         
         assert n_views == 2, "Only two views are supported for now"
@@ -166,11 +181,6 @@ class DataAugmentation(nn.Module):
             RandomErasing(p=cfg_aug['RandomErasing']['p'],
                           scale=(cfg_aug['RandomErasing']['scale'][0], cfg_aug['RandomErasing']['scale'][1]),
                           ratio=(cfg_aug['RandomErasing']['ratio'][0], cfg_aug['RandomErasing']['ratio'][1])),
-            RandomBrightness(p=cfg_aug['RandomBrightness']['p'],
-                             lower=cfg_aug['RandomBrightness']['lower'],
-                             upper=cfg_aug['RandomBrightness']['upper'],
-                             per_channel=cfg_aug['RandomBrightness']['per_channel'],
-                             ),
             RandomGaussianNoise(p=cfg_aug['GaussianNoise']['p'],
                                 mean=cfg_aug['GaussianNoise']['mu'],
                                 std=cfg_aug['GaussianNoise']['scale']),
@@ -190,27 +200,77 @@ class DataAugmentation(nn.Module):
             RandomExchangeFlip(p=cfg_aug['RandomExchangeFlip']['p']),
         )
 
+        self.brightness_3d = RandomBrightness(p=cfg_aug['RandomBrightness']['p'],
+                                              lower=cfg_aug['RandomBrightness']['lower'],
+                                              upper=cfg_aug['RandomBrightness']['upper'],
+                                              per_channel=cfg_aug['RandomBrightness']['per_channel'],
+                                              )
+
         # Disable Kornia image-module features to avoid CPU detaches ¯\_(ツ)_/¯
         _disable_kornia_features(self.transforms_2d)
         _disable_kornia_features(self.transforms_3d)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
+        
         b, t, c, z, h, w = x.size()
-
         views = self.temporal_transform_1(x) # (b, t, c, z, h, w), (b, t, c, z, h, w)
         assert len(views) == self.n_views, f"Number of views should be {self.n_views}"
 
-        views = [view.view(b, -1, h, w) for view in views]
+        views = [view.view(b, -1, h, w) for view in views] # (b*t*z, c, h, w)
 
         for i in range(self.n_views):
             views[i] = self.transforms_2d(views[i]).view(b, t, c, z, h, w)  # same 2D transforms for all t and z
-            views[i] = self.transforms_3d(views[i].view(b * t, c, z, h, w)).view(b, t, c, z, h, w)  # same 3D transforms for all t
+
+            views[i] = self.transforms_3d(views[i].view(b, t * c, z, h, w)).view(b, t, c, z, h, w)  # (b, t, c, z, h, w)
+            # views[i] = self.brightness_3d(views[i].view(b * t, c, z, h, w)).view(b, t, c, z, h, w) # temporally consistent brightness
+            views[i] = self.brightness_3d(views[i])  # (b, t, c, z, h, w)
             views[i] = self.temporal_transform_2(views[i])  # (b, t, c, z, h, w)
 
         views = torch.stack(views, dim=0)  # (n_views, b, t, c, z, h, w)
         views = views.view(-1, *views.shape[2:])  # (n_views*b, t, c, z, h, w)
+        
+        # Clamp to [0,1]
+        views = torch.clamp(views, 0.0, 1.0)
 
         if self.zero_mean_norm:
             return 2 * views - 1  # scale to [-1, 1]
         return views
+
+if __name__ == "__main__":
+    # cfg = load_config("/simclr/config.yaml")
+    # aug = DataAugmentation(cfg_aug=cfg['data_params']['transforms'], zero_mean_norm=True, n_views=2)
+
+    random_brightness = RandomBrightness(p=1.0, lower=-0.2, upper=0.2, per_channel=True)
+
+    x = torch.zeros((2, 10, 2, 5, 32, 32))  # (b, t, c, z, h, w)
+    b, t, c, z, h, w = x.size()
+    print("x", x.size())
+
+    x_orig = x.clone()
+
+    x_aug = random_brightness(x.view(b * t, c, z, h, w))
+    
+    print("x_aug", x_aug.size())
+    x_aug = x_aug.view(b, t, c, z, h, w) # (b, t, c, z, h, w)
+
+    # Get a single b,t slice to visualize
+    x0_orig = x_orig[0, 0, :, :, :]
+    x0_aug = x_aug[0, 0, :, :, :]
+
+    # Print mean of channels spatially
+    print("x0_orig", x0_orig[0, :, :, :].mean(), x0_orig[1, :, :, :].mean())
+    print("x0_aug", x0_aug[0, :, :, :].mean(), x0_aug[1, :, :, :].mean())
+
+    # print("x0", x0.size())
+    
+    # Save a side-by-side comparison image
+    # import matplotlib.pyplot as plt
+
+    # fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    # axes[0].imshow(x0_orig[0, 0, :, :]*255, cmap='gray', vmin=-1, vmax=1)
+    # axes[0].set_title('Original')
+    # axes[1].imshow(x0_aug[0, 0, :, :]*255, cmap='gray', vmin=-1, vmax=1)
+    # axes[1].set_title('Augmented')
+    # plt.tight_layout()
+    # plt.savefig('random_brightness_comparison.png')
+    # plt.close()
