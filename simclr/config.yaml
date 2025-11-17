@@ -1,7 +1,4 @@
-# experiment_name: resnetbilstm_encoded_resumed2024ckpt_kinetics_r20251024
-# experiment_name: resnetbilstm_encoded_kinetics_ablated-tmrm_r20251024
-# experiment_name: resnetbilstm_encoded_kinetics_ablated-tmrm_coslr_r20251024_v2
-experiment_name: debug_resnetbilstm_encoded_kinetics_ablated-tmrm_r20251025_3
+experiment_name: resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115
 data_params:
   timesteps:
     start: 0
@@ -10,7 +7,8 @@ data_params:
     start: 0
     end: 60
   dataset_name: mitospace
-  data_path: /work/nvme/begq/MitoSpace4D/data/2025_data_encoded
+  # data_path: /work/nvme/begq/MitoSpace4D/data/2025_data_encoded # Kinetics Dataset
+  data_path: /work/nvme/begq/MitoSpace4D/data/2024_data_encoded # 2024v2 Dataset
   patch_size: 256
   samples_per_drug: None
   transforms:
@@ -27,10 +25,10 @@ data_params:
     GaussianNoise:
       p: 0.5
       mu: 0.0
-      scale: 0.05
+      scale: 0.001
     GaussianBlur:
       p: 0.5
-      sigma: 1.5
+      sigma: 1.0
       kernel_size: 13
     RandomRotation3D:
       p: 0.5
@@ -52,18 +50,20 @@ data_params:
       value: 0
     RandomBrightness:
       p: 0.5
-      lower: -0.5
-      upper: 0.5
-      per_channel: False # Original mitospace trained w/ False
+      lower: -0.1
+      upper: 0.1
+      per_channel: True # Original mitospace trained w/ False; true to decouple channels
   filters: null
 logging_params:
-  save_path: /u/earkfeld/MitoSpace4D/runs
+  # save_path: /u/earkfeld/MitoSpace4D/runs
+  save_path: /work/nvme/begq/MitoSpace4D/runs
 model_params:
   arch: resnet18
-  pretrained: false
+  bidirectional: True # default: True
+  pretrained: False
   out_dim: 512
-  in_channels: 1 # 2
-  channels: [1] # [0, 1] # Working on integrating; 0: TMRM, 1: Morphology
+  in_channels: 2
+  channels: [0, 1] # 0: TMRM, 1: Morphology
   num_z: 60
   timesteps: 20
 training:
@@ -71,24 +71,23 @@ training:
     name: InfoNCELoss
     use_normalization: True
     temperature: 0.07
-  max_epochs: 50 # 300
+  max_epochs: 300
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  batch_size: 6 # 4 # 2
+  batch_size: 6
+  accumulate_grad_batches: 1
   training_samples: None
   ckpt_callback:
     monitor: Val/loss
     mode: min
     save_top_k: 3
     save_last: True
-  checkpoint_path: None # /u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt
-  continue_with_optimizer: False
-  # continue_from_ckpt_wo_opt: None # /u/earkfeld/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt # None
+  checkpoint_path: /work/nvme/begq/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115/checkpoints/last.ckpt
+  continue_with_optimizer: True
   lr: 0.0003
-  warmup_epochs: 10
   weight_decay: 0.00001
-  workers: 24 # 16 # 4
-  prefetch_factor: 2 # 4 # 2
+  workers: 24
+  prefetch_factor: 2
   persistent_workers: True
   n_views: 2
 distributed:
@@ -96,7 +95,7 @@ distributed:
   num_gpus: -1
   accelerator: gpu
   strategy: ddp
-  num_nodes: 1 # 1 # 8
+  num_nodes: 8
   backend: nccl
 evaluate:
   top_ns: [1, 3]
