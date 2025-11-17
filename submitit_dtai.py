@@ -23,6 +23,7 @@ import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from utils.utils import load_config
 
 import submitit
 
@@ -151,9 +152,8 @@ def start_system_logger(log_dir: Path, interval_s: int = 1) -> callable:
 def parse_args():
     parser = argparse.ArgumentParser("Submitit for MitoSpace4D SimCLR training")
     parser.add_argument("--ngpus", default=4, type=int, help="GPUs per node")
-    parser.add_argument("--nodes", default=1, type=int, help="Number of nodes")
+    parser.add_argument("--nodes", default=8, type=int, help="Number of nodes")
     parser.add_argument("--timeout", default=1440, type=int, help="Duration (minutes), 24h")
-    # parser.add_argument("--timeout", default=60, type=int, help="Duration (minutes), 24h")
     parser.add_argument("--job_dir", default="", type=str, help="Job dir. Leave empty for automatic.")
     parser.add_argument("--shared_dir", default="/work/nvme/begq/", type=str,
                         help="Shared directory; USER/experiments will be created under this.")
@@ -164,13 +164,11 @@ def parse_args():
     parser.add_argument("--account", default="begq-dtai-gh", type=str, help="Slurm account (GH200)")
     parser.add_argument("--exclude", default="", type=str, help="Exclude hosts")
 
-    # passthroughs
     parser.add_argument("--config", default="/u/earkfeld/MitoSpace4D/simclr/config.yaml", type=str,
-                        help="Path to SimCLR config.yaml passed to train_simclr.py")
+                        help="Path to SimCLR config.yaml")
     parser.add_argument("--log-every-n-steps", default=None, type=int,
                         help="Optional override for Lightning logging frequency")
 
-    # perf logging
     parser.add_argument("--perf-log", action="store_true", help="Enable GPU + CPU/memory CSV logging")
     parser.add_argument("--nsmi-interval", type=int, default=30, help="nvidia-smi sampling interval (s)")
     parser.add_argument("--sys-interval", type=int, default=30, help="CPU/memory sampling interval (s)")
@@ -208,15 +206,16 @@ def _coerce_paths_to_str(ns: SimpleNamespace) -> SimpleNamespace:
 
 # --------------------- Job object ---------------------
 class Trainer(object):
-    def __init__(self, args):
+    def __init__(self, args, cfg):
         d = vars(args).copy()
         for k, v in list(d.items()):
             if isinstance(v, Path):
                 d[k] = str(v)
         self.args = SimpleNamespace(**d)
+        self.cfg = cfg
 
     def __call__(self):
-        import train_simclr  # local module
+        from train_simclr import run_from_cfg  # local module
 
         job_env = submitit.JobEnvironment()
         logger.info(
@@ -224,30 +223,24 @@ class Trainer(object):
             f"rank: {job_env.global_rank}, node: {job_env.hostnames}"
         )
 
-        # --- Environment: NCCL & diagnostics ---
         os.environ.setdefault("NCCL_DEBUG", "WARN")
         os.environ.setdefault("TORCH_NCCL_ASYNC_ERROR_HANDLING", "1")
 
-        # --- Bindings via env (srun honors these) ---
-        # One task per GPU, 72 CPUs per task on GH200 nodes
         ngpus = int(self.args.ngpus)
         gpu_map = ",".join(str(i) for i in range(ngpus))
         os.environ.setdefault("SLURM_CPU_BIND", "cores")
         if ngpus > 0:
             os.environ.setdefault("SLURM_GPU_BIND", f"map_gpu:{gpu_map}")
 
-        # Keep thread counts bounded within cpus_per_task
         cpus_per_task = os.environ.get("SLURM_CPUS_PER_TASK", "72")
         os.environ.setdefault("OMP_NUM_THREADS", cpus_per_task)
         os.environ.setdefault("MKL_NUM_THREADS", cpus_per_task)
         os.environ.setdefault("OPENBLAS_NUM_THREADS", cpus_per_task)
         os.environ.setdefault("NUMEXPR_NUM_THREADS", cpus_per_task)
 
-        # Optional Lightning PerfCallback
         if self.args.use_pl_callback:
             os.environ["USE_PL_PERF_CALLBACK"] = "1"
 
-        # --- Start perf loggers if requested ---
         stop_funcs = []
         try:
             if self.args.perf_log:
@@ -262,21 +255,13 @@ class Trainer(object):
         except Exception as e:
             logger.warning(f"Failed to start perf loggers: {e}")
 
-        # Handle Slurm preemption/termination gracefully
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
         signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
-        # Build argv and run training
-        argv = ["train_simclr.py", "--config", str(self.args.config)]
-        if self.args.log_every_n_steps is not None:
-            argv += ["--log-every-n-steps", str(self.args.log_every_n_steps)]
-
-        old_argv = sys.argv
         try:
-            sys.argv = argv
-            train_simclr.main()
+            log_every = self.args.log_every_n_steps if self.args.log_every_n_steps is not None else 100
+            run_from_cfg(self.cfg, log_every_n_steps=log_every)
         finally:
-            sys.argv = old_argv
             for s in stop_funcs[::-1]:
                 try:
                     s()
@@ -286,18 +271,15 @@ class Trainer(object):
                 logger.info(f"Wrote perf logs under {Path(self.args.job_dir) / 'perf_logs'}")
 
     def checkpoint(self):
-        logger.info("Requeuing job with same arguments.")
-        return submitit.helpers.DelayedSubmission(type(self)(self.args))
+        logger.info("Requeuing job with same arguments and cfg.")
+        return submitit.helpers.DelayedSubmission(type(self)(self.args, self.cfg))
 
 
 # --------------------- Launcher ---------------------
 def main():
     args = parse_args()
 
-    # Compute job_dir
     if args.job_dir == "":
-        # Save to the runs directory in the current directory
-        # job_dir_path = get_shared_folder(args.shared_dir) / "%j"
         job_dir_path = "./runs/%j"
         args.job_dir = str(job_dir_path)
     elif isinstance(args.job_dir, Path):
@@ -323,29 +305,27 @@ def main():
     if exclude:
         kwargs["slurm_exclude"] = exclude
 
-    # DeltaAI GH200 defaults:
-    # - 1 task per GPU
-    # - 72 CPU cores per task
-    # - Exclusive node, full memory
     executor.update_parameters(
-        gpus_per_node=num_gpus_per_node,          # --gres=gpu:<ngpus>
-        tasks_per_node=num_gpus_per_node,         # --ntasks-per-node=<ngpus>
-        cpus_per_task=72,                         # --cpus-per-task=72
+        gpus_per_node=num_gpus_per_node,
+        tasks_per_node=num_gpus_per_node,
+        cpus_per_task=72,
         nodes=nodes,
         timeout_min=timeout_min,
         slurm_partition=partition,
         slurm_signal_delay_s=120,
         slurm_exclusive=True,
-        mem_gb=0,                                 # 0 => all available node memory
+        mem_gb=0,
         **kwargs,
     )
 
-    # executor.update_parameters(name="mitospace_autoencoded_normal_run")
-    executor.update_parameters(name="mitospace_autoencoded_normal_run")
     _ = get_init_file(args.shared_dir)
+
+    base_cfg = load_config(args.config)
     args = _coerce_paths_to_str(SimpleNamespace(**vars(args)))
 
-    trainer = Trainer(args)
+    executor.update_parameters(name=base_cfg["experiment_name"])
+
+    trainer = Trainer(args, base_cfg)
     job = executor.submit(trainer)
     logger.info(f"Submitted job {job.job_id}")
 

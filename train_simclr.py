@@ -4,11 +4,15 @@ import torch.backends.cudnn as cudnn
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 from torchvision import models
+
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
 from simclr.models import MitoSpace4DConvLSTM
 from simclr.models_transformer import MitoSpace4DTransformer
 from simclr.simclr import SimCLRRunner
+
 from simclr.models_simple import Lightweight3DResNet
+# from simclr.models_simple_attn import Lightweight3DResNet
+
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from utils.utils import load_config
@@ -24,10 +28,9 @@ parser.add_argument('--log-every-n-steps', default=100, type=int,
 parser.add_argument('--config', default='/u/earkfeld/MitoSpace4D/simclr/config.yaml', type=str,
                     help='Config path.')
 
-def main():
+
+def run_from_cfg(cfg, log_every_n_steps: int = 100):
     warnings.filterwarnings("ignore")  # supress all warnings
-    args = parser.parse_args()
-    cfg = load_config(args.config)
 
     assert cfg['training']['n_views'] == 2, "Only two view training is supported. Please use --n-views 2."
 
@@ -78,7 +81,7 @@ def main():
 
     for param in model.augment_pipeline.parameters():
         param.requires_grad = False
-        
+
     # for param in model.decoder.parameters():
     #     param.requires_grad = False
 
@@ -86,13 +89,15 @@ def main():
         version=cfg["experiment_name"], save_dir=cfg["logging_params"]["save_path"]
     )
 
-    ckpt_callback = ModelCheckpoint(
-        monitor=cfg["training"]["ckpt_callback"]["monitor"],
-        mode=cfg["training"]["ckpt_callback"]["mode"],
-        save_top_k=cfg["training"]["ckpt_callback"]["save_top_k"],
-        filename='{epoch}-{step}-{val_loss:.2f}',
-        save_last=cfg["training"]["ckpt_callback"]["save_last"],
-    )
+    callbacks = [
+        ModelCheckpoint(
+            monitor=cfg["training"]["ckpt_callback"]["monitor"],
+            mode=cfg["training"]["ckpt_callback"]["mode"],
+            save_top_k=cfg["training"]["ckpt_callback"]["save_top_k"],
+            filename='{epoch}-{step}-{val_loss:.2f}',
+            save_last=cfg["training"]["ckpt_callback"]["save_last"],
+            ),
+    ]
 
     # load from checkpoint
     if cfg["training"]["checkpoint_path"] != 'None' and not cfg["training"]["continue_with_optimizer"]:
@@ -110,24 +115,25 @@ def main():
     trainer = pl.Trainer(
         max_epochs=cfg["training"]["max_epochs"],
         accelerator=cfg["distributed"]["accelerator"],
-        log_every_n_steps=13,
+        log_every_n_steps=log_every_n_steps,
         logger=tb_logger,
-        callbacks=[ckpt_callback],
+        callbacks=callbacks,
         precision="16-mixed",  # mixed precision training,
         num_nodes=cfg["distributed"]["num_nodes"],
         devices=cfg["distributed"]["num_gpus"],
         strategy=cfg["distributed"]["strategy"],
         sync_batchnorm=True,
+        accumulate_grad_batches=cfg["training"]["accumulate_grad_batches"],
     )
 
+    # use this to load optimizer as well as model states
     if cfg["training"]["checkpoint_path"] != 'None' and cfg["training"]["continue_with_optimizer"]:
         print(f"Continuing training with optimizer states from {cfg['training']['checkpoint_path']}")
         trainer.fit(
             model=train_runner,
             train_dataloaders=train_loader,
             val_dataloaders=val_loader,
-            # use this to load optimizer as well as model states
-            ckpt_path="runs/lightning_logs/resnetbilstm_encoded_resumed2024ckpt_kinetics_r20251024/checkpoints/last.ckpt"
+            ckpt_path=cfg["training"]["checkpoint_path"],
         )
     else:
         trainer.fit(
@@ -135,6 +141,14 @@ def main():
             train_dataloaders=train_loader,
             val_dataloaders=val_loader,
         )
+
+
+def main():
+    warnings.filterwarnings("ignore")  # supress all warnings
+    args = parser.parse_args()
+    cfg = load_config(args.config)
+    run_from_cfg(cfg, log_every_n_steps=args.log_every_n_steps)
+
 
 if __name__ == "__main__":
     main()
