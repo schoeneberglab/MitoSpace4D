@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-USER_JOBS="$(squeue -u "$USER" -t PD -h -o "%i %P %j %u %T %M %D %R")"
+USER_JOBS="$(squeue -u "$USER" -t PD,R -h -o "%i %P %j %u %T %M %D %R")"
 
 # Read all jobs into an array
 mapfile -t lines <<< "$USER_JOBS"

@@ -1,1 +1,1 @@
-srun -A begq-dtai-gh --time=01:59:00 --nodes=1 --ntasks-per-node=4 --partition=ghx4 --gpus=4 --mem=0 --exclusive --pty /bin/bash
+salloc -A begq-dtai-gh --time=01:59:00 --nodes=1 --ntasks-per-node=4 --partition=ghx4 --gpus=4 --mem=0 --exclusive
