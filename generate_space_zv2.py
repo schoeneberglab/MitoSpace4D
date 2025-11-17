@@ -68,6 +68,10 @@ def maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names):
         # Infer folder key from filename: embeddings_<folder>_*.npy
         parts = osp.basename(fname).split('_')
         folder_key = parts[1] if len(parts) > 2 else parts[1] if len(parts) > 1 else None
+        if "-" in folder_key:
+            
+            folder_key = folder_key.split("-")[0]
+            print(folder_key)
         label = folder_to_label.get(folder_key, -1)
         all_labels.append(label)
 
@@ -131,8 +135,9 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
     
     # Allow interactive filtering: Pick only some labels/classes
 
-    pick_names = ['control', 'nocodazole','colchicine']#'h2o2', 'mitomycinC', 'p110', 'cisplatin']
+    # pick_names = ['control', 'nocodazole','colchicine']#'h2o2', 'mitomycinC', 'p110', 'cisplatin']
     
+    pick_names = list(np.unique(label_names))
     # After loading label_names and labels, filter only those in pick_names
         # Set color values per point if palette and labels are available (with fallback)
     if labels is not None and colors_palette is not None:
@@ -206,7 +211,11 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
             # osp.join(embeddings_dir, '..', folder),
             # osp.join(embeddings_dir, folder),
             # osp.abspath(osp.join(embeddings_dir, '..', folder))
-            "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/"
+            # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/",
+            # "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/"
+            "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/",
+            "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
+
         ]
         found_path = None
         selected_paths = []

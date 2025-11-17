@@ -95,11 +95,18 @@ def validate_saved_model(model_path, device=None,
             
             
             # Expected (T, C, Z, H, W)
+            if current_data_tensor.shape[1] != 2:
+                C, time_points, Z, H, W = current_data_tensor.shape
+                current_data_tensor = current_data_tensor.permute(1, 0, 2, 3, 4)
+            else:
+                time_points, C, Z, H, W = current_data_tensor.shape
+                
             time_points, num_channels_orig, z_slices_file, H, W = current_data_tensor.shape
             print(f"Loaded {filepath}: (T={time_points}, C={num_channels_orig}, Z={z_slices_file}, H={H}, W={W})")
 
             # Extract each z-slice as a (T, C, H, W) video clip
             for z_idx_in_file in range(z_slices_file):
+                
                 video_clip_for_z = current_data_tensor[3:19, :, z_idx_in_file, :, :] # (T, C, H, W)
                 all_z_video_clips.append(video_clip_for_z)
                 # We need a unique Z identifier across all files if Z values can overlap
@@ -316,10 +323,18 @@ if __name__ == "__main__":
     cfg = Config()
     # model_path = "checkpoint_20240826/z_pred_0.03.pth"
     
-    cfg.save_path = "checkpoint_combined_drugs"
+    cfg.save_path = "checkpoint_new_data_all_drugs"
     model_path = f"{cfg.save_path}/z_predictor_incremental.pth"
-    cfg.val_filepaths_2 = cfg.val_filepaths[0::100]
-    print(len(cfg.val_filepaths_2))
+    # cfg.val_filepaths_2 = cfg.val_filepaths[0:]
+    pick_folders = [
+        # "20240729-1",
+        "20240805-1",
+        "20240814-1",
+        "20240911-1",
+        "20240826-1",
+        "20240830-1"
+        # Add more folder names or date-based identifiers as needed
+    ]
     device = "cuda:0"
     visualize_umap = False
     save_embeddings = True
@@ -327,17 +342,26 @@ if __name__ == "__main__":
     exp_name = cfg.save_path.split("_")[1]
     save_umap_path = f"umap_validation_{exp_name}"
     # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
-    start_idx = int(0* len(cfg.val_filepaths))
-    for i in tqdm(range(start_idx, len(cfg.val_filepaths), 1000)):
-        cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100:10]
-        print(len(cfg.val_filepaths_2))
-        validate_saved_model(model_path, 
-                            device =device, 
-                            visualize_umap = visualize_umap,
-                            save_embeddings = save_embeddings,
-                            save_umap_path = save_umap_path,
-                            concatenate_embeddings = concatenate_embeddings,
-                            cfg = cfg)
+    print(len(cfg.val_filepaths), cfg.val_filepaths[0], cfg.val_filepaths[-1], cfg.val_filepaths[100], cfg.val_filepaths[200])
+    batch_size = 150
+    for folder in pick_folders:
+        idxs = [i for i, fpath in enumerate(cfg.val_filepaths) if folder in fpath]
+        if not idxs:
+            print(f"⚠️ No filepaths found for folder: {folder}")
+            continue
+        for start in range(0, len(idxs), 3*batch_size):
+            selected_idxs = idxs[start:start+batch_size]
+            if not selected_idxs:
+                continue
+            cfg.val_filepaths_2 = [cfg.val_filepaths[i] for i in selected_idxs]
+            print(f"Folder: {folder} | Batch size: {len(cfg.val_filepaths_2)}")
+            validate_saved_model(model_path, 
+                                device =device, 
+                                visualize_umap = visualize_umap,
+                                save_embeddings = save_embeddings,
+                                save_umap_path = save_umap_path,
+                                concatenate_embeddings = concatenate_embeddings,
+                                cfg = cfg)
     # validate_saved_model(model_path, 
     #                     device =device, 
     #                     visualize_umap = visualize_umap,
