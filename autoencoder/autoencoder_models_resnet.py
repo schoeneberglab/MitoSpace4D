@@ -180,6 +180,9 @@ class MitoSpace3DDecoder(nn.Module):
 
         _, cz, nd, nh, nw = x.shape
         x = x.view(b, t, cz, nd, nh, nw)
+        # print("Decoder Output [Autoencoder]")
+        # print("Shape: ", x.size())
+        # print("Stats: Min ", x.min().item(), " Max ", x.max().item(), " Mean ", x.mean().item(), " Std ", x.std().item())
         return x
 
 

@@ -47,7 +47,7 @@ class InfoNCELoss(nn.Module):
                                                                                                                    gathered_features.size(
                                                                                                                        -1))
             features = features_sorted
-
+        # print(f"[InfoNCELoss] features shape after gather/reshape: {features.size()}")
         bs = features.shape[0] // self.n_views
 
         labels = torch.arange(bs).repeat(self.n_views).to(features.device)
@@ -72,6 +72,7 @@ class InfoNCELoss(nn.Module):
         labels = torch.zeros(logits.shape[0], dtype=torch.long).to(logits.device)
 
         loss = self.cross_entropy(logits, labels)
+        # print(f"[InfoNCELoss] loss: {loss.item()}")
 
         acc = accuracy(logits, labels, topk=(1, 5))
 

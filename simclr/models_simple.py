@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
-from simclr.augmentations import DataAugmentation
-from utils.utils import load_config
 import torch.nn.functional as F
+import einops
+
+from utils.utils import load_config
+from simclr.augmentations import DataAugmentation
 from autoencoder.autoencoder_runner import AutoEncoderRunner
 from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
-import einops
 
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
@@ -54,16 +55,6 @@ class Lightweight3DResNet(nn.Module):
         
         in_channels = len(self._channels)
         self._channels = torch.tensor(self._channels).to(torch.int32)
-
-        # # generate a tensor to test the channel indexing
-        # test_tensor = torch.randn(1, 10, 2, 30, 64, 64) # (b, t, c, d, h, w)
-        # print(f"Test tensor shape before indexing: {test_tensor.shape}")
-        # indexed_tensor = test_tensor[:, :, self._channels, ...]
-        # print(f"Test tensor shape after indexing: {indexed_tensor.shape}")
-
-        # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
-        # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/checkpoints/MitospaceAutoencoder_Summer2024.ckpt"
-        # dec_checkpoint_path = "/u/earkfeld/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
         
         if self._with_decoder:
             dec_checkpoint_path = decoder_checkpoint_path
@@ -73,38 +64,41 @@ class Lightweight3DResNet(nn.Module):
             self.decoder = ae_model.model.decoder
             self.decoder.eval()
 
-            del ae_model # Delete the model to free up memory
+            del ae_model # Delete the full model to free up memory
 
             # Freeze decoder parameters
             for param in self.decoder.parameters():
                 param.requires_grad = False
 
             self.decoder.to('cuda')
+            print(f"Loaded decoder from: {dec_checkpoint_path}")
         self.augment_pipeline.to('cuda')
 
-        # Initial layer: modify for 2-channel input
-        self.stem = nn.Sequential(
+        # Initial stem layer
+        stem = nn.Sequential(
             nn.Conv3d(in_channels, 16, kernel_size=3, stride=(1, 2, 2), padding=1, bias=False),
             nn.BatchNorm3d(16),
             nn.ReLU(inplace=True),
             nn.MaxPool3d(kernel_size=3, stride=(1, 2, 2), padding=1)
         )
 
-        # Define 3D ResNet layers with reduced channels and depth
-        self.layer1 = self._make_layer(16, 32, num_blocks=2, stride=2)
-        self.layer2 = self._make_layer(32, 64, num_blocks=2, stride=2)
-        self.layer3 = self._make_layer(64, 128, num_blocks=2, stride=2)
-        self.layer4 = self._make_layer(128, 512, num_blocks=2, stride=2)
-
-        # Adaptive average pooling to reduce spatial and depth dimensions
-        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
+        # 3D ResNet
+        self.resnet = nn.Sequential(
+            stem,
+            self._make_layer(16, 32, num_blocks=2, stride=2),
+            self._make_layer(32, 64, num_blocks=2, stride=2),
+            self._make_layer(64, 128, num_blocks=2, stride=2),
+            self._make_layer(128, 512, num_blocks=2, stride=2),
+            nn.AdaptiveAvgPool3d((1, 1, 1))
+        )
 
         # BiLSTM for temporal encoding
-        self.lstm = nn.LSTM(input_size=512, hidden_size=1024, num_layers=2, batch_first=True, bidirectional=True)
+        self.lstm = nn.LSTM(input_size=512, hidden_size=1024, num_layers=2, batch_first=True, bidirectional=cfg['model_params']['bidirectional'])
 
         # Final fully connected layer for embedding
-        self.fc = nn.Linear(1024 * 2, embedding_size)
+        self.fc = nn.Linear(1024 * 2, embedding_size) if cfg['model_params']['bidirectional'] else nn.Linear(1024, embedding_size)
 
+        # Projection head for SimCLR
         self.proj = nn.Sequential(
             nn.Linear(2048, 512, bias=False), 
             nn.BatchNorm1d(512),
@@ -122,7 +116,6 @@ class Lightweight3DResNet(nn.Module):
     def scramble_time(self, x):
         permutation = torch.randperm(x.size(1))
         x = x[:, permutation, ...]
-
         return x
 
     def forward(self, x):
@@ -141,48 +134,29 @@ class Lightweight3DResNet(nn.Module):
                 # Concatenate all decoded chunks back along the batch dimension
                 x = torch.cat(decoded_chunks, dim=0)   # (b, t, c, d, h, w)
 
-        print(f"Input shape before augment/normalize: {x.size()}")
-        # Augment or normalize
         x = self.augment_pipeline(x) if self.apply_aug else (2 * x - 1)
-        print(f"Input shape after augment/normalize: {x.size()}")
-        # keep only the specified channels while retaining the channel dimension
+        
+        # Keep only the selected channels
         x = x[:, :, self._channels, ...] # (b, t, c, d, h, w)
-        print(f"Input shape after channel indexing: {x.size()}")
 
         batch_size, time_steps, channels, depth, height, width = x.size()
 
         # Reshape for 3D convolution
         x = x.view(batch_size * time_steps, channels, depth, height, width)
 
-        # Forward pass through 3D ResNet layers
-        x = self.stem(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-
-        # Average pool and reshape
-        x = self.avgpool(x)
+        # Forward pass through 3D ResNet
+        x = self.resnet(x)
         x = x.view(batch_size, time_steps, -1)  # Reshape for LSTM
 
         # Forward pass through BiLSTM
         x, _ = self.lstm(x)
+        x = x[:, -1, :] # Use the last timestep from LSTM output
 
-        # Use the last LSTM output
-        # x = x[:, -1, :]
-
-        # Pass all the timesteps to the final embedding to get the temporal embeddings
-        b, t, d = x.size()
-        x = x.reshape(-1, d)
-
-        # Final embedding
+        # feature embedding
         x = self.fc(x)
 
-        # Projection head
+        # projection head for SimCLR loss eval
         out = self.proj(x)
-
-        x = x.reshape(b, t, -1)
-        out = out.reshape(b, t, -1)[:, -1]
 
         return x, out
     

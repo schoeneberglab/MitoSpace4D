@@ -31,7 +31,6 @@ class ContrastiveLearningDataset:
         else:
             return dataset_fn()
 
-
 if __name__ == '__main__':
     config_path = '/u/earkfeld/MitoSpace4D/simclr/config.yaml'
     cfg = load_config(config_path)

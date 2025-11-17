@@ -102,6 +102,7 @@ class SimCLRRunner(pl.LightningModule):
     def additional_log(self, batch: Dict[str, Any], key: str) -> None:
         """
         The function is meant to call all the additional logging functions
+        ASSUMES THAT THE BATCH CONTAINS AUGMENTATIONS!!
 
         Assumptions for the batch:
             1. The batch should contain the images and the classes
@@ -109,7 +110,6 @@ class SimCLRRunner(pl.LightningModule):
             3. The classes are the labels for the images
             4. batch contains more than 1 sample; otherwise the random index selection will get stuck in an infinite loop
         """
-
         if isinstance(batch, Dict):
             assert len(batch["images"]) == 2, "The batch should contain 2 views"
             assert batch["images"][0].shape[0] > 1, "The batch should contain more than 1 sample"
@@ -271,6 +271,7 @@ class SimCLRRunner(pl.LightningModule):
         """Common batch step for train, val, test"""
 
         images, classes = batch["images"], batch["classes"]
+        # print(f"Input images shape: {images.shape}")
 
         # if self.decoder is not None:
         #     with torch.no_grad():
@@ -287,6 +288,7 @@ class SimCLRRunner(pl.LightningModule):
                                                   labels=classes.detach().cpu(),
                                                   batch_size=self.cfg['training']['batch_size'],
                                                   n_views=self.cfg['training']['n_views'])
+            
         elif self.loss == 'SupConLoss':
             loss, acc = self.criterion(out, 
                                        labels=classes,
@@ -319,9 +321,11 @@ class SimCLRRunner(pl.LightningModule):
         self.log('Train/acc/top5', acc[1])
         self.log('Train/db_score', db)
 
-        if self.global_step % self.train_draw_period == 0:
-            self.additional_log(batch, "Train")
-            self.val_draw = True
+        # if self.global_step % self.train_draw_period == 0:
+        #     # reshape the batch to recover the views
+        #     batch["images"] = batch["images"].reshape(-1, *batch["images"].shape[2:])
+        #     self.additional_log(batch, "Train")
+        #     self.val_draw = True
 
         # if self.global_step % self.projector_period == 0 and self.global_step != 0:
         #     self.log_mitospace(batch)
@@ -339,8 +343,8 @@ class SimCLRRunner(pl.LightningModule):
         self.log('Val/acc/top5', acc[1])
         self.log('Val/db_score', db)
 
-        if self.val_draw:
-            self.additional_log(batch, "Val")
+        # if self.val_draw:
+        #     self.additional_log(batch, "Val")
         #     self.val_draw = False
 
         return loss[0]

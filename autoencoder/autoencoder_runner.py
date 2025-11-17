@@ -36,7 +36,6 @@ class AutoEncoderRunner(pl.LightningModule):
         # Scheduler will be constructed in configure_optimizers once total steps are known
         self.scheduler = None
 
-        print("###################### Using MSE/L1/SSIM ReconstructionLoss ##################")
         self.recon_loss = ReconstructionLoss()
 
         # Cumulative loss bookkeeping
