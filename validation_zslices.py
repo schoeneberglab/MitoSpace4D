@@ -24,6 +24,21 @@ from videomae_zslicer import (
 )
 import umap
 import seaborn as sns
+# --- Compute confusion matrix for ground-truth vs predicted labels ---
+from sklearn.metrics import confusion_matrix
+
+
+
+import concurrent.futures
+# INSERT_YOUR_REWRITE_HERE
+import os
+import numpy as np
+from scipy.stats import entropy
+from sklearn.neighbors import NearestNeighbors
+
+# --- Entropy based on k-NN in embedding space for each volume ---
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
 
 '''
 1. We want to load the existing model
@@ -34,12 +49,58 @@ import seaborn as sns
 
 '''
 
+def load_file_and_extract_clips(filepath, volume_id, start_time=3, end_time=19):
+    """
+    Load a single file and extract video clips for all z-slices.
+    Returns: (video_clips, z_indices, global_indices, volume_ids)
+    """
+    try:
+        full_image_data_np = np.load(filepath)
+        current_data_tensor = torch.from_numpy(full_image_data_np)
+        
+        # Expected (T, C, Z, H, W)
+        if current_data_tensor.shape[1] != 2:
+            C, time_points, Z, H, W = current_data_tensor.shape
+            current_data_tensor = current_data_tensor.permute(1, 0, 2, 3, 4)
+        else:
+            time_points, C, Z, H, W = current_data_tensor.shape
+            
+        time_points, num_channels_orig, z_slices_file, H, W = current_data_tensor.shape
+        
+        video_clips = []
+        z_indices = []
+        global_indices = []
+        volume_ids = []
+        
+        # Extract each z-slice as a (T, C, H, W) video clip
+        for z_idx_in_file in range(z_slices_file):
+            video_clip_for_z = current_data_tensor[start_time:end_time, :, z_idx_in_file, :, :]
+            video_clips.append(video_clip_for_z)
+            z_indices.append(z_idx_in_file)
+            # Global indices will be set by caller based on accumulated count
+            global_indices.append(None)  # Placeholder
+            volume_ids.append(volume_id)
+        
+        return {
+            'success': True,
+            'filepath': filepath,
+            'video_clips': video_clips,
+            'z_indices': z_indices,
+            'volume_ids': volume_ids,
+            'z_slices_file': z_slices_file
+        }
+    except FileNotFoundError:
+        return {'success': False, 'filepath': filepath, 'error': 'File not found'}
+    except Exception as e:
+        return {'success': False, 'filepath': filepath, 'error': str(e)}
+
 @torch.no_grad()
 def validate_saved_model(model_path, device=None, 
                         visualize_umap=True, 
                         save_umap_path=None, 
                         concatenate_embeddings=True,
                         save_embeddings=True,
+                        aggregate_method="mean",
                         cfg=Config):
 
     """
@@ -77,7 +138,7 @@ def validate_saved_model(model_path, device=None,
     image_processor = AutoImageProcessor.from_pretrained(cfg.image_processor_name, do_rescale=False)
 
     #-------------------------------------------------------------
-    # 2 Load Data volume by volume
+    # 2 Load Data volume by volume (PARALLELIZED)
 
     all_z_video_clips = [] # Will store (T, C_orig, H, W) for each z_slice from all files
     all_original_z_indices = [] # Will store the original z_index for each video clip
@@ -147,7 +208,7 @@ def validate_saved_model(model_path, device=None,
     print(f"✅ Loaded dataset with {len(dataset)} samples")
 
     # ------------------------------------------------------------
-    # 3️⃣ Run validation per volume
+    # 3️⃣ Run validation per volume (PARALLELIZED with batching)
     # ------------------------------------------------------------
     print("🔹 Running validation over full volumes...")
     model.eval()
@@ -200,31 +261,62 @@ def validate_saved_model(model_path, device=None,
     # 4️⃣ Concatenate embeddings along z-dimension
     # ------------------------------------------------------------
     print("🔹 Concatenating embeddings per volume...")
-    if concatenate_embeddings : 
-        concatenated_embeds = []
-        for emb_v in all_embeds:
-            concat_emb = np.mean(emb_v, axis=0)  # average across z for now
-            concatenated_embeds.append(concat_emb)
-    else:
-        concatenated_embeds = all_embeds
-        
 
+    if concatenate_embeddings:
+        concatenated_embeds_mean = []
+        concatenated_embeds_max = []
+        concatenated_embeds_min = []
+        for emb_v in all_embeds:
+            concat_emb_mean = np.mean(emb_v, axis=0)
+            concat_emb_max = np.max(emb_v, axis=0)
+            concat_emb_min = np.min(emb_v, axis=0)
+            concatenated_embeds_mean.append(concat_emb_mean)
+            concatenated_embeds_max.append(concat_emb_max)
+            concatenated_embeds_min.append(concat_emb_min)
+            # concatenated_embeds.append(emb_v)
+       
+    else:
+        concatenated_embeds_mean = all_embeds
+        concatenated_embeds_max = all_embeds
+        concatenated_embeds_min = all_embeds
+    
+    concatenated_embeds = all_embeds
     # Save embeddings
     if save_embeddings:
-        # Extract filename from the last validation filepath
-        filepaths = map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2)
-        # filepaths_2 = map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2    
-        # get drug label from the filepath 
-        # drug_label_list = [
+        filepaths = list(map(lambda x: os.path.basename(x).replace('.npy', ''), cfg.val_filepaths_2))
         drug_label_list = list(map(lambda x: os.path.split(x)[-2].split("/")[-1], cfg.val_filepaths_2))
         assert len(drug_label_list) == len(cfg.val_filepaths_2), "Number of drug labels should be equal to the number of filepaths"
-        # Create save directory if it doesn't exist
-        save_dir = os.path.join(cfg.save_path, "embeddings")
-        os.makedirs(save_dir, exist_ok=True)
+
+        save_dirs = {
+            "mean": os.path.join(cfg.save_path, "embeddings"),
+            "max": os.path.join(cfg.save_path, "embeddings_max"),
+            "min": os.path.join(cfg.save_path, "embeddings_min"),
+            "all": os.path.join(cfg.save_path, "embeddings_all"),
+        }
+        for d in save_dirs.values():
+            os.makedirs(d, exist_ok=True)
+
+        # Save mean embeddings
+        for i, filename in enumerate(filepaths):
+            embed_save_path_mean = os.path.join(save_dirs["mean"], f"embeddings_{drug_label_list[i]}_{filename}.npy")
+            np.save(embed_save_path_mean, concatenated_embeds_mean[i])
+        print(f"✅ Saved mean embeddings to {save_dirs['mean']}")
+
+        # Save max embeddings
+        for i, filename in enumerate(filepaths):
+            embed_save_path_max = os.path.join(save_dirs["max"], f"embeddings_{drug_label_list[i]}_{filename}.npy")
+            np.save(embed_save_path_max, concatenated_embeds_max[i])
+        print(f"✅ Saved max embeddings to {save_dirs['max']}")
+
+        # Save min embeddings (optional, already in code)
+        for i, filename in enumerate(filepaths):
+            embed_save_path_min = os.path.join(save_dirs["min"], f"embeddings_{drug_label_list[i]}_{filename}.npy")
+            np.save(embed_save_path_min, concatenated_embeds_min[i])
+        print(f"✅ Saved min embeddings to {save_dirs['min']}")
         
         # Save concatenated embeddings
         for i, filename in enumerate(filepaths):
-            embed_save_path = os.path.join(save_dir, f"embeddings_{drug_label_list[i]}_{filename}.npy")
+            embed_save_path = os.path.join(save_dirs["all"], f"embeddings_{drug_label_list[i]}_{filename}.npy")
             np.save(embed_save_path, concatenated_embeds[i])
         print(f"✅ Saved embeddings to {embed_save_path}")
         
@@ -255,8 +347,36 @@ def validate_saved_model(model_path, device=None,
             print(f"✅ Saved UMAP plot to {save_umap_path}")
         else:
             plt.show()
+        
+    # INSERT_YOUR_CODE
+    # Save validation metrics to a file in the save path
+    metrics = {
+        "model_path": model_path,
+        "drug_labels": list(set(drug_label_list)),
+        "volume_accuracy": {str(k): float(v) for k, v in per_volume_acc.items()},
+        "mean_accuracy": float(mean_acc),
+    }
+    metrics_save_path = os.path.join(cfg.save_path, "validation_metrics.json")
+    import json
+    # Append new metrics to the file if it exists, else create and write
+    if os.path.exists(metrics_save_path):
+        with open(metrics_save_path, 'r') as f:
+            try:
+                existing_metrics = json.load(f)
+            except Exception:
+                existing_metrics = {}
+        # Combine, appending as a new entry
+        if not isinstance(existing_metrics, list):
+            existing_metrics = [existing_metrics]
+        existing_metrics.append(metrics)
+        with open(metrics_save_path, 'w') as f:
+            json.dump(existing_metrics, f, indent=2)
+    else:
+        with open(metrics_save_path, 'w') as f:
+            json.dump([metrics], f, indent=2)
+    print(f"✅ Appended validation metrics to {metrics_save_path}")
 
-    # ------------------------------------------------------------
+    # ------------------------------------------------------------;
     # 6️⃣ Return results
     # ------------------------------------------------------------
     return {
@@ -267,6 +387,88 @@ def validate_saved_model(model_path, device=None,
         "all_labels": np.array(all_labels),
         "all_volume_ids": np.array(all_vol_ids),
     }
+
+
+def compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_label=None, folder_to_drug=None):
+    """
+    Given an embeddings folder, load all embeddings and their file names,
+    construct the drug_label_list (or ground truth per embedding) from file names,
+    and compute per-embedding kNN entropy in embedding space.
+    """
+    embedding_files = sorted([f for f in os.listdir(embeddings_dir) if f.endswith(".npy") and f.startswith("embeddings_20")])
+    all_embeds = []
+    drug_label_list = []
+    drug_name_list = []
+    embedding_filenames = []
+
+    # INSERT_YOUR_REWRITE_HERE
+    # Parallelized embedding loading and metadata extraction
+
+    def process_embedding_file(fname):
+        embed_path = os.path.join(embeddings_dir, fname)
+        emb = np.load(embed_path, allow_pickle=True)
+        # Example file name: embeddings_<folder>_<imgname>.npy
+        parts = fname.split("_")
+        if len(parts) >= 3:
+            folder = parts[1]
+        else:
+            folder = None
+
+        label = None
+        drug_name = None
+        if folder_to_label is not None and folder in folder_to_label:
+            label = folder_to_label[folder]
+        if folder_to_drug is not None and folder in folder_to_drug:
+            drug_name = folder_to_drug[folder]
+
+        # If no mapping, fallback to folder string label
+        used_label = label if label is not None else folder
+        used_drug = drug_name if drug_name is not None else folder
+        return emb, used_label, used_drug, fname
+
+    results = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(executor.map(process_embedding_file, embedding_files))
+
+    # Unpack parallel results
+    for emb, used_label, used_drug, fname in results:
+        all_embeds.append(emb)
+        drug_label_list.append(used_label)
+        drug_name_list.append(used_drug)
+        embedding_filenames.append(fname)
+
+    X = np.stack(all_embeds)
+    n_neighbors = min(5, len(X))
+
+    neigh = NearestNeighbors(n_neighbors=n_neighbors+1, metric='euclidean')
+    neigh.fit(X)
+
+    all_neighbor_entropies = []
+    all_neighbor_label_distributions = []
+
+    for i, this_emb in enumerate(X):
+        dists, indices = neigh.kneighbors([this_emb], n_neighbors=n_neighbors+1)
+        neighbor_idxs = indices[0][1:]  # Exclude self
+        neighbor_labels = [drug_label_list[j] for j in neighbor_idxs]
+        values, counts = np.unique(neighbor_labels, return_counts=True)
+        prob_dist = counts / counts.sum()
+        ent = entropy(prob_dist, base=2)
+        all_neighbor_entropies.append(ent)
+        label_dist = dict(zip(values, prob_dist))
+        all_neighbor_label_distributions.append(label_dist)
+
+    mean_knn_entropy = float(np.mean(all_neighbor_entropies))
+    print(f"🔢 Embedding-space kNN (k={n_neighbors}) mean entropy: {mean_knn_entropy:.4f} bits")
+    print(f"Per-embedding kNN entropy: {all_neighbor_entropies[:5]} ...")
+    return {
+        "embedding_filenames": embedding_filenames,
+        "drug_label_list": drug_label_list,
+        "drug_name_list": drug_name_list,
+        "knn_entropy_per_embedding": all_neighbor_entropies,
+        "mean_knn_entropy": mean_knn_entropy,
+        "knn_label_distributions": all_neighbor_label_distributions
+    }
+
 
 @torch.no_grad()
 def extract_embeddings(model, dataloader, device, layer_name="pooler"):
@@ -312,6 +514,7 @@ def extract_embeddings(model, dataloader, device, layer_name="pooler"):
     return all_embeds, all_labels
 
 
+
 if __name__ == "__main__":
     # model_path = "checkpoint_20240826/z_pred_0.03.pth"
     # device = "cuda:0"
@@ -323,16 +526,21 @@ if __name__ == "__main__":
     cfg = Config()
     # model_path = "checkpoint_20240826/z_pred_0.03.pth"
     
-    cfg.save_path = "checkpoint_new_data_all_drugs"
+    cfg.save_path = "checkpoint_lowlr_epoch_mdvivi1_control"
     model_path = f"{cfg.save_path}/z_predictor_incremental.pth"
+    aggregate_method = "max"
     # cfg.val_filepaths_2 = cfg.val_filepaths[0:]
     pick_folders = [
-        # "20240729-1",
-        "20240805-1",
-        "20240814-1",
-        "20240911-1",
-        "20240826-1",
-        "20240830-1"
+        "20240729-1",#control
+        # "20240805-1",#H2O2
+        # "20240802-1",#tbhp
+        "20240814-1",#valinomycin
+        "20240911-1",#nigericin
+        # "20240826-1",#nocodazole
+        # "20240830-1",#colchicine
+        # "20240816-1",#mitomycinC
+        # "20240905-1",#cisplatin
+        "20240823-1",#mdivi1
         # Add more folder names or date-based identifiers as needed
     ]
     device = "cuda:0"
@@ -361,6 +569,7 @@ if __name__ == "__main__":
                                 save_embeddings = save_embeddings,
                                 save_umap_path = save_umap_path,
                                 concatenate_embeddings = concatenate_embeddings,
+                                aggregate_method = aggregate_method,
                                 cfg = cfg)
     # validate_saved_model(model_path, 
     #                     device =device, 

@@ -109,12 +109,14 @@ def normalize_and_mask(img_slice_2d, eps=1e-6, mask_threshold=0.1):
 
 class Config:
     # --- Path Configuration ---
-    master_base_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/"
-    
+    # master_base_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/"
+    # master_base_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/"
+    # master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
+    master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
     # --- Channel Handling ---
     # True to create a 3rd channel from 'functional_masked' output of normalize_and_mask
-    create_third_channel = True 
-    use_only_mitotracker = True
+    create_third_channel = False 
+    use_only_mitotracker = False
     
     # --- Model specific ---
     model_name = "MCG-NJU/videomae-base" # A good choice for video classification
@@ -123,24 +125,27 @@ class Config:
     # --- Training specific ---
     test_size_z = 0.3 # 30% of Z-slices for testing, 70% for training
     batch_size = 16 # Reduced batch size, especially if creating 3 channels and multiple files
-    num_epochs = 20
-    learning_rate = 1e-5
+    num_epochs = 50
+    learning_rate = 1e-6
     random_seed = 42
     do_rescale = False
     device = "cuda:0"
-    save_path = "checkpoint_combined_drugs"
+    save_path = ""
 
 # Initialize file paths after class definition
 Config.base_paths = [f"{Config.master_base_path}{i}" for i in os.listdir(Config.master_base_path)]
 Config.image_filepaths = []
 Config.val_filepaths = []
 for base_path in Config.base_paths:
-    files = sorted(os.listdir(base_path))
-    for i in files[0:200]:
-        Config.image_filepaths.append(f"{base_path}/{i}")
-    for i in files[200:]:
-        Config.val_filepaths.append(f"{base_path}/{i}")
-
+    try:    
+        files = sorted(os.listdir(base_path))
+        for i in files[0:200]:
+            Config.image_filepaths.append(f"{base_path}/{i}")
+        for i in files[200:]:
+            Config.val_filepaths.append(f"{base_path}/{i}")
+    except:
+        print(f"Error loading {base_path}. Skipping.")
+        continue
 # Set random seeds for reproducibility
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -205,7 +210,7 @@ class ZSliceDataset(Dataset):
         volume_ids: list,
         image_processor,
         create_third_channel: bool = False,
-        use_only_mitotracker: bool = True,
+        use_only_mitotracker: bool = False,
     ):
         """
         Args:
@@ -224,6 +229,7 @@ class ZSliceDataset(Dataset):
         self.create_third_channel = create_third_channel
         self.use_only_mitotracker = use_only_mitotracker
         self.z_to_label_mapping = None  # will be set externally via set_label_mapping()
+        self.normalize = False
 
     def set_label_mapping(self, z_to_label_map: dict):
         """Assigns a z-to-label mapping (e.g., {z_idx: class_label})."""
@@ -275,12 +281,13 @@ class ZSliceDataset(Dataset):
         # -------------------------------
         # 2️⃣ Normalization
         # -------------------------------
-        clip_min, clip_max = processed_video_clip.min(), processed_video_clip.max()
-        if clip_max > clip_min:
-            processed_video_clip = (processed_video_clip - clip_min) / (clip_max - clip_min)
-        else:
-            processed_video_clip = torch.zeros_like(processed_video_clip)
-
+        if self.normalize:
+            clip_min, clip_max = processed_video_clip.min(), processed_video_clip.max()
+            if clip_max > clip_min:
+                processed_video_clip = (processed_video_clip - clip_min) / (clip_max - clip_min)
+            else:
+                processed_video_clip = torch.zeros_like(processed_video_clip)
+# /home/mayunagupta/experiments/MitoSpace4D/checkpoint_new_data_nocodazole_colchicine_control
         # -------------------------------
         # 3️⃣ Convert to image processor format
         # -------------------------------

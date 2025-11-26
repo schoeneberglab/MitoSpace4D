@@ -7,10 +7,14 @@ import umap
 from utils.vis import make_mitospace_minimal
 from image_viewer import view_4d_image_with_sliders
 import matplotlib.patches as mpatches
+from vis_data import add_to_viewer
+import napari
+from validation_zslices import compute_confusion_matrix_and_entropy_from_embeddings_folder
 
 def load_folder_label_maps(drugs_to_labels_path):
     folder_to_label = {}
     label_to_drug = {}
+    folder_to_drug = {}
     with open(drugs_to_labels_path, 'r') as f:
         for line in f:
             parts = line.strip().split()
@@ -20,13 +24,14 @@ def load_folder_label_maps(drugs_to_labels_path):
             label_int = int(label)
             folder_to_label[folder] = label_int
             label_to_drug[label_int] = drug
+            folder_to_drug[folder] = drug
     # Build label_names array (sorted by label)
     if label_to_drug:
         max_label = max(label_to_drug.keys())
         label_names = np.array([label_to_drug.get(i, f"label_{i}") for i in range(max_label + 1)], dtype=object)
     else:
         label_names = np.array([], dtype=object)
-    return folder_to_label, label_names
+    return folder_to_label, label_names, folder_to_drug
 
 
 def load_colors(colors_file_path):
@@ -71,7 +76,7 @@ def maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names):
         if "-" in folder_key:
             
             folder_key = folder_key.split("-")[0]
-            print(folder_key)
+            # print(folder_key)
         label = folder_to_label.get(folder_key, -1)
         all_labels.append(label)
 
@@ -135,9 +140,10 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
     
     # Allow interactive filtering: Pick only some labels/classes
 
-    # pick_names = ['control', 'nocodazole','colchicine']#'h2o2', 'mitomycinC', 'p110', 'cisplatin']
-    
+    # pick_names = ['control', 'nocodazole', 'valinomycin', 'nigericin', 'h2o2', 'mitomycinc',  'cisplatin']#'h2o2', 'mitomycinC', 'p110', 'cisplatin']
+    # pick_names = []
     pick_names = list(np.unique(label_names))
+    # print(pick_names)
     # After loading label_names and labels, filter only those in pick_names
         # Set color values per point if palette and labels are available (with fallback)
     if labels is not None and colors_palette is not None:
@@ -232,7 +238,11 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
                 break
         # Now, candidate_paths contains all checked paths in order.
 
-        view_4d_image_with_sliders(found_path, position = idx)
+        # view_4d_image_with_sliders(found_path, position = idx)
+        viewer = napari.Viewer(ndisplay=3)
+        add_to_viewer(viewer, found_path, translate=(0, 0), channel=0)
+        add_to_viewer(viewer, found_path, translate=(0, 256 + 10), channel=1)
+        napari.run()
 
     # --- Zooming interaction support for 3D plot ---
     # https://stackoverflow.com/questions/24177974/matplotlib-3d-plot-zooming-with-scroll-wheel
@@ -294,10 +304,11 @@ if __name__ == '__main__':
                         type=str, help='Path to folder->drug->label mapping file')
     parser.add_argument('--pick_labels', nargs='*', type=int, default=None,
                         help='Subset of labels to visualize')
+    parser.add_argument('--embedding_folder', help='Path to embedding folder', default="embeddings")
     args = parser.parse_args()
 
-    embeddings_dir = osp.join(args.checkpoint_dir, 'embeddings')
-    folder_to_label, label_names = load_folder_label_maps(args.drugs_to_labels)
+    embeddings_dir = osp.join(args.checkpoint_dir, args.embedding_folder)
+    folder_to_label, label_names, folder_to_drug = load_folder_label_maps(args.drugs_to_labels)
     colors = load_colors(args.colors_file)
 
     maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names)
@@ -307,5 +318,11 @@ if __name__ == '__main__':
     #                        color_palette=colors)
 
     select_and_plot_embedding(embeddings_dir=embeddings_dir, colors_palette=colors)
+
+    # metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label)
+    # print(metrics)
+    # import json
+    # with open(osp.join(args.checkpoint_dir, "entropy_metrics.json"), "w") as f:
+    #     json.dump(metrics, f)
 
 
