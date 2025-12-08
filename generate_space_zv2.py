@@ -76,8 +76,9 @@ def maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names):
         if "-" in folder_key:
             
             folder_key = folder_key.split("-")[0]
-            # print(folder_key)
+            print(folder_key)
         label = folder_to_label.get(folder_key, -1)
+        print(label)
         all_labels.append(label)
 
     embeddings = np.concatenate(all_embeddings, axis=0)
@@ -238,11 +239,11 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
                 break
         # Now, candidate_paths contains all checked paths in order.
 
-        # view_4d_image_with_sliders(found_path, position = idx)
-        viewer = napari.Viewer(ndisplay=3)
-        add_to_viewer(viewer, found_path, translate=(0, 0), channel=0)
-        add_to_viewer(viewer, found_path, translate=(0, 256 + 10), channel=1)
-        napari.run()
+        view_4d_image_with_sliders(found_path, position = idx)
+        # viewer = napari.Viewer(ndisplay=3)
+        # add_to_viewer(viewer, found_path, translate=(0, 0), channel=0)
+        # add_to_viewer(viewer, found_path, translate=(0, 256 + 10), channel=1)
+        # napari.run()
 
     # --- Zooming interaction support for 3D plot ---
     # https://stackoverflow.com/questions/24177974/matplotlib-3d-plot-zooming-with-scroll-wheel
@@ -319,10 +320,10 @@ if __name__ == '__main__':
 
     select_and_plot_embedding(embeddings_dir=embeddings_dir, colors_palette=colors)
 
-    # metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label)
-    # print(metrics)
-    # import json
-    # with open(osp.join(args.checkpoint_dir, "entropy_metrics.json"), "w") as f:
-    #     json.dump(metrics, f)
+    metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label)
+    print(metrics)
+    import json
+    with open(osp.join(args.checkpoint_dir, "entropy_metrics.json"), "w") as f:
+        json.dump(metrics, f)
 
 

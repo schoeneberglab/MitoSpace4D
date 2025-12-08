@@ -58,6 +58,149 @@ def normalize_and_mask(img, eps=1e-6, mask_threshold=0.1):
     return functional_masked, mask
 
 
+def view_4d_image_with_sliders_new_data(image_filepath, position = None):
+    """
+    Views a 4D (time, z, y, x, channels) image from a .npy file with sliders
+    for time and z-slice selection.
+
+    Args:
+        image_filepath (str): Path to the .npy file containing the 4D image data.
+    """
+    try:
+        image_data = np.load(image_filepath)
+    except FileNotFoundError:
+        print(f"Error: File not found at {image_filepath}")
+        return
+    except Exception as e:
+        print(f"Error loading image data: {e}")
+        return
+    
+
+    # Assuming data shape is (time_points, z_slices, y_dim, x_dim, channels)
+    # Adjust this if your data has a different channel position
+    if image_data.ndim != 5:
+        print(f"Error: Expected 5 dimensions (time, z, y, x, channels), but got {image_data.ndim}")
+        print("Please ensure your .npy file has the correct shape.")
+        return
+
+    num_channels,time_points, z_slices, y_dim, x_dim = image_data.shape
+
+    if num_channels != 2:
+        print(f"Warning: Expected 2 channels, but found {num_channels}. Displaying the first two if available.")
+
+    # Initial display parameters
+    initial_time = 0
+    initial_z = 0
+
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6)) # One subplot for each channel
+    plt.subplots_adjust(left=0.1, bottom=0.25)
+    folder , basename = os.path.split(image_filepath)
+    
+    folder = os.path.basename(folder)
+    _, folder_to_label, folder_to_drug = load_folder_label_maps()
+    try:
+        drug = folder_to_drug[folder]
+    except:
+        drug = "Unknown"
+    # Load folder_to_label and label_names from the drugs_to_labels.txt mapping file,
+    # Display initial images for both channels
+    im1 = ax[0].imshow(image_data[0, initial_time, initial_z, :, :], cmap='Blues')
+    ax[0].set_title(f"Channel 1 (Time: {initial_time}, Z: {initial_z})")
+    ax[0].axis('off')
+
+    im2 = ax[1].imshow(image_data[1, initial_time, initial_z, :, :], cmap='Blues')
+    ax[1].set_title(f"Channel 2 (Time: {initial_time}, Z: {initial_z})")
+    ax[1].axis('off')
+    if position is None:
+
+        plt.suptitle(f"Folder: {folder}, Basename: {basename}")
+    else:
+        plt.suptitle(f"Folder: {folder}, Basename: {basename}, Position: {position}, Drug: {drug}")
+
+    # # im3 = ax[2].imshow(image_data[initial_time,1, initial_z, :, :]-image_data[initial_time,0, initial_z, :, :], cmap='gray')
+    # im3 = ax[2].imshow(normalize_and_mask(image_data[initial_time,:, initial_z, :, :])[0], cmap = 'gray')
+    # ax[2].set_title(f"Channel 2-1 (Time: {initial_time}, Z: {initial_z})")
+    # ax[2].axis('off')
+
+    # Create slider axes
+    ax_time = plt.axes([0.1, 0.1, 0.8, 0.03], facecolor='lightgoldenrodyellow')
+    ax_z = plt.axes([0.1, 0.05, 0.8, 0.03], facecolor='lightgoldenrodyellow')
+
+    # Create sliders
+    time_slider = Slider(ax_time, 'Time', 0, time_points - 1, valinit=initial_time, valstep=1)
+    z_slider = Slider(ax_z, 'Z-Slice', 0, z_slices - 1, valinit=initial_z, valstep=1)
+
+    def update(val):
+        current_time = int(time_slider.val)
+        current_z = int(z_slider.val)
+
+        im1.set_data(image_data[0, current_time, current_z, :, :])
+        ax[0].set_title(f"Channel 1 (Time: {current_time}, Z: {current_z})")
+
+        if num_channels >= 2:
+            im2.set_data(image_data[1, current_time, current_z, :, :])
+            ax[1].set_title(f"Channel 2 (Time: {current_time}, Z: {current_z})")
+            # im3.set_data(image_data[current_time, 1,current_z, :, :]-image_data[current_time, 0,current_z, :, :])
+            # im3.set_data(normalize_and_mask(image_data[current_time, :,current_z, :, :])[0])
+            # ax[2].set_title(f"Channel 2-1 (Time: {current_time}, Z: {current_z})")
+        else:
+            ax[1].set_title(f"Channel 2 (Not available)")
+            im2.set_data(np.zeros_like(image_data[0, current_time, current_z, :, :])) # Show black if no second channel
+            # ax[2].set_title(f"Channel 2-1 (Not available)")
+            # im3.set_data(np.zeros_like(image_data[current_time, 0,current_z, :, :])) # Show black if no second channel
+            
+
+
+        fig.canvas.draw_idle()
+
+    time_slider.on_changed(update)
+    z_slider.on_changed(update)
+
+    # --- Add Save Movie Button ---
+    # ax_save = plt.axes([0.8, 0.9, 0.15, 0.05])
+    # btn_save = Button(ax_save, 'Save Movie', color='lightblue', hovercolor='skyblue')
+
+    def save_movie(event):
+        print("Preparing movie export...")
+
+        mode = input("Animate over [time/z]? ").strip().lower()
+        if mode not in ["time", "z"]:
+            print("Invalid choice. Please type 'time' or 'z'.")
+            return
+
+        save_path = input("Enter output filename (e.g. movie.mp4): ").strip()
+        fps = 5  # frames per second
+
+        frames = range(time_points) if mode == "time" else range(z_slices)
+
+        def animate(i):
+            if mode == "time":
+                t, z = i, int(z_slider.val)
+            else:
+                t, z = int(time_slider.val), i
+
+            im1.set_data(image_data[t, 0, z, :, :])
+            im2.set_data(image_data[t, 1, z, :, :])
+            # im3.set_data(normalize_and_mask(image_data[t, :, z, :, :])[0])
+
+            ax[0].set_title(f"Ch1 (t={t}, z={z})")
+            ax[1].set_title(f"Ch2 (t={t}, z={z})")
+            # ax[2].set_title(f"Ch2-1 (t={t}, z={z})")
+            return [im1, im2] # im3
+
+        ani = animation.FuncAnimation(fig, animate, frames=frames, blit=False, repeat=False)
+
+        try:
+            ani.save(save_path, fps=fps, writer='ffmpeg')
+            print(f"✅ Movie saved successfully: {save_path}")
+        except Exception as e:
+            print(f"❌ Error saving movie: {e}")
+            print("Make sure FFmpeg is installed (e.g., `sudo apt install ffmpeg`).")
+
+    # btn_save.on_clicked(save_movie)
+    
+    plt.show()
+
 
 def view_4d_image_with_sliders(image_filepath, position = None):
     """
@@ -83,6 +226,8 @@ def view_4d_image_with_sliders(image_filepath, position = None):
         print(f"Error: Expected 5 dimensions (time, z, y, x, channels), but got {image_data.ndim}")
         print("Please ensure your .npy file has the correct shape.")
         return
+    if image_data.shape[0] ==2:
+        image_data = image_data.transpose(1, 0, 2, 3, 4)
 
     time_points,num_channels, z_slices, y_dim, x_dim = image_data.shape
 
@@ -99,15 +244,19 @@ def view_4d_image_with_sliders(image_filepath, position = None):
     
     folder = os.path.basename(folder)
     _, folder_to_label, folder_to_drug = load_folder_label_maps()
-
-    drug = folder_to_drug[folder]
+    try:
+        if "-" in folder:
+            folder = folder.split("-")[0]
+        drug = folder_to_drug[folder]
+    except:
+        drug = "Unknown"
     # Load folder_to_label and label_names from the drugs_to_labels.txt mapping file,
     # Display initial images for both channels
-    im1 = ax[0].imshow(image_data[initial_time,0, initial_z, :, :], cmap='gray')
+    im1 = ax[0].imshow(image_data[initial_time,0, initial_z, :, :], cmap='gray', vmin=0.0, vmax=1.0)
     ax[0].set_title(f"Channel 1 (Time: {initial_time}, Z: {initial_z})")
     ax[0].axis('off')
 
-    im2 = ax[1].imshow(image_data[initial_time,1, initial_z, :, :], cmap='gray')
+    im2 = ax[1].imshow(image_data[initial_time,1, initial_z, :, :], cmap='gray', vmin=0.0, vmax=1.0)
     ax[1].set_title(f"Channel 2 (Time: {initial_time}, Z: {initial_z})")
     ax[1].axis('off')
     if position is None:
@@ -233,6 +382,14 @@ if __name__ == "__main__":
     # print(f"Dummy file '{dummy_filename}' created successfully.")
 
     # --- Run the viewer with the dummy file ---
-    your_image_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240815/000079.npy"
-    view_4d_image_with_sliders(your_image_path)
+    # your_image_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/20240826/000519-0.npy"
+    # your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240729-1/000003-0.npy"
+    # your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240808-1/001283-0.npy"
+    # your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240826-1/001023-0.npy"
+    your_image_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/20240826-1/000519-0.npy"
+    #  = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240730-1/000000-0.npy"
+    # your_image_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/20240730-1/000000-0.npy"
+    view_4d_image_with_sliders_new_data(your_image_path)
     # view_4d_image_with_sliders(dummy_filename)
+
+    

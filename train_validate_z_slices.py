@@ -189,26 +189,33 @@ if __name__ == "__main__":
         "--pick_folders",
         nargs="+",
         default=["20240729-1", "20240823-1"],
+        # default=
         help="List of folder names (space separated) to include for training. Example: --pick_folders 20240729-1 20240823-1"
     )
     parser.add_argument("--save_path", default="checkpoint_new_loss_mdivi_control", help="Path to save the checkpoint")
     parser.add_argument("--master_base_path", default="/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/", help="Path to the master base path")
-    parser.add_argument("--batch_size", default=16, help="Batch size for training")
-    parser.add_argument("--num_epochs", default=50, help="Number of epochs for training")
+    parser.add_argument("--batch_size", default=20, help="Batch size for training")
+    parser.add_argument("--num_epochs", default=30, help="Number of epochs for training")
     parser.add_argument("--learning_rate", default=1e-4, help="Learning rate for training")
     parser.add_argument("--test_size_z", default=0.3, help="Test size for Z-slices")
     parser.add_argument("--batch_size_files", default=100, help="Batch size for files")
-    parser.add_argument("--train_split", default=400, help="Split point for training and validation")
+    parser.add_argument("--train_split", default=300, help="Split point for training and validation")
     parser.add_argument("--device", default="cuda:0", help="Device to use for training")
     parser.add_argument("--image_processor_name", default="MCG-NJU/videomae-base", help="Image processor name")
+    parser.add_argument("--all_drugs", default=False, help="Use all drugs")
     args = parser.parse_args()
-    pick_folders = args.pick_folders
+    
     train_split = args.train_split
     cfg = Config()
     cfg.master_base_path = args.master_base_path
     cfg.base_paths = [f"{cfg.master_base_path}{i}" for i in os.listdir(cfg.master_base_path)]
     cfg.image_filepaths = []
     cfg.val_filepaths = []
+    all_drugs = [i for i in os.listdir(cfg.master_base_path) if os.path.isdir(os.path.join(cfg.master_base_path, i))]
+    if not args.all_drugs:
+        pick_folders = args.pick_folders
+    else:
+        pick_folders = all_drugs
     
     cfg.save_path = args.save_path
     cfg.batch_size = args.batch_size
@@ -239,7 +246,7 @@ if __name__ == "__main__":
 
     print(len(cfg.image_filepaths))
 
-    # incremental_train_z_predictor(cfg)
+    incremental_train_z_predictor(cfg)
 
     model_path = f"{cfg.save_path}/z_predictor_incremental.pth"
     aggregate_method = "max"

@@ -91,7 +91,7 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
 
     start_file_idx = 0
     total_files = len(cfg.image_filepaths)
-    batch_size_files = 60  # same as before
+    batch_size_files = 100  # same as before
     total_batches = (total_files + batch_size_files - 1) // batch_size_files
 
     print(f"Total files: {total_files} -> {total_batches} batches of {batch_size_files}")
@@ -107,8 +107,8 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
-        start_file_idx = checkpoint["next_file_idx"]
-        # start_file_idx = 0 #only for valinomycin and nigericin c
+        # start_file_idx = checkpoint["next_file_idx"]
+        start_file_idx = 0 #only for valinomycin and nigericin c
     
 
     for batch_start in range(start_file_idx, total_files, batch_group_size * batch_size_files):
@@ -153,7 +153,22 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
                 logits = model(pixel_values=pixel_values).logits
                 loss_ce = ce_loss_fn(logits, labels)
                 loss_vol = vol_loss_fn(logits, labels, volume_ids)
-                loss = 0.5 * loss_ce + 0.5 * loss_vol 
+                # Assign higher weight to volume accuracy loss.
+                # Additionally, increase loss weight for class 2 or 3 (z), assuming 0-based classes
+                # Note: make sure labels are 0,1,2 or adjust as necessary.
+                volume_weight = 0.7
+                ce_weight = 0.3
+
+                # Default: no label-specific boost
+                label_weight = torch.ones_like(labels, dtype=torch.float32).to(labels.device)
+                # Boost weight for class 2 or 3 (indices 2 and 3); adjust if only 0,1,2 exist
+                for_high_z = (labels == 2) | (labels == 1)
+                label_weight[for_high_z] = 2.0
+
+                weighted_loss_ce = (loss_ce * label_weight).mean()
+                weighted_loss_vol = (loss_vol * label_weight).mean()
+                
+                loss = ce_weight * weighted_loss_ce + volume_weight * weighted_loss_vol
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
@@ -178,24 +193,28 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
 
 if __name__ == "__main__":
     cfg = Config()
-    cfg.master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new"
+    cfg.master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
     cfg.base_paths = [f"{cfg.master_base_path}{i}" for i in os.listdir(cfg.master_base_path)]
     cfg.image_filepaths = []
     cfg.val_filepaths = []
     
-    cfg.save_path = "checkpoint_new_data_all_drugs"
+    cfg.save_path = "checkpoint_lowlr_epoch_mdvivi1_control"
     if not os.path.exists(cfg.save_path):
         os.makedirs(cfg.save_path, exist_ok=True)
-    print(len(cfg.base_paths))
+    print(cfg.base_paths[1])
 
     # === Quick pick labels/folders: manually specify folder dates or partials ===
     pick_folders = [
-        "20240729-1",
-        "20240805-1",
-        "20240814-1",
-        "20240911-1",
-        "20240826-1",
-        "20240830-1"
+        "20240729-1",#control
+        # "20240805-1",#H2O2 
+        # "20240802-1",#tbhp
+        # "20240814-1",#valinomycin
+        # "20240911-1",#nigericin
+        # "20240826-1",#nocodazole
+        # "20240830-1",#colchicine
+        # "20240816-1",#mitomycinC
+        # "20240905-1",#cisplatin
+        "20240823-1",#mdivi1
         # Add more folder names or date-based identifiers as needed
     ]
     # If you want to match multiple folders per pick_label, just add them above
@@ -208,9 +227,9 @@ if __name__ == "__main__":
         print("Checking:", base_path)
         print("Loading data from:", base_path)
         files = sorted(os.listdir(base_path))
-        for i in files[0:200]:
+        for i in files[0:500]:
             cfg.image_filepaths.append(f"{base_path}/{i}")
-        for i in files[200:]:
+        for i in files[500:]:
             cfg.val_filepaths.append(f"{base_path}/{i}")
 
     print(len(cfg.image_filepaths))

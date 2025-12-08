@@ -526,38 +526,55 @@ if __name__ == "__main__":
     cfg = Config()
     # model_path = "checkpoint_20240826/z_pred_0.03.pth"
     
-    cfg.save_path = "checkpoint_lowlr_epoch_mdvivi1_control"
+    cfg.save_path = "checkpoint_all_drugs_300"
     model_path = f"{cfg.save_path}/z_predictor_incremental.pth"
     aggregate_method = "max"
     # cfg.val_filepaths_2 = cfg.val_filepaths[0:]
     pick_folders = [
-        "20240729-1",#control
+        # "20240729-1",#control
         # "20240805-1",#H2O2
         # "20240802-1",#tbhp
-        "20240814-1",#valinomycin
-        "20240911-1",#nigericin
+        # "20240814-1",#valinomycin
+        # "20240911-1",#nigericin
         # "20240826-1",#nocodazole
         # "20240830-1",#colchicine
         # "20240816-1",#mitomycinC
         # "20240905-1",#cisplatin
-        "20240823-1",#mdivi1
+        # "20240823-1",#mdivi1
         # Add more folder names or date-based identifiers as needed
     ]
+
+    if len(pick_folders) == 0:
+        pick_folders = [i for i in os.listdir(cfg.master_base_path) if os.path.isdir(os.path.join(cfg.master_base_path, i))]
+        print(f"Picked folders: {pick_folders}")
+    else:
+        print(f"Picked folders: {pick_folders}")
+
     device = "cuda:0"
     visualize_umap = False
     save_embeddings = True
     concatenate_embeddings = True
     exp_name = cfg.save_path.split("_")[1]
     save_umap_path = f"umap_validation_{exp_name}"
+
+    filtered_base_paths = [bp for bp in cfg.base_paths if any(bp.endswith(pick) for pick in pick_folders)]
+    train_split = 400
+    print("Picked folders:", filtered_base_paths)
+    for base_path in filtered_base_paths:
+        print("Checking:", base_path)
+        print("Loading data from:", base_path)
+        files = sorted(os.listdir(base_path))
+        for i in files[train_split:]:
+            cfg.val_filepaths.append(f"{base_path}/{i}")
     # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
-    print(len(cfg.val_filepaths), cfg.val_filepaths[0], cfg.val_filepaths[-1], cfg.val_filepaths[100], cfg.val_filepaths[200])
-    batch_size = 150
+    batch_size = 50
     for folder in pick_folders:
+    
         idxs = [i for i, fpath in enumerate(cfg.val_filepaths) if folder in fpath]
         if not idxs:
             print(f"⚠️ No filepaths found for folder: {folder}")
             continue
-        for start in range(0, len(idxs), 3*batch_size):
+        for start in range(0, len(idxs), batch_size):
             selected_idxs = idxs[start:start+batch_size]
             if not selected_idxs:
                 continue
