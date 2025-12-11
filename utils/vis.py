@@ -216,7 +216,7 @@ def make_mitospace_minimal(embedding_dir, pick_labels=None, color_palette=None):
     print(embeddings.shape, labels.shape, label_names.shape)
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(embeddings)
-
+    print("Debug: Displaying labels",labels)
     colors = np.array([color_palette[int(label)] for label in labels]) if color_palette is not None else generate_distinct_colors(int(labels.max()) + 1)
     if isinstance(colors, list):
         colors = np.array([colors[int(label)] for label in labels])
@@ -247,7 +247,9 @@ def plot_confusion_matrix(cm,
                           title='Confusion matrix',
                           cmap=None,
                           normalize=True,
-                          k=100):
+                          k=100,
+                          save_fig=False,
+                          embeddings_dir=None):
     cm_unnorm = cm.copy()
 
     cmap = plt.get_cmap('Blues')
@@ -273,7 +275,12 @@ def plot_confusion_matrix(cm,
     plt.tight_layout()
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
-    plt.show()
+    if save_fig:
+        plt.savefig(osp.join(embeddings_dir, "confusion_matrix.png"))
+        plt.close()
+    else:
+        plt.show()
+
 
 
 def plot_cm(gt_labels, pred_labels, label_drug_dict, verbose=True, make_plot=True):
@@ -294,6 +301,26 @@ def plot_cm(gt_labels, pred_labels, label_drug_dict, verbose=True, make_plot=Tru
 
     return cm
 
+def plot_cm_save_fig(gt_labels, pred_labels, label_drug_dict, verbose=True, make_plot=True, embeddings_dir=None):
+    cm = confusion_matrix(gt_labels, pred_labels, labels=sorted(list(label_drug_dict.keys())))
+
+    if verbose:
+        print("per class accuracy Top-1")
+        for i in range(cm.shape[0]):
+            print(f"{label_drug_dict[i]}: {cm[i, i] * 100. / np.sum(cm[i, :])}%")
+
+    if make_plot:
+        plot_confusion_matrix(cm,
+                              list(label_drug_dict.values()),
+                              title='Confusion matrix',
+                              cmap=None,
+                              normalize=True,
+                              k=100,
+                              save_fig=True,
+                              embeddings_dir=embeddings_dir)
+        
+
+    return cm
 
 def visualise_images_oldData(data_paths, save_dir, drug_names, num_images_per_drug=200, seed=1123):
     """deprecate this function and use the new one. Only to be used for old Cal27 and HeLa data"""

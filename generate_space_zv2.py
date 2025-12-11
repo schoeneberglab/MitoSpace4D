@@ -31,7 +31,7 @@ def load_folder_label_maps(drugs_to_labels_path):
         label_names = np.array([label_to_drug.get(i, f"label_{i}") for i in range(max_label + 1)], dtype=object)
     else:
         label_names = np.array([], dtype=object)
-    return folder_to_label, label_names, folder_to_drug
+    return folder_to_label, label_names, folder_to_drug, label_to_drug
 
 
 def load_colors(colors_file_path):
@@ -219,9 +219,9 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
             # osp.join(embeddings_dir, folder),
             # osp.abspath(osp.join(embeddings_dir, '..', folder))
             # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/",
-            # "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/"
-            "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/",
-            "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
+            "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/"
+            # "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/",
+            # "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
 
         ]
         found_path = None
@@ -239,11 +239,11 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
                 break
         # Now, candidate_paths contains all checked paths in order.
 
-        view_4d_image_with_sliders(found_path, position = idx)
-        # viewer = napari.Viewer(ndisplay=3)
-        # add_to_viewer(viewer, found_path, translate=(0, 0), channel=0)
-        # add_to_viewer(viewer, found_path, translate=(0, 256 + 10), channel=1)
-        # napari.run()
+        # view_4d_image_with_sliders(found_path, position = idx)
+        viewer = napari.Viewer(ndisplay=3)
+        add_to_viewer(viewer, found_path, translate=(0, 0), channel=0)
+        add_to_viewer(viewer, found_path, translate=(0, 256 + 10), channel=1)
+        napari.run()
 
     # --- Zooming interaction support for 3D plot ---
     # https://stackoverflow.com/questions/24177974/matplotlib-3d-plot-zooming-with-scroll-wheel
@@ -309,7 +309,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     embeddings_dir = osp.join(args.checkpoint_dir, args.embedding_folder)
-    folder_to_label, label_names, folder_to_drug = load_folder_label_maps(args.drugs_to_labels)
+    folder_to_label, label_names, folder_to_drug, label_to_drug_dict = load_folder_label_maps(args.drugs_to_labels)
     colors = load_colors(args.colors_file)
 
     maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names)
@@ -319,8 +319,8 @@ if __name__ == '__main__':
     #                        color_palette=colors)
 
     select_and_plot_embedding(embeddings_dir=embeddings_dir, colors_palette=colors)
-
-    metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label)
+    print("Computing confusion matrix and entropy from embeddings folder")
+    metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label, label_drug_dict=label_to_drug_dict)
     print(metrics)
     import json
     with open(osp.join(args.checkpoint_dir, "entropy_metrics.json"), "w") as f:

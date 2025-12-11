@@ -107,8 +107,8 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
-        # start_file_idx = checkpoint["next_file_idx"]
-        start_file_idx = 0 #only for valinomycin and nigericin c
+        start_file_idx = checkpoint["next_file_idx"]
+        # start_file_idx = 0 #only for valinomycin and nigericin c
     
 
     for batch_start in range(start_file_idx, total_files, batch_group_size * batch_size_files):

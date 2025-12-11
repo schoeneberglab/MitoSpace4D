@@ -468,7 +468,7 @@ def increase_contrast(gray_images):
 
 def get_fpaths(root_dir, seed=1123):
     drug_labels = {}
-    with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+    with open('/home/mayunagupta/experiments/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
         drugs_to_labels = f.readlines()
         for line in drugs_to_labels:
             folder, drug, label = line.split()

@@ -27,6 +27,7 @@ import random
 import matplotlib.pyplot as plt
 from pathlib import Path
 from validation_zslices import pick_folders, validate_saved_model
+from auto_encoder_kinetics.ae_util import AEUtil
 
 # Import your utilities from the main Z-predictor training script
 from videomae_zslicer import (
@@ -52,7 +53,15 @@ def load_data_subset(cfg, start_idx, end_idx):
     global_volume_ID = 0
 
     for filepath in tqdm(batch_files, desc="Loading subset"):
-        full_image_data_np = np.load(filepath)
+        # full_image_data_np = np.load(filepath)
+        decode = True # for encoded data reading
+
+        if decode:
+            ae_util = AEUtil(ckpt_path="auto_encoder_kinetics/mitospace_resnet_autoencoder_20251018.ckpt")
+            full_image_data_np = ae_util.load(filepath)  # decoded_image shape: (C,T,Z,Y,X)
+        else:
+            full_image_data_np = np.load(filepath)
+
         data_tensor = torch.from_numpy(full_image_data_np)  # (T, C, Z, H, W)
         if data_tensor.shape[1] != 2:
             C, time_points, Z, H, W = data_tensor.shape

@@ -16,6 +16,7 @@ import random
 import matplotlib.pyplot as plt
 from pathlib import Path
 # Import your utilities from the main Z-predictor training script
+from utils.vis import plot_cm, plot_cm_save_fig
 from videomae_zslicer import (
     Config,
     ZSliceDataset,
@@ -25,10 +26,11 @@ from videomae_zslicer import (
 import umap
 import seaborn as sns
 # --- Compute confusion matrix for ground-truth vs predicted labels ---
+from sklearn.metrics import confusion_matrix, davies_bouldin_score, calinski_harabasz_score, pairwise_distances
+from sklearn.neighbors import KDTree
+import torch.nn.functional as F
+from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import confusion_matrix
-
-
-
 import concurrent.futures
 # INSERT_YOUR_REWRITE_HERE
 import os
@@ -48,6 +50,123 @@ import numpy as np
 4. We also want to visualise the embeddings in UMAP embedding space 
 
 '''
+
+def topKfrequent(nums, weights, k, weighted=False):
+    """Find top k most frequent items, optionally weighted."""
+    d = dict()
+    for i, n in enumerate(nums):
+        if weighted:
+            d[n] = d.setdefault(n, 0) + weights[i]
+        else:
+            d[n] = d.setdefault(n, 0) + 1
+    sortedNumsKeys = sorted(d.keys(), key=lambda x: d[x], reverse=True)
+    return sortedNumsKeys[:k]
+
+
+def cosine_distance(eval_embeddings, train_embeddings, weighted=False, temperature=1.):
+    """Compute cosine distance matrix and sorted indices."""
+    dist_matrix = eval_embeddings @ train_embeddings.T
+    if weighted:
+        dist_matrix = dist_matrix / temperature
+        dist_matrix = np.exp(dist_matrix)
+    dist_matrix_idxs = (-1 * dist_matrix).argsort(1)  # descending order
+    dist_matrix_sorted = np.take_along_axis(dist_matrix, dist_matrix_idxs, axis=1)
+    return dist_matrix_sorted, dist_matrix_idxs
+
+
+def l2_distance(eval_embeddings, train_embeddings):
+    """Compute L2 distance matrix and sorted indices."""
+    dist_matrix = np.linalg.norm(eval_embeddings[:, None] - train_embeddings[None, :], axis=-1)
+    dist_matrix_idxs = dist_matrix.argsort(1)
+    dist_matrix_sorted = np.take_along_axis(dist_matrix, dist_matrix_idxs, axis=1)
+    return dist_matrix_sorted, dist_matrix_idxs
+
+
+def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs,
+                                num_neighbors=[100], verbose=True):
+    """Evaluate nearest neighbor classification accuracy."""
+    preds = None
+    # normalize the distance matrix
+    dist_matrix = (dist_matrix + 1) / 2
+    
+    results = {}
+    for k in num_neighbors:
+        if verbose:
+            print(f"################ Evaluation for {k} Neighbors #################")
+        
+        correct_preds = {top_n: 0 for top_n in top_ns}
+        correct_preds_per_class = {top_n: {lbl: 0 for lbl in np.unique(train_labels)} for top_n in top_ns}
+        preds = {top_n: [] for top_n in top_ns}
+        
+        correct_preds_idxs = {top_n: [] for top_n in top_ns}
+        incorrect_preds_idxs = {top_n: [] for top_n in top_ns}
+        
+        pbar = tqdm(total=len(dist_matrix)) if verbose else None
+        for i in range(len(dist_matrix)):
+            eval_lbl = eval_labels[i]
+            k_nearest_nbs = train_labels[dist_matrix_idxs[i][:k]]
+            k_nearest_dist = dist_matrix[i][:k]
+            
+            for top_n in top_ns:
+                top_most_freq_lbls = topKfrequent(k_nearest_nbs, k_nearest_dist, top_n, weighted=True)
+                if eval_lbl in top_most_freq_lbls:
+                    correct_preds[top_n] += 1
+                    correct_preds_per_class[top_n][eval_lbl] += 1
+                    preds[top_n].append(eval_lbl)
+                    correct_preds_idxs[top_n].append(i)
+                else:
+                    preds[top_n].append(top_most_freq_lbls[0])
+                    incorrect_preds_idxs[top_n].append(i)
+            
+            if pbar is not None:
+                pbar.update(1)
+        
+        for top_n in top_ns:
+            correct = correct_preds[top_n]
+            if verbose:
+                print(f"------------------Top-{top_n}------------------------")
+                print(f"Correct: {correct}; Total: {len(dist_matrix)}")
+                acc = correct * 100. / len(eval_labels)
+                print("Accuracy(%): ", acc)
+                print()
+            
+            # print per class accuracy
+            for lbl in np.unique(train_labels):
+                total = np.sum(eval_labels == lbl)
+                correct = correct_preds_per_class[top_n][lbl]
+                if verbose:
+                    print(f"Class {lbl} has {correct} correct predictions out of {total} samples: Accuracy: {correct * 100. / total}")
+        
+        results[k] = {
+            'predictions': preds,
+            'correct_preds_idxs': correct_preds_idxs,
+            'incorrect_preds_idxs': incorrect_preds_idxs,
+            'accuracies': {top_n: correct_preds[top_n] * 100. / len(eval_labels) for top_n in top_ns}
+        }
+    
+    return results
+
+
+def compute_cluster_metrics(embeddings, labels):
+    """Compute cluster quality metrics (Davies-Bouldin, Calinski-Harabasz)."""
+    metrics = {}
+    try:
+        db_score = davies_bouldin_score(embeddings, labels)
+        metrics['davies_bouldin_score'] = float(db_score)
+        print(f"Davies-Bouldin Score: {db_score:.4f} (lower is better)")
+    except Exception as e:
+        print(f"Error computing Davies-Bouldin score: {e}")
+        metrics['davies_bouldin_score'] = None
+    
+    try:
+        ch_score = calinski_harabasz_score(embeddings, labels)
+        metrics['calinski_harabasz_score'] = float(ch_score)
+        print(f"Calinski-Harabasz Score: {ch_score:.4f} (higher is better)")
+    except Exception as e:
+        print(f"Error computing Calinski-Harabasz score: {e}")
+        metrics['calinski_harabasz_score'] = None
+    
+    return metrics
 
 def load_file_and_extract_clips(filepath, volume_id, start_time=3, end_time=19):
     """
@@ -389,7 +508,7 @@ def validate_saved_model(model_path, device=None,
     }
 
 
-def compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_label=None, folder_to_drug=None):
+def compute_confusion_matrix_and_entropy_from_embeddings_folder( embeddings_dir, folder_to_label=None, folder_to_drug=None, label_drug_dict=None):
     """
     Given an embeddings folder, load all embeddings and their file names,
     construct the drug_label_list (or ground truth per embedding) from file names,
@@ -438,7 +557,7 @@ def compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, 
         embedding_filenames.append(fname)
 
     X = np.stack(all_embeds)
-    n_neighbors = min(5, len(X))
+    n_neighbors = min(50, len(X))
 
     neigh = NearestNeighbors(n_neighbors=n_neighbors+1, metric='euclidean')
     neigh.fit(X)
@@ -458,15 +577,98 @@ def compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, 
         all_neighbor_label_distributions.append(label_dist)
 
     mean_knn_entropy = float(np.mean(all_neighbor_entropies))
-    print(f"🔢 Embedding-space kNN (k={n_neighbors}) mean entropy: {mean_knn_entropy:.4f} bits")
+    print(f"Embedding-space kNN (k={n_neighbors}) mean entropy: {mean_knn_entropy:.4f} bits")
     print(f"Per-embedding kNN entropy: {all_neighbor_entropies[:5]} ...")
+    
+    # Compute additional evaluation metrics similar to evaluate.py
+    evaluation_metrics = {}
+    
+    # Normalize embeddings
+    X_normalized = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-8)
+    
+    # Convert labels to numeric if they're strings
+    unique_labels = sorted(list(set(drug_label_list)))
+    label_to_numeric = {label: idx for idx, label in enumerate(unique_labels)}
+    numeric_labels = np.array([label_to_numeric[label] for label in drug_label_list])
+    
+    # Compute cluster quality metrics
+    if len(X) > 1 and len(unique_labels) > 1:
+        print("\n Computing cluster quality metrics...")
+        cluster_metrics = compute_cluster_metrics(X_normalized, numeric_labels)
+        evaluation_metrics['cluster_quality'] = cluster_metrics
+        
+        # Split into train/eval sets (90/10split)
+        split_idx = int(len(X) * 0.9)
+        if split_idx > 0 and split_idx < len(X):
+            train_embeddings = X_normalized[:split_idx]
+            eval_embeddings = X_normalized[split_idx:]
+            train_labels = numeric_labels[:split_idx]
+            eval_labels = numeric_labels[split_idx:]
+            
+            # Nearest neighbor evaluation with cosine distance
+            print("\n Computing nearest neighbor evaluation (cosine distance)...")
+            top_ns = [1, 3, 5]
+            num_neighbors = [10, 50, 100]
+            
+            dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings, train_embeddings, weighted=False)
+            nn_results_cosine = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, 
+                                                             dist_matrix, dist_matrix_idxs, 
+                                                             num_neighbors=num_neighbors, verbose=True)
+            evaluation_metrics['nearest_neighbor_cosine'] = {
+                k: {
+                    'accuracies': v['accuracies'],
+                    'num_eval_samples': len(eval_labels),
+                    'num_train_samples': len(train_labels)
+                } for k, v in nn_results_cosine.items()
+            }
+            # Nearest neighbor evaluation with L2 distance
+            print("\n Computing nearest neighbor evaluation (L2 distance)...")
+            tree = KDTree(train_embeddings)
+            nn_results_l2 = {}
+            preds = {k: {top_n: [] for top_n in top_ns} for k in num_neighbors}
+
+            for k in num_neighbors:
+                dist, nearest_ind = tree.query(eval_embeddings, k=k)
+                accuracies = {}
+
+                for top_n in top_ns:
+                    correct = 0
+                    pred_labels = []
+                    for i in range(len(eval_embeddings)):
+                        eval_lbl = eval_labels[i]
+                        k_nearest_nbs = train_labels[nearest_ind[i]]
+                        top_most_freq_lbls = topKfrequent(k_nearest_nbs, None, top_n, weighted=False)
+                        pred_labels.append(top_most_freq_lbls[0])  # Top-1 predicted label from nearest neighbors
+
+                        if eval_lbl in top_most_freq_lbls:
+                            correct += 1
+
+                    preds[k][top_n] = pred_labels
+                    acc = correct * 100. / len(eval_labels)
+                    accuracies[top_n] = acc
+                    print(f"Top-{top_n} Accuracy for {k} neighbors (L2): {acc:.2f}%")
+
+                nn_results_l2[k] = {'accuracies': accuracies}
+            
+            evaluation_metrics['nearest_neighbor_l2'] = nn_results_l2
+    print(len(eval_labels), len(preds))
+    # label_drug_dict = {v: k for k,v in .items()}
+    plot_cm_save_fig(eval_labels, preds[100][1], label_drug_dict=label_drug_dict, make_plot=True, embeddings_dir=embeddings_dir)
+    # cm = confusion_matrix(eval_labels, preds[100][1], labels=) 
+    # plt.figure(figsize=(10, 10))
+    # sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    # plt.savefig(f"{embeddings_dir}/confusion_matrix.png")
+    # plt.close()
+    # print(f"Saved confusion matrix to {embeddings_dir}/confusion_matrix.png")
+    
     return {
-        "embedding_filenames": embedding_filenames,
-        "drug_label_list": drug_label_list,
+    #     "embedding_filenames": embedding_filenames,
+    #     "drug_label_list": drug_label_list,
         "drug_name_list": drug_name_list,
         "knn_entropy_per_embedding": all_neighbor_entropies,
         "mean_knn_entropy": mean_knn_entropy,
-        "knn_label_distributions": all_neighbor_label_distributions
+        "knn_label_distributions": all_neighbor_label_distributions,
+        "evaluation_metrics": evaluation_metrics
     }
 
 
@@ -530,6 +732,7 @@ if __name__ == "__main__":
     model_path = f"{cfg.save_path}/z_predictor_incremental.pth"
     aggregate_method = "max"
     # cfg.val_filepaths_2 = cfg.val_filepaths[0:]
+    cfg.val_filepaths = []
     pick_folders = [
         # "20240729-1",#control
         # "20240805-1",#H2O2
@@ -557,28 +760,34 @@ if __name__ == "__main__":
     exp_name = cfg.save_path.split("_")[1]
     save_umap_path = f"umap_validation_{exp_name}"
 
-    filtered_base_paths = [bp for bp in cfg.base_paths if any(bp.endswith(pick) for pick in pick_folders)]
+    filtered_base_paths = [bp for bp in cfg.base_paths if any(bp.endswith(pick) for pick in pick_folders[11:])]
     train_split = 400
-    print("Picked folders:", filtered_base_paths)
+    # print("Picked folders:", filtered_base_paths)
     for base_path in filtered_base_paths:
-        print("Checking:", base_path)
-        print("Loading data from:", base_path)
+        # print("Checking:", base_path)
+        # print("Loading data from:", base_path)
         files = sorted(os.listdir(base_path))
         for i in files[train_split:]:
             cfg.val_filepaths.append(f"{base_path}/{i}")
     # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
     batch_size = 50
+
+    print("debug train split", train_split)
+
     for folder in pick_folders:
-    
+        # first select the filepaths for the folder
         idxs = [i for i, fpath in enumerate(cfg.val_filepaths) if folder in fpath]
         if not idxs:
             print(f"⚠️ No filepaths found for folder: {folder}")
             continue
+        print("debugging", len(idxs))
+        # now select the filepaths for the batch
         for start in range(0, len(idxs), batch_size):
             selected_idxs = idxs[start:start+batch_size]
             if not selected_idxs:
                 continue
             cfg.val_filepaths_2 = [cfg.val_filepaths[i] for i in selected_idxs]
+            print("debugging", cfg.val_filepaths_2[0], cfg.val_filepaths_2[-1])
             print(f"Folder: {folder} | Batch size: {len(cfg.val_filepaths_2)}")
             validate_saved_model(model_path, 
                                 device =device, 
