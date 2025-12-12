@@ -202,7 +202,7 @@ if __name__ == "__main__":
         help="List of folder names (space separated) to include for training. Example: --pick_folders 20240729-1 20240823-1"
     )
     parser.add_argument("--save_path", default="checkpoint_new_loss_mdivi_control", help="Path to save the checkpoint")
-    parser.add_argument("--master_base_path", default="/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/", help="Path to the master base path")
+    parser.add_argument("--master_base_path", default="/work/nvme/begq/MitoSpace4D/2024_encoded_data/", help="Path to the master base path")
     parser.add_argument("--batch_size", default=20, help="Batch size for training")
     parser.add_argument("--num_epochs", default=30, help="Number of epochs for training")
     parser.add_argument("--learning_rate", default=1e-4, help="Learning rate for training")
