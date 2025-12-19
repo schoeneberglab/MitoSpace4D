@@ -40,6 +40,8 @@ parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
 parser.add_argument('--dist_metric', default='cosine',
                     type=str, help='Metric to use for distance calculation between embeddings')
+parser.add_argument('--labels', nargs='+', type=int, default=None, 
+                    help='List of labels to evaluate on')
 
 
 def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs,
@@ -305,13 +307,20 @@ if __name__ == "__main__":
     proj_dir = "/home/earkfeld/Projects/MitoSpace4D"
     
     already_have_embeddings = True
-    balance_classes = True
+    balance_classes = False
     
     split_perc = 0.9
     top_ns = cfg["evaluate"]["top_ns"]
 
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames"
-    embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames_modified_labels_for_eval"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames_modified_labels_for_eval"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_debug_eps149_r20251109"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps138_r20251118"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps145_r20251119"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2-encoded_ablated-tmrm_eps162_r20251120"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_decoupled-tmrm_eps256_r20251120"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_ablated-tmrm_eps291_r20251120"
+    embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_2024v2-model_ablated-tmrm_eps162_r20251124"
 
     drug_labels_dict = {}
     label_drug_dict = {}
@@ -322,17 +331,23 @@ if __name__ == "__main__":
             label_drug_dict[int(label)] = drug
 
     # pick_labels = [30, 31]
-    pick_labels = list(label_drug_dict.keys())
 
-    # Remove any labels not in pick_labels
-    drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in pick_labels}
-    label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in pick_labels}
+    if args.labels:
+        # Remove any labels not in pick_labels
+        drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in args.labels}
+        label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in args.labels}
 
     if already_have_embeddings:
+        print("Loading pre-extracted embeddings...")
         embeddings = np.load(
             f'{embeddings_dir}/embeddings_raw.npy')
         labels = np.load(
             f'{embeddings_dir}/labels.npy')
+        
+        # Filter the drug label dicts to only include the labels present in the dataset
+        unique_labels_in_dataset = set(labels)
+        drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in unique_labels_in_dataset}
+        label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in unique_labels_in_dataset}
         
         if balance_classes:
             embeddings, labels = balance_label_counts(embeddings, labels)
@@ -366,12 +381,15 @@ if __name__ == "__main__":
             eval_embeddings = eval_embeddings[:, -1]  # take only the final time step
 
     else:
+        print("Generating embeddings...")
         model = Lightweight3DResNet(embedding_size=2048, 
-                                    cfg_aug=cfg['data_params']['transforms'],
+                                    cfg=cfg,
+                                    # cfg_aug=cfg['data_params']['transforms'],
                                     apply_aug=False)
 
         # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
-        checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt"
+        # checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt"
+        checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=138-step=24742-val_loss=0.00.ckpt"
         dataset_name = cfg["evaluate"]["dataset"]
 
         # print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
