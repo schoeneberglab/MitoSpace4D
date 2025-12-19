@@ -1,19 +1,34 @@
 import torch
 import numpy as np
 from autoencoder.autoencoder_runner import AutoEncoderRunner
-from autoencoder.autoencoder_models import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
 import einops
 import os.path as osp
 import os
 import napari
+import tifffile
+import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
-    ckpt_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitospaceAutoencoder.ckpt"
-    data_dir = "/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer_new/20250722-2"
+    # #-- Local paths
+    ckpt_path = "/home/earkfeld/Projects/MitoSpace4D/autoencoder/mitospace_resnet_autoencoder_20251018.ckpt"
+    data_root = "/mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_summer_new/"
+    # data_root = "/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_summer_new/"
 
-    file = np.random.choice(os.listdir(data_dir))
-    # infile = osp.join(data_dir, file)
-    infile = osp.join(data_dir, "000000-0.npy")
+    #-- Delta Paths
+    # ckpt_path = "/u/earkfeld/MitoSpace4D/autoencoder/runs/1081149/lightning_logs/kinetics_autoencoder/checkpoints/last.ckpt"
+    # data_dir = "/work/nvme/begq/MitoSpace4D/data/2025_data/20250722-2"
+
+    data_dir = "20240826-1"
+    # data_dir = "20250902-1"
+    # file = "000000-0.npy"
+
+    visualize = True
+    save_imgs = False
+    plot_histograms = False
+
+    file = np.random.choice(os.listdir(osp.join(data_root, data_dir)))
+    infile = osp.join(data_root, data_dir, file)
 
     device = torch.device("cuda")
     model = MitoSpace3DAutoencoder()
@@ -34,11 +49,8 @@ if __name__ == "__main__":
     decoder.to(device)
 
     in_data = np.load(infile) # C, T, Z, Y, X
-    print(in_data.shape)
     in_data = einops.rearrange(in_data, 'c t z y x -> 1 t c z y x')  # B, T, C, Z, Y, X
-    print(in_data.shape)
     in_data = torch.from_numpy(in_data)
-    print(in_data.shape)
     in_data = in_data.to(device)
     with torch.no_grad():
         enc_data = encoder(in_data)
@@ -49,28 +61,41 @@ if __name__ == "__main__":
     out_data = einops.rearrange(out_data, '1 t c z y x -> c t z y x')
     in_data = einops.rearrange(in_data, '1 t c z y x -> c t z y x')
     
-    print("in_data shape:", in_data.shape)
-    print("out_data shape:", out_data.shape)
+    # print("in_data shape:", in_data.shape)
+    # print("out_data shape:", out_data.shape)
+
+    if plot_histograms:
+        # Plot histograms of original and reconstructed data for each channel side by side
+        channels = ['TMRM', 'Morphology']
+        fig, ax = plt.subplots(2, 2, figsize=(10, 8))
+        for i in range(2):
+            ax[i, 0].hist(in_data[i].flatten(), bins=25, color='blue', alpha=0.7)
+            ax[i, 0].set_title(f'Original {channels[i]} Histogram')
+            ax[i, 1].hist(out_data[i].flatten(), bins=25, color='orange', alpha=0.7)
+            ax[i, 1].set_title(f'Reconstructed {channels[i]} Histogram')
+        plt.tight_layout()
+        plt.show()
     
-    in_data0 = in_data[0]
-    in_data1 = in_data[1]
-    out_data0 = out_data[0]
-    out_data1 = out_data[1]
+    if save_imgs:
+        # Save as tiff for viewing
+        tifffile.imwrite("original.tiff", in_data, imagej=True)
+        tifffile.imwrite("reconstructed.tiff", out_data, imagej=True)
 
-    # Set up the viewer
-    viewer = napari.Viewer(ndisplay=3)
+    if visualize:
+        original_tmrm = in_data[0]
+        original_morph = in_data[1]
+        recon_tmrm = out_data[0]
+        recon_morph = out_data[1]    
 
-    # Translate images so they don't overlap
-    viewer.add_image(in_data0, name='Original Channel 0', colormap='green')
-    # viewer.add_image(out_data0, name='Reconstructed Channel 0', colormap='green', translate=(0, in_data0.shape[3]+10, 0))
-    # viewer.add_image(in_data1, name='Original Channel 1', colormap='magenta', translate=(0, 0, in_data0.shape[2]+10))
-    # viewer.add_image(out_data1, name='Reconstructed Channel 1', colormap='magenta', translate=(0, in_data0.shape[3]+10, in_data0.shape[2]+10))
+        # Set up the viewer
+        viewer = napari.Viewer(ndisplay=3)
 
-    viewer.add_image(in_data1, name='Original Channel 1', colormap='magenta', translate=(0, in_data0.shape[2]+10, 0))
+        # Translate images so they don't overlap
+        viewer.add_image(original_morph, name='Original Morphology', colormap='green')
+        viewer.add_image(original_tmrm, name='Original TMRM', colormap='magenta', translate=(0, original_morph.shape[2]+10, 0))
+        viewer.add_image(recon_morph, name='Reconstructed Morphology', colormap='green', translate=(0, 0, original_morph.shape[2]+10))
+        viewer.add_image(recon_tmrm, name='Reconstructed TMRM', colormap='magenta', translate=(0, original_morph.shape[3]+10, original_morph.shape[2]+10))
 
-    viewer.add_image(out_data0, name='Reconstructed Channel 0', colormap='green', translate=(0, 0, in_data0.shape[2]+10))
-    viewer.add_image(out_data1, name='Reconstructed Channel 1', colormap='magenta', translate=(0, in_data0.shape[3]+10, in_data0.shape[2]+10))
-
-
-    napari.run()
-    viewer.close()
+        viewer.reset_view()
+        napari.run()
+        viewer.close()
