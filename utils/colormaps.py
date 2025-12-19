@@ -43,7 +43,7 @@ def _parse_label_color_file(label_color_file: str) -> tuple[Dict[str, str], Dict
 
 def build_sample_table(
     img_path_file: str,
-    cell_region_map: str = "/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer_new/cell_to_region.csv",
+    cell_region_map: str = "/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_summer_new/cell_to_region.csv",
     label_color_file: str = "/home/earkfeld/Projects/MitoSpace4D/extraction_utils/colors.txt",
     shade_min: float = 0.75,
     shade_max: float = 1.0,
@@ -335,15 +335,17 @@ def create_colormap(
 if __name__ == "__main__":
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_20250828"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_full_single_frames"
-    embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_r20250920"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_r20250920"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_ft-kinetics-50eps_decoupled-tmrm_r20251028"
+    embeddings_dir = '/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_decoupled-tmrm_r20251117'
     df = build_sample_table(img_path_file=osp.join(embeddings_dir, "image_paths.csv"))
 
     # Separate routines
-    # region_colors   = save_region_colormap(df, embeddings_dir, cmap="viridis", n_frames=20, single_frames=False)
+    region_colors   = save_region_colormap(df, embeddings_dir, cmap="viridis", n_frames=20, single_frames=False)
     # temporal_colors = save_temporal_colormap(df, embeddings_dir, cmap="viridis", n_frames=20, single_frames=False)
 
     # Dataset map
-    dataset_colors = save_dataset_colormap(df, embeddings_dir, n_frames=20, single_frames=True)
+    # dataset_colors = save_dataset_colormap(df, embeddings_dir, n_frames=20, single_frames=False)
 
     # Or the wrapper (backward compatible)
     # create_colormap("img_paths.txt", "cell_region_map.csv", "/path/to/embeddings", "viridis", 20, False)

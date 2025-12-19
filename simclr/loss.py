@@ -71,7 +71,8 @@ class InfoNCELoss(nn.Module):
 
         loss = self.cross_entropy(logits, labels)
 
-        acc = accuracy(logits, labels, topk=(1, 5))
+        # acc = accuracy(logits, labels, topk=(1, 5))
+        acc = accuracy(logits, labels, topk=(1,3))
 
         return loss, (acc[0].item(), acc[1].item())
 

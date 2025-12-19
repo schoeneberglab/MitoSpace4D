@@ -12,6 +12,9 @@ from simclr.loss import SupConLoss, InfoNCELoss
 from typing import Dict, Any, Tuple, List
 from utils.utils import minus_one_to_one_normalization
 
+from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
+from autoencoder.autoencoder_runner import AutoEncoderRunner 
+
 torch.manual_seed(0)
 
 
@@ -31,13 +34,28 @@ def load_resnet_model(cfg, ckpt_path, device='cuda', eval_mode=True):
 
     return model
 
+def load_decoder(ckpt_path, device="cuda"):
+    model = MitoSpace3DAutoencoder()
+    runner = AutoEncoderRunner.load_from_checkpoint(ckpt_path, model=model)
+    print("Loaded model from checkpoint.")
+
+    decoder = runner.model.decoder
+    decoder.eval()
+    for p in decoder.parameters():
+        p.requires_grad = False
+
+    decoder.to(device)
+    del model
+    del runner
+    return decoder
 
 class SimCLRRunner(pl.LightningModule):
-    def __init__(self, cfg: Dict, model: torch.nn.Module) -> None:
+    def __init__(self, cfg: Dict, model: torch.nn.Module, decoder_ckpt: str = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt") -> None:
         super().__init__()
         self.cfg = cfg
         self.model = model
         self.loss = cfg['training']['loss']['name']
+        # self.decoder = load_decoder(decoder_ckpt) if decoder_ckpt is not None else None
 
         self.intermediate_outputs = []
 

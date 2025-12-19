@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import napari
+import torch
 from utils.utils import get_drug_label_maps
 
 cmap = LinearSegmentedColormap.from_list('blackgreen', ["k", "lime"], N=256)
@@ -64,7 +65,7 @@ def get_per_frame_vals(vals, n_frames=20):
         frame_vals.extend(np.repeat(val, n_frames).tolist())
     return np.array(frame_vals)
 
-def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, label_drug_dict=None):
+def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, label_drug_dict=None, decoder=None):
     print("")
     print(
         "1) Please pick at least three correspondences using [shift + left click]"
@@ -113,6 +114,12 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
         if image_paths is not None:
             img_4d = np.load(image_paths[idx])
 
+            if decoder is not None:
+                img_tensor = torch.from_numpy(img_4d).unsqueeze(0).cuda()  # (1, t, c, d, h, w)
+                with torch.no_grad():
+                    img_tensor = decoder(img_tensor)
+                img_4d = img_tensor.squeeze(0).cpu().numpy()
+
             # skimage.io.imsave("/home/dhruvagarwal/Desktop/p110.tiff", img_4d[0, 0])
 
             # add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 0), channel=0, label=label_names[(labels[idx]%27)])
@@ -148,17 +155,23 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
     for i in range(len(imgs)):
         mito_idx = 1 if imgs[i].shape[-1] > 1 else 0
         tmrm_idx = 0
+        
+        #-- EXPERIMENT
+        # print("[vis.py: pick_points] EXPERIMENT: TMRM COPIED TO MITO CHANNEL FOR CANCER DATA TRIAL 3B")
+        # mito_idx = 0
+        # tmrm_idx = 0
+
         axarr[0, i].imshow(imgs[i][tmrm_idx], vmin=0., vmax=1., cmap=plt.cm.hot)
-        axarr[1, i].imshow(imgs[i][mito_idx], vmin=0., vmax=1., cmap=plt.cm.viridis)
+        # axarr[1, i].imshow(imgs[i][mito_idx], vmin=0., vmax=1., cmap=plt.cm.viridis)
 
         vals.append(np.mean(imgs[i][:, :, 0]))
         axarr[0, i].set_xticks([])
         # for minor ticks
         axarr[0, i].set_yticks([])
 
-        axarr[1, i].set_xticks([])
+        # axarr[1, i].set_xticks([])
         # for minor ticks
-        axarr[1, i].set_yticks([])
+        # axarr[1, i].set_yticks([])
 
     print(vals)
     plt.xticks([]), plt.yticks([])
@@ -193,7 +206,157 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
 
     return vis.get_picked_points()
 
-def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None, single_frames=False, save_pcd=None, label_drug_dict=None, datasets=None):
+# def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, label_drug_dict=None, decoder=None, visualizer='napari'):
+#     print("")
+#     print(
+#         "1) Please pick at least three correspondences using [shift + left click]"
+#     )
+#     print("   Press [shift + right click] to undo point picking")
+#     print("2) After picking points, press 'Q' to close the window")
+
+#     # get_label_name_fn = lambda idx: label_names[(labels[idx])]
+
+#     vis = o3d.visualization.VisualizerWithEditing()
+#     vis.create_window()
+#     vis.add_geometry(pcd)
+#     print(f"Number of Points: {len(pcd.points)}")
+#     vis.get_render_option().point_size = 5.0
+
+#     vis.run()  # user picks points
+#     idxs = vis.get_picked_points()
+
+#     if len(idxs) == 0:
+#         print("No points picked, closing the visualizer.")
+#         vis.destroy_window()
+#         exit(0)
+
+#     drug_names = []
+#     time_indices = []
+#     picked_image_paths = []
+#     imgs = []
+#     imgs_4d = []
+#     for i, idx in enumerate(idxs):
+#         # drug_names.append(label_names[(labels[idx%20]%27)])
+#         # drug_names.append(get_label_name_fn(idx))
+#         drug_names.append(label_drug_dict[labels[idx]])
+#         if image_times is not None:
+#             time_indices.append(image_times[idx])
+        
+#         # if image_times is not None:
+#         #     time_index = image_times[idx]
+#         #     picked_image_paths.append(image_paths[time_index])
+#         # else:
+#             # picked_image_paths.append(image_paths[idx])
+        
+#         picked_image_paths.append(image_paths[idx])
+        
+#         if image_paths is not None:
+#             img_4d = np.load(image_paths[idx])
+
+#             if decoder is not None:
+#                 img_tensor = torch.from_numpy(img_4d).unsqueeze(0).cuda()  # (1, t, c, d, h, w)
+#                 with torch.no_grad():
+#                     img_tensor = decoder(img_tensor)
+#                 img_4d = img_tensor.squeeze(0).cpu().numpy()
+
+#             # skimage.io.imsave("/home/dhruvagarwal/Desktop/p110.tiff", img_4d[0, 0])
+
+#             # add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 0), channel=0, label=label_names[(labels[idx]%27)])
+#             # add_to_viewer(napari_viewer, img_4d, translate=(i*256 + 10, 256 + 10), channel=1, label=label_names[(labels[idx]%27)])
+
+#             img_4d = img_4d.astype(np.float32)
+#             # img_4d[:, 0] = np.clip(img_4d[:, 0], 0., 25000) / 25000
+#             # img_4d[:, 1] = np.clip(img_4d[:, 1], 0., 10000) / 10000
+
+#             imgs_4d.append(img_4d)
+
+#             if image_times is not None:
+#                 # Get the corresponding image by index
+#                 time_index = image_times[idx]
+#                 # imgs.append(img_4d[time_index, :, :].max(axis=1))
+#                 imgs.append(img_4d[:, time_index, ...].max(axis=1))
+#             else:
+#                 print("Image times is None")
+#                 # imgs.append(img_4d[0, :, :].max(axis=1))
+#                 imgs.append(img_4d[:, 0, ...].max(axis=1))
+    
+#     print(drug_names)
+#     print(picked_image_paths)
+
+#     if visualizer == 'napari':
+#         viewer = napari.Viewer(ndisplay=3)
+#         # napari_viewer.window.add_plugin_dock_widget(
+#         # plugin_name="napari-matplotlib", widget_name="FeaturesHistogram"
+#         # )
+
+#         for i, idx in enumerate(idxs):
+#             img_4d = np.load(image_paths[idx])
+#             img_4d = img_4d.astype(np.float32)
+
+#             viewer.add_image(img_4d[:, 0], name=f"[0] {drug_names[i]}", translate=(i*256 + 10, 0, 0), colormap='hot') # TMRM
+#             viewer.add_image(img_4d[:, 1], name=f"[1] {drug_names[i]}", translate=(i*256 + 10, 256 + 10, 0), colormap='viridis') # Morphology
+
+#             napari.run()
+
+#             # add_to_viewer(viewer, imgs_4d[i], translate=(i*256 + 10, 0), channel=0, label=label_drug_dict[labels[idx]])
+#             # add_to_viewer(viewer, imgs_4d[i], translate=(i*256 + 10, 256 + 10), channel=1, label=label_drug_dict[labels[idx]])
+
+#     elif visualizer == 'matplotlib':
+        
+#         colors = np.array(pcd.colors)[idxs]
+
+#         f, axarr = plt.subplots(2, len(imgs), figsize=(20, 20))
+#         f.suptitle("MIP", fontsize=50)
+#         vals = []
+#         for i in range(len(imgs)):
+#             mito_idx = 1 if imgs[i].shape[-1] > 1 else 0
+#             tmrm_idx = 0
+            
+#             #-- EXPERIMENT
+#             # print("[vis.py: pick_points] EXPERIMENT: TMRM COPIED TO MITO CHANNEL FOR CANCER DATA TRIAL 3B")
+#             # mito_idx = 0
+#             # tmrm_idx = 0
+
+#             axarr[0, i].imshow(imgs[i][tmrm_idx], vmin=0., vmax=1., cmap=plt.cm.hot)
+#             axarr[1, i].imshow(imgs[i][mito_idx], vmin=0., vmax=1., cmap=plt.cm.viridis)
+
+#             vals.append(np.mean(imgs[i][:, :, 0]))
+#             axarr[0, i].set_xticks([])
+#             # for minor ticks
+#             axarr[0, i].set_yticks([])
+
+#             axarr[1, i].set_xticks([])
+#             # for minor ticks
+#             axarr[1, i].set_yticks([])
+
+#         print(vals)
+#         plt.xticks([]), plt.yticks([])
+#         for idx in idxs:
+#             print(idx)
+#             print(labels[idx])
+#             # print(label_names[int(labels[idx]%27)])
+#             # print(get_label_name_fn(idx))
+#             print(label_drug_dict[labels[idx]])
+#             print(image_paths[idx])
+#             if image_times is not None:
+#                 print(f"Time index: {image_times[idx]}")
+#             print("")
+
+#         patches = []
+#         for i, idx in enumerate(idxs):
+#             l = label_drug_dict[labels[idx]]
+#             ds_id = image_paths[idx].split("/")[-2]
+#             sample_id = image_paths[idx].split("/")[-1].split(".npy")[0]
+#             sample_caption = f"{ds_id}/{sample_id}"
+#             patches.append(mpatches.Patch(color=colors[i], label="{l} ({sc})".format(l=l, sc=sample_caption)))
+
+#         plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+#         plt.show()
+#         print("")
+
+#     return vis.get_picked_points()
+
+def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_paths=None, single_frames=False, save_pcd=None, label_drug_dict=None, datasets=None, decoder=None):
     EMBEDDING_PATH = osp.join(embedding_dir, 'embeddings_umap.npy')
     LABEL_PATH = osp.join(embedding_dir, 'labels.npy')
     LABEL_NAME_PATH = osp.join(embedding_dir, 'label_names.npy')
@@ -288,7 +451,7 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
         o3d.io.write_point_cloud(save_pcd, pcd)
     
     while True:
-        pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict)
+        pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict, decoder)
 
 def plot_confusion_matrix(cm,
                           label_names,
@@ -302,16 +465,16 @@ def plot_confusion_matrix(cm,
 
     if cmap is None:
         cmap = plt.get_cmap('Blues')
-    # plt.figure(figsize=(20, 20))
-    plt.figure(figsize=(3, 3), dpi=300)
+    plt.figure(figsize=(20, 20))
+    # plt.figure(figsize=(3, 3), dpi=300)
 
-    # tickmarks = np.arange(cm.shape[0])
-    # plt.xticks(tickmarks, label_names, rotation=45)
-    # plt.yticks(tickmarks, label_names)
+    tickmarks = np.arange(cm.shape[0])
+    plt.xticks(tickmarks, label_names, rotation=90)
+    plt.yticks(tickmarks, label_names)
     
     # Set no ticks nor labels
-    plt.xticks([])
-    plt.yticks([])
+    # plt.xticks([])
+    # plt.yticks([])
 
     if normalize:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
@@ -330,8 +493,8 @@ def plot_confusion_matrix(cm,
                      color="white" if cm[i, j] > thresh else "black")
 
     plt.tight_layout()
-    # plt.ylabel('True label')
-    # plt.xlabel('Predicted label')
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
     plt.show()
 
 
