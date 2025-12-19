@@ -23,7 +23,7 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='MitoSpace4D')
 parser.add_argument('--log-every-n-steps', default=100, type=int,
                     help='Log every n steps')
-parser.add_argument('--config', default='/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/simclr/config.yaml', type=str,
+parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str,
                     help='Config path.')
 
 
@@ -76,8 +76,8 @@ def main():
 
     for param in model.augment_pipeline.parameters():
         param.requires_grad = False
-    for param in model.decoder.parameters():
-        param.requires_grad = False
+    # for param in model.decoder.parameters():
+    #     param.requires_grad = False
 
     tb_logger = pl_loggers.TensorBoardLogger(
         version=cfg["experiment_name"], save_dir=cfg["logging_params"]["save_path"]

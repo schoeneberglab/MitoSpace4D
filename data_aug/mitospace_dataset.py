@@ -13,6 +13,8 @@ import pytorch_lightning as pl
 import time
 import torch
 
+from glob import glob
+
 class MitoSpaceDataModule(pl.LightningDataModule):
     def __init__(self, train_datasets: List[Dataset], val_datasets: List[Dataset], batch_size: int,
                  num_workers: int = 8, pin_memory: bool = True, drop_last: bool = True, prefetch_factor: int = 2) -> None:
@@ -64,7 +66,7 @@ class MitoSpaceDataset(Dataset):
         # drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
 
         #-- All Dirs
-        # drug_folders = sorted([file for file in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, file))])
+        drug_folders = sorted([file for file in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, file))])
 
         #-- Kinetic dirs (v1)
         # drug_folders = ['20250722-2', '20250724-1', '20250724-2', '20250725-1', '20250728-1', '20250804-1', '20250804-2', '20250805-1', '20250805-2', '20250806-2', '20250807-1', '20250807-2', '20250813-1', '20250813-2', '20250814-1', '20250814-2']
@@ -73,13 +75,28 @@ class MitoSpaceDataset(Dataset):
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1", "20250828-1", "20250828-2", "20250828-3"]
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1"]
         # drug_folders = ["20250922-1", "20250922-2", "20250922-3", "20250924-1", "20250924-2", "20250924-3", "20250925-1", "20250925-2", "20250925-3"]
-        drug_folders = [
-            "20250922-1", "20250922-2", "20250922-3", # dataset 1 day 1
-            "20250924-1", "20250924-2", "20250924-3", # dataset 1 day 2 - outlier vs other days
-            "20250925-1", "20250925-2", "20250925-3", # dataset 1 day 3
-            "20251009-1", "20251009-2", "20251009-3", # dataset 2 day 1
-            "20251010-1", "20251010-2", "20251010-3"  # dataset 2 day 2
-            ]
+
+        # drug_folders = [
+        #     "20250922-1", "20250922-2", "20250922-3", # dataset 1 day 1
+        #     "20250924-1", "20250924-2", "20250924-3", # dataset 1 day 2 - outlier vs other days
+        #     "20250925-1", "20250925-2", "20250925-3", # dataset 1 day 3
+        #     "20251009-1", "20251009-2", "20251009-3", # dataset 2 day 1
+        #     "20251010-1", "20251010-2", "20251010-3"  # dataset 2 day 2
+        #     ]
+
+        #-- New cancer dir structure
+        # subdirs = [subdir for subdir in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, subdir))]
+        # drug_folders = []
+        # for subdir in subdirs:
+        #     subdir_path = osp.join(self.root_dir, subdir)
+        #     subdir_drug_folders = sorted([file for file in os.listdir(subdir_path) if osp.isdir(osp.join(subdir_path, file))])
+        #     drug_folders.extend([osp.join(subdir, folder) for folder in subdir_drug_folders])
+
+        # print(f"Found drug folders: {drug_folders}")
+        
+        # Get all drug folder paths in the root directory
+        # drug_folders = [folder for folder in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, folder))]
+   
         # drug_folders = ["20251009-1", "20251009-2", "20251009-3", "20251010-1", "20251010-2", "20251010-3"]
 
         #-- Leukemia dirs
@@ -100,7 +117,12 @@ class MitoSpaceDataset(Dataset):
                 filenames = filenames[samples_per_drug: samples_per_drug*2]
 
             self.all_filenames.extend(filenames)
-            self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
+
+            if "/" in drug_folder:
+                folder_name = drug_folder.split("/")[1]
+                self.all_labels.extend([drug_labels[folder_name]['label']] * len(filenames))
+            else:
+                self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
 
         self.data = list(zip(self.all_filenames, self.all_labels))
 
@@ -171,6 +193,7 @@ class MitoSpaceDataset(Dataset):
         img_name = self.filenames[idx]
         image = np.load(img_name, mmap_mode='r').astype(np.float32)
         label = self.labels[idx]
+        # print(image.shape)
 
         # -- normalize if loading the processed_data (not encoded).
         # don't normalize if loading the encoded data (because then its already normalized)

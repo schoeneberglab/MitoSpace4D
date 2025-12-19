@@ -85,11 +85,11 @@ if __name__ == '__main__':
     # fpaths = ["/run/user/1002/gvfs/smb-share:server=aquila0.jslab.ucsd.edu,share=ssd_processing/Others/MitoSpace4D/2025_summer/20250811-1/000005-0.npy"]
     # fpaths = ["/home/earkfeld/Projects/MitoSpace4D/sample_0_decoded.npy"]
     
-    # fpaths = ['/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer_new/20250724-1/000018-1.npy',
-    #           '/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer_new/20250724-1/000020-2.npy',
-    #           '/mnt/aquila0/ssd_processing/Others/MitoSpace4D/2025_summer_new/20250724-1/000041-0.npy']
+    # fpaths = ['/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_summer_new/20250724-1/000018-1.npy',
+    #           '/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_summer_new/20250724-1/000020-2.npy',
+    #           '/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_summer_new/20250724-1/000041-0.npy']
 
-    fpaths = ["/mnt/aquila0/ssd_processing/Others/MitoSpace4D/leukemia_drug_resistance_data/20251007-1/000001-0.npy"]
+    fpaths = ["/mnt/aquila/SSD_processing/Others/MitoSpace4D/leukemia_drug_resistance_data/20251007-1/000001-0.npy"]
 
     viewer = napari.Viewer(ndisplay=3)
 

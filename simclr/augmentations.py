@@ -97,9 +97,7 @@ class RandomBrightness(nn.Module):
             factor = np.random.uniform(self.range[0], self.range[1])
             x = x + factor  # that's what kornia's brightness augmentation does
             #x = torch.clamp(x, 0, 1)
-
         return x
-
 
 class DataAugmentation(nn.Module):
     def __init__(self, cfg_aug=None, zero_mean_norm=True) -> None:
