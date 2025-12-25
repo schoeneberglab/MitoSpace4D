@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rsync-job-20240821
+spec:
+  template:
+    spec:
+      containers:
+      - name: rsync-container
+        image: instrumentisto/rsync-ssh
+        command:
+          - "sh"
+        args:
+          - "-c"
+          - |
+            mkdir -p /mitospace4d-vol/data/2024_data/processed_data/ && \
+            sshpass -p "$RSYNC_PASSWORD" rsync -avz -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" dhruvagarwal@172.16.35.73:/run/user/1001/gvfs/smb-share:server=bigbox.ucsd.edu,share=schoeneberg/MitoSpace4D/Data/20240821/ /mitospace4d-vol/data/2024_data/processed_data/20240821/
+        volumeMounts:
+        - name: pvc-storage
+          mountPath: /mitospace4d-vol
+        env:
+        - name: RSYNC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rsync-password-secret
+              key: password
+        resources:
+          limits:
+            memory: 6Gi
+            cpu: "6"
+          requests:
+            memory: 4Gi
+            cpu: "4"
+      restartPolicy: Never
+      volumes:
+      - name: pvc-storage
+        persistentVolumeClaim:
+          claimName: mitospace4d-vol
+  backoffLimit: 1
