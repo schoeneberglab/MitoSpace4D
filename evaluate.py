@@ -234,7 +234,7 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
             # with torch.autocast(device_type="cuda"):
             # with torch.amp.autocast(device_type='cuda'):
             #im = 2 * im - 1  # zero mean normalization
-            features, _ = model(im.to('cuda'))
+            features, _, _ = model(im.to('cuda'))
 
         if normalize_embeddings:
             features = F.normalize(features, dim=-1)
@@ -301,9 +301,9 @@ if __name__ == "__main__":
         split_perc = 0.9
 
         embeddings = np.load(
-            '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/embeddings.npy')
+            '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_temporal_consistent_decoupled_brightness_2024v1/embeddings_v2_data/embeddings.npy')
         labels = np.load(
-            '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/labels.npy')
+            '/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_temporal_consistent_decoupled_brightness_2024v1/embeddings_v2_data/labels.npy')
 
         # shuffle them with seed 1123
         # random.seed(1123)
@@ -336,7 +336,7 @@ if __name__ == "__main__":
         model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
                                     apply_aug=False)
 
-        checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
+        checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=287-step=83534-val_loss=0.00.ckpt"
         dataset_name = cfg["evaluate"]["dataset"]
 
         # print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")

@@ -3,8 +3,8 @@ import torch.nn as nn
 from simclr.augmentations import DataAugmentation
 from utils.utils import load_config
 import torch.nn.functional as F
-from autoencoder.autoencoder import AutoEncoderRunner
 from autoencoder.models import MitoSpace3DAutoencoder
+from autoencoder.autoencoder import AutoEncoderRunner
 
 
 class Basic3DBlock(nn.Module):
@@ -39,7 +39,7 @@ class Lightweight3DResNet(nn.Module):
 
         self.apply_aug = apply_aug
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
-        dec_checkpoint_path = "/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
+        dec_checkpoint_path = "/home/dhruvagarwal/projects/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
         decoder_model = MitoSpace3DAutoencoder()
         self.decoder = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=decoder_model)
         self.decoder = self.decoder.model.decoder
@@ -90,7 +90,7 @@ class Lightweight3DResNet(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            x = self.decoder(x)
+            # x = self.decoder(x)
             #x = self.scramble_time(x)
             x = self.augment_pipeline(x) if self.apply_aug else 2*x-1  # (b, t, c, d, h, w)
 
@@ -112,13 +112,14 @@ class Lightweight3DResNet(nn.Module):
 
         # Forward pass through BiLSTM
         x, _ = self.lstm(x)
+        lstm_hidden = x.clone().detach()
 
         # Use the last LSTM output
-        x = x[:, -1, :]
+        # x = x[:, -1, :]
 
         # Pass all the timesteps to the final embedding to get the temporal embeddings
-        #b, t, d = x.size()
-        #x = x.reshape(-1, d)
+        b, t, d = x.size()
+        x = x.reshape(-1, d)
 
         # Final embedding
         x = self.fc(x)
@@ -126,10 +127,10 @@ class Lightweight3DResNet(nn.Module):
         # Projection head
         out = self.proj(x)
 
-        #x = x.reshape(b, t, -1)
-        #out = out.reshape(b, t, -1)
+        x = x.reshape(b, t, -1)
+        out = out.reshape(b, t, -1)
 
-        return x, out
+        return x, out, lstm_hidden
 
 
 if __name__ == '__main__':

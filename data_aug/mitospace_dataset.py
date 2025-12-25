@@ -48,20 +48,21 @@ class MitoSpaceDataset(Dataset):
         print(f'Loading {flag} Dataset with split seed = {self.seed} ...')
 
         drug_labels = {}
-        with open('/tscc/nfs/home/d5agarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
+        with open('/home/dhruvagarwal/projects/MitoSpace4D/extraction_utils/drugs_to_labels_v2.txt', 'r') as f:
             drugs_to_labels = f.readlines()
             for line in drugs_to_labels:
                 folder, drug, label = line.split()
                 drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data'))])
+        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, ''))
+                               if osp.isdir(osp.join(self.root_dir, '', file))])
 
         self.all_filenames = []
         self.all_labels = []
 
         for drug_folder in drug_folders:
-            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data', drug_folder)) if osp.isfile(osp.join(self.root_dir, 'encoded_data', drug_folder, file))])
-            filenames = [osp.join(self.root_dir, 'encoded_data', drug_folder, file) for file in filenames]
+            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, '', drug_folder)) if osp.isfile(osp.join(self.root_dir, '', drug_folder, file))])
+            filenames = [osp.join(self.root_dir, '', drug_folder, file) for file in filenames]
 
             if samples_per_drug != 'None' and samples_per_drug is not None:
                 print(f"Limiting the number of samples per drug to {samples_per_drug}")
@@ -139,13 +140,13 @@ class MitoSpaceDataset(Dataset):
         img_name = self.filenames[idx]
         image = np.load(img_name, mmap_mode='r').astype(np.float32)
 
-        # normalize if loading the processed_data (not encoded).
-        # don't normalize if loading the encoded data (because then its already normalized)
-        image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
-        image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
+        image = image.transpose(1, 0, 2, 3, 4) # for v2 and kinetics data
+
+        # OG Normalization for the 2024 summer data ################
+        # image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
+        # image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
+        ##########################################################
 
         label = self.labels[idx]
-
-        #print(img_name, label)
 
         return {"images": image, "classes": label, "image_paths": img_name}

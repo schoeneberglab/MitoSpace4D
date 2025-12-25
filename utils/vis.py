@@ -155,7 +155,8 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
         mask = np.isin(labels, pick_labels)
         embeddings = embeddings[mask]
         labels = labels[mask]
-        image_paths = [image_paths[i] for i in range(len(image_paths)) if mask[i]]
+        if image_paths is not None:
+            image_paths = [image_paths[i] for i in range(len(image_paths)) if mask[i]]
 
         # to visualise the temporal progression in the embeddings
         # for temp, label in enumerate(labels):
@@ -180,7 +181,7 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
     vis.add_geometry(pcd)
 
     # save the pcd
-    o3d.io.write_point_cloud('/home/dhruvagarwal/Desktop/phenotypic_4d_mitospace.pcd', pcd)
+    o3d.io.write_point_cloud('/home/dhruvagarwal/Desktop/4d_mitospace.pcd', pcd)
 
     opt = vis.get_render_option()
     opt.point_size = 3
