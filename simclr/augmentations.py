@@ -155,7 +155,7 @@ class DataAugmentation(nn.Module):
 
         for i in range(self.n_views):
             views[i] = self.transforms_2d(views[i]).view(b, t, c, z, h, w)  # same 2D transforms for all t and z
-            views[i] = self.transforms_3d(views[i].view(b * t, c, z, h, w)).view(b, t, c, z, h,
+            views[i] = self.transforms_3d(views[i].view(b, t * c, z, h, w)).view(b, t, c, z, h,
                                                                          w)  # same 3D transforms for all t
             views[i] = self.temporal_transform_2(views[i])  # (b, t, c, z, h, w)
 
