@@ -89,7 +89,6 @@ if __name__ == '__main__':
     model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
                                 apply_aug=False).to(device)
 
-    # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=287-step=83534-val_loss=0.00.ckpt"
     checkpoint_path = f"{proj_dir}/runs/lightning_logs/resnetbilistm_encoder_consistent_temporal/checkpoints/epoch=278-step=59985-val_loss=0.00.ckpt"
     dataset_name = cfg["evaluate"]["dataset"]
 

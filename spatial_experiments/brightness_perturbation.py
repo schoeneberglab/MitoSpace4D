@@ -45,10 +45,13 @@ def perturb_shuffle(video_tensor):
 def brightness_sensitivity_experiment(model, video, plot=False):
     video_cpu = video.cpu() if video.is_cuda else video
     perturb_video = video_cpu.clone()
-    # d_brightness_tmrm = 0.3 * video[:, 0].std()
+    d_brightness_tmrm = 0.3 * video[:, 0].std()
     d_brightness_mtg = 0.3 * video[:, 1].std()
     # perturb_video[:, 0] = perturb_video[:, 0] + d_brightness_tmrm  # changing TMRM only
-    perturb_video[:, 1] = perturb_video[:, 1] + d_brightness_mtg  # changing MTG only
+    # perturb_video[:, 1] = perturb_video[:, 1] + d_brightness_mtg  # changing MTG only
+    perturb_video[:, 1] = perturb_video[:, 1] - d_brightness_mtg  # subtracting from MTG only
+    perturb_video[:, 0] = perturb_video[:, 0] - d_brightness_tmrm  # subtracting from TMRM only
+
 
     perturb_video = perturb_video.float().unsqueeze(0)
     video_batch = video_cpu.unsqueeze(0).float()
@@ -87,7 +90,6 @@ if __name__ == '__main__':
     model = Lightweight3DResNet(embedding_size=2048, cfg_aug=cfg['data_params']['transforms'],
                                 apply_aug=False).to(device)
 
-    # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=287-step=83534-val_loss=0.00.ckpt"
     checkpoint_path = f"{proj_dir}/runs/lightning_logs/resnetbilistm_encoder_consistent_temporal/checkpoints/epoch=278-step=59985-val_loss=0.00.ckpt"
     dataset_name = cfg["evaluate"]["dataset"]
 
