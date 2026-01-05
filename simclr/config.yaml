@@ -1,4 +1,5 @@
-experiment_name: resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115
+# experiment_name: resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115
+experiment_name: debug_resnet3d_encoded_kinetics_ablated-tmrm_randomsingleframe_50eps_r20251222
 data_params:
   timesteps:
     start: 0
@@ -7,8 +8,8 @@ data_params:
     start: 0
     end: 60
   dataset_name: mitospace
-  # data_path: /work/nvme/begq/MitoSpace4D/data/2025_data_encoded # Kinetics Dataset
-  data_path: /work/nvme/begq/MitoSpace4D/data/2024_data_encoded # 2024v2 Dataset
+  data_path: /work/nvme/begq/MitoSpace4D/data/2025_data_encoded # Kinetics Dataset
+  # data_path: /work/nvme/begq/MitoSpace4D/data/2024_data_encoded # 2024v2 Dataset
   patch_size: 256
   samples_per_drug: None
   transforms:
@@ -40,7 +41,7 @@ data_params:
     RandomTimeFlip:
       p: 0.0
     RandomTimeMask:
-      p: 1.0
+      p: 0.0 # 1.0
     RandomExchangeFlip:
       p: 0.5
     RandomErasing:
@@ -62,8 +63,8 @@ model_params:
   bidirectional: True # default: True
   pretrained: False
   out_dim: 512
-  in_channels: 2
-  channels: [0, 1] # 0: TMRM, 1: Morphology
+  in_channels: 1
+  channels: [1] # 0: TMRM, 1: Morphology
   num_z: 60
   timesteps: 20
 training:
@@ -71,7 +72,7 @@ training:
     name: InfoNCELoss
     use_normalization: True
     temperature: 0.07
-  max_epochs: 300
+  max_epochs: 50
   print_interval: 85
   projector_interval: 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
   batch_size: 6
@@ -82,7 +83,8 @@ training:
     mode: min
     save_top_k: 3
     save_last: True
-  checkpoint_path: /work/nvme/begq/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115/checkpoints/last.ckpt
+  # checkpoint_path: /work/nvme/begq/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115/checkpoints/last.ckpt
+  checkpoint_path: None
   continue_with_optimizer: True
   lr: 0.0003
   weight_decay: 0.00001
