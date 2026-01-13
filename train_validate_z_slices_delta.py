@@ -26,7 +26,7 @@ import os
 import random
 import matplotlib.pyplot as plt
 from pathlib import Path
-from validation_zslices import pick_folders, validate_saved_model
+from validation_zslices import validate_saved_model
 from auto_encoder_kinetics.ae_util import AEUtil
 
 # Import your utilities from the main Z-predictor training script
@@ -57,7 +57,7 @@ def load_data_subset(cfg, start_idx, end_idx):
         decode = True # for encoded data reading
 
         if decode:
-            ae_util = AEUtil(ckpt_path="auto_encoder_kinetics/mitospace_resnet_autoencoder_20251018.ckpt")
+            ae_util = AEUtil(ckpt_path="auto_encoder_kinetics/checkpoint.ckpt")
             full_image_data_np = ae_util.load(filepath)  # decoded_image shape: (C,T,Z,Y,X)
         else:
             full_image_data_np = np.load(filepath)
@@ -202,7 +202,7 @@ if __name__ == "__main__":
         help="List of folder names (space separated) to include for training. Example: --pick_folders 20240729-1 20240823-1"
     )
     parser.add_argument("--save_path", default="checkpoint_new_loss_mdivi_control", help="Path to save the checkpoint")
-    parser.add_argument("--master_base_path", default="/work/nvme/begq/MitoSpace4D/2024_encoded_data/", help="Path to the master base path")
+    parser.add_argument("--master_base_path", default="/work/nvme/begq/MitoSpace4D/2024_data_encoded/", help="Path to the master base path")
     parser.add_argument("--batch_size", default=20, help="Batch size for training")
     parser.add_argument("--num_epochs", default=30, help="Number of epochs for training")
     parser.add_argument("--learning_rate", default=1e-4, help="Learning rate for training")
@@ -222,12 +222,12 @@ if __name__ == "__main__":
     cfg.val_filepaths = []
     all_drugs = [i for i in os.listdir(cfg.master_base_path) if os.path.isdir(os.path.join(cfg.master_base_path, i))]
     
-    pick_folders = all_drugs[10:]
-    print(pick_folders)
-    # if not args.all_drugs:
-    #     pick_folders = args.pick_folders
-    # else:
-    #     pick_folders = all_drugs
+    #pick_folders = all_drugs[10:]
+    #print(pick_folders)
+    if not args.all_drugs:
+         pick_folders = args.pick_folders
+    else:
+         pick_folders = all_drugs
     
     cfg.save_path = args.save_path
     cfg.batch_size = int(args.batch_size)
