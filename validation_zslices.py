@@ -770,7 +770,7 @@ if __name__ == "__main__":
         for i in files[train_split:]:
             cfg.val_filepaths.append(f"{base_path}/{i}")
     # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
-    batch_size = 50
+    batch_size = 130
 
     print("debug train split", train_split)
 

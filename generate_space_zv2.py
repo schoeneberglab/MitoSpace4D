@@ -305,20 +305,23 @@ if __name__ == '__main__':
                         type=str, help='Path to folder->drug->label mapping file')
     parser.add_argument('--pick_labels', nargs='*', type=int, default=None,
                         help='Subset of labels to visualize')
+    parser.add_argument("--visualize", type=bool, default=True, help="Whether to visualize the embeddings")
     parser.add_argument('--embedding_folder', help='Path to embedding folder', default="embeddings")
     args = parser.parse_args()
 
     embeddings_dir = osp.join(args.checkpoint_dir, args.embedding_folder)
     folder_to_label, label_names, folder_to_drug, label_to_drug_dict = load_folder_label_maps(args.drugs_to_labels)
     colors = load_colors(args.colors_file)
-
     maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names)
 
+    if args.visualize:
+        select_and_plot_embedding(embeddings_dir=embeddings_dir, colors_palette=colors)
+ 
+    
     # make_mitospace_minimal(embedding_dir=embeddings_dir,
     #                        pick_labels=args.pick_labels,
     #                        color_palette=colors)
-
-    select_and_plot_embedding(embeddings_dir=embeddings_dir, colors_palette=colors)
+    
     print("Computing confusion matrix and entropy from embeddings folder")
     metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label, label_drug_dict=label_to_drug_dict)
     print(metrics)
