@@ -21,8 +21,13 @@ class ContrastiveLearningDataset:
                                                                 flag=flag,
                                                                 seed=seed, pick_labels=pick_labels,
                                                                 samples_per_drug=samples_per_drug,
+                                                                timesteps=timesteps, zstacks=zstacks),
+                            'flybrain': lambda: FlyBrainDataset(self.root_folder,
+                                                                flag=flag,
+                                                                seed=seed, pick_labels=pick_labels,
+                                                                samples_per_drug=samples_per_drug,
                                                                 timesteps=timesteps, zstacks=zstacks)
-                          }
+                            }
 
         try:
             dataset_fn = valid_datasets[name]
@@ -33,7 +38,7 @@ class ContrastiveLearningDataset:
 
 
 if __name__ == '__main__':
-    config_path = '/home/dhruvagarwal/projects/MitoSpace4D/simclr/config.yaml'
+    config_path = 'simclr/config.yaml'
     cfg = load_config(config_path)
     dataset = ContrastiveLearningDataset(cfg['data_params']['data_path'], cfg)
 

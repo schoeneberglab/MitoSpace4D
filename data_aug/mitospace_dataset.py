@@ -150,3 +150,47 @@ class MitoSpaceDataset(Dataset):
         label = self.labels[idx]
 
         return {"images": image, "classes": label, "image_paths": img_name}
+
+
+class FlyBrainDataset(Dataset):
+    def __init__(self, root_dir: str, flag: str = 'train',
+                 seed: int = None, pick_labels: List = None, samples_per_drug: int = None,
+                 timesteps=None, zstacks=None, labels: List[int] = None) -> None:
+        self.root_dir = root_dir
+        self.timesteps = 1
+        self.zstacks = zstacks
+
+        self.seed = 1123 if seed is None else seed
+
+        print(f'Loading {flag} Dataset with split seed = {self.seed} ...')  
+
+        self.all_filenames = []
+        self.all_labels = []
+        files_to_labels = {}
+        with open(osp.join(root_dir, 'labels.txt'), 'r') as f:
+            for line in f:
+                file, label = line.strip().split()
+                files_to_labels[file] = int(label)
+
+        for file in os.listdir(root_dir):
+            if file.endswith('.npy'):
+                self.all_filenames.append(osp.join(root_dir, file))
+                self.all_labels.append(files_to_labels[file])
+
+        # Each filename is a npy file containing 81 chunks; unpack them to individual sample entries
+        self.data = []
+        for fname, label in zip(self.all_filenames, self.all_labels):
+            arr = np.load(fname, mmap_mode='r')
+            for i in range(arr.shape[0]):  # assume first dimension is 81
+                self.data.append((fname, label, i))
+
+        random.seed(self.seed)
+        shuffle(self.data)
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
+        fname, label, chunk_idx = self.data[idx]
+        image = np.load(fname, mmap_mode='r')[chunk_idx, :,:,:,:,:]
+        return {"images": image, "classes": label, "image_paths": fname, "chunk_idx": chunk_idx}
