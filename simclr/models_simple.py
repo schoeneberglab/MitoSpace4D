@@ -39,7 +39,7 @@ class Lightweight3DResNet(nn.Module):
 
         self.apply_aug = apply_aug
         self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
-        dec_checkpoint_path = "/home/dhruvagarwal/projects/MitoSpace4D/autoencoder/lightning_logs/final_training_sdsc_16_nodes_low_lr_low_gamma/lightning_logs/version_3178623/checkpoints/epoch=8-step=6462.ckpt"
+        dec_checkpoint_path = "autoencoder/epoch=8-step=6462.ckpt"
         decoder_model = MitoSpace3DAutoencoder()
         self.decoder = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=decoder_model)
         self.decoder = self.decoder.model.decoder
