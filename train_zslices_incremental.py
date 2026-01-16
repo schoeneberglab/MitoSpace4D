@@ -13,6 +13,7 @@ It imports:
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoModelForVideoClassification
 import numpy as np
@@ -26,6 +27,7 @@ import os
 import random
 import matplotlib.pyplot as plt
 from pathlib import Path
+from typing import Tuple
 # Import your utilities from the main Z-predictor training script
 from videomae_zslicer import (
     # Config,
@@ -34,6 +36,10 @@ from videomae_zslicer import (
     ZVolumeAccuracyLoss
 )
 from train_zslices_v1 import Config
+# Import contrastive loss
+import sys
+sys.path.append('simclr')
+from loss import SupConLoss
 
 # This function loads a subset of the data and stacks it into a tensor
 def load_data_subset(cfg, start_idx, end_idx):
@@ -70,6 +76,51 @@ def load_data_subset(cfg, start_idx, end_idx):
     return data_tensor, all_original_z_indices, global_volume_counter
 
 
+class ContrastiveZSliceDataset(Dataset):
+    """
+    Wrapper around ZSliceDataset that returns 2 augmented views for contrastive learning.
+    """
+    def __init__(self, base_dataset: ZSliceDataset):
+        self.base_dataset = base_dataset
+    
+    def __len__(self):
+        return len(self.base_dataset)
+    
+    def __getitem__(self, idx):
+        # Get the base sample
+        sample = self.base_dataset[idx]
+        
+        # Return two views (same data, but will be augmented differently during processing)
+        # For now, we'll duplicate the sample - augmentations can be added in the dataset
+        return {
+            "pixel_values": sample["pixel_values"],
+            "pixel_values_view2": sample["pixel_values"].clone() + torch.randn_like(sample["pixel_values"])*0.01 ,#Second view
+            "labels": sample["labels"],
+            "volume_id": sample["volume_id"]
+        }
+
+
+def extract_features(model, pixel_values):
+    """
+    Extract features from the model instead of logits.
+    For VideoMAE, we extract the pooled output before the classification head.
+    """
+    # Get hidden states from the model
+    outputs = model(pixel_values=pixel_values, output_hidden_states=True)
+    
+    # Extract the last hidden state (after all transformer blocks)
+    if hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
+        hidden_states = outputs.hidden_states[-1]  # Shape: (batch_size, num_patches+1, hidden_dim)
+        # Use CLS token (first token)
+        features = hidden_states[:, 0, :]  # Shape: (batch_size, hidden_dim)
+    else:
+        # Fallback: use the base model's last hidden state
+        base_outputs = model.videomae(pixel_values=pixel_values)
+        features = base_outputs.last_hidden_state[:, 0]  # Shape: (batch_size, hidden_size)
+    
+    return features
+
+
 def incremental_train_z_predictor(cfg, batch_group_size=2):
     """
     Train the Z-predictor in streaming batches of files.
@@ -86,12 +137,21 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
 
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+    
+    # Contrastive loss function
+    contrastive_loss_fn = SupConLoss(
+        temperature=0.07,
+        contrast_mode='all',
+        base_temperature=0.07,
+        use_normalization=True
+    )
+    
+    # Optional: Keep classification loss for evaluation
     ce_loss_fn = nn.CrossEntropyLoss()
     vol_loss_fn = ZVolumeAccuracyLoss()
-
     start_file_idx = 0
     total_files = len(cfg.image_filepaths)
-    batch_size_files = 100  # same as before
+    batch_size_files = 5  # same as before
     total_batches = (total_files + batch_size_files - 1) // batch_size_files
 
     print(f"Total files: {total_files} -> {total_batches} batches of {batch_size_files}")
@@ -120,8 +180,8 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
 
         # === Split & create Datasets ===
         train_idx, test_idx = train_test_split(range(len(orig_z_indices)), test_size=cfg.test_size_z)
-        train_set = ZSliceDataset(data_tensor[train_idx], [orig_z_indices[i] for i in train_idx],
-                                  [vol_ids[i] for i in train_idx], image_processor)
+        train_set_base = ZSliceDataset(data_tensor[train_idx], [orig_z_indices[i] for i in train_idx],
+                                      [vol_ids[i] for i in train_idx], image_processor)
         val_set = ZSliceDataset(data_tensor[test_idx], [orig_z_indices[i] for i in test_idx],
                                 [vol_ids[i] for i in test_idx], image_processor)
         
@@ -132,48 +192,72 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
         all_unique_original_z_indices = sorted(list(set(orig_z_indices)))
         z_to_label_mapping = {z: i//divider for i, z in enumerate(all_unique_original_z_indices)}
         label_to_z_mapping = {i: i*divider + divider*0.5 for i in set(z_to_label_mapping.values())}
-        train_set.set_label_mapping(z_to_label_mapping)
+        train_set_base.set_label_mapping(z_to_label_mapping)
         val_set.set_label_mapping(z_to_label_mapping)
+        
+        # Wrap training set for contrastive learning (returns 2 views)
+        train_set = ContrastiveZSliceDataset(train_set_base)
 
         train_loader = DataLoader(train_set, batch_size=cfg.batch_size, shuffle=True, num_workers=4)
         val_loader = DataLoader(val_set, batch_size=cfg.batch_size, shuffle=False, num_workers=4)
         
 
         # === Train for a few epochs on this chunk ===
-        print(f"🚀 Training on files {batch_start}–{batch_end}")
+        print(f"🚀 Training on files {batch_start}–{batch_end} (Contrastive Learning)")
         for epoch in range(cfg.num_epochs):
             model.train()
             total_loss = 0
             for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.num_epochs}"):
-                pixel_values = batch["pixel_values"].to(device)
+                # Get two views for contrastive learning
+                pixel_values_view1 = batch["pixel_values"].to(device)
+                pixel_values_view2 = batch["pixel_values_view2"].to(device)
                 labels = batch["labels"].to(device)
                 volume_ids = batch["volume_id"].to(device)
+                
+                batch_size = pixel_values_view1.shape[0]
 
                 optimizer.zero_grad()
-                logits = model(pixel_values=pixel_values).logits
-                loss_ce = ce_loss_fn(logits, labels)
-                loss_vol = vol_loss_fn(logits, labels, volume_ids)
-                # Assign higher weight to volume accuracy loss.
-                # Additionally, increase loss weight for class 2 or 3 (z), assuming 0-based classes
-                # Note: make sure labels are 0,1,2 or adjust as necessary.
-                volume_weight = 0.7
-                ce_weight = 0.3
-
-                # Default: no label-specific boost
-                label_weight = torch.ones_like(labels, dtype=torch.float32).to(labels.device)
-                # Boost weight for class 2 or 3 (indices 2 and 3); adjust if only 0,1,2 exist
-                for_high_z = (labels == 2) | (labels == 1)
-                label_weight[for_high_z] = 2.0
-
-                weighted_loss_ce = (loss_ce * label_weight).mean()
-                weighted_loss_vol = (loss_vol * label_weight).mean()
                 
-                loss = ce_weight * weighted_loss_ce + volume_weight * weighted_loss_vol
+                # Extract features for both views
+                features_view1 = extract_features(model, pixel_values_view1)
+                features_view2 = extract_features(model, pixel_values_view2)
+                
+                # Concatenate features from both views: [view1_features, view2_features]
+                # Shape: (2*batch_size, hidden_size)
+                # SupConLoss expects features as flat tensor (batch_size * n_views, feature_dim)
+                features = torch.cat([features_view1, features_view2], dim=0)
+                # print("features shape", features.shape)
+                # For supervised contrastive learning, use labels to define positive pairs
+                # Samples with the same z-label are positive pairs
+                labels_duplicated = torch.cat([labels, labels], dim=0)  # (2*batch_size,)
+                
+                # Compute contrastive loss
+                # SupConLoss will internally reshape features from (batch_size * n_views, feature_dim)
+                # to (batch_size, n_views, feature_dim)
+                loss_contrastive, (acc1, acc5) = contrastive_loss_fn(
+                    features=features,  # Pass flat tensor: (2*batch_size, hidden_size)
+                    bs=batch_size,
+                    n_views=2,
+                    labels=labels  # Use original labels (not duplicated) for positive pair definition
+                )
+                
+                # Optional: Add volume loss using logits from classification head
+                # Get logits for volume loss computation
+                logits_view1 = model(pixel_values=pixel_values_view1).logits
+                # logits_view2 = model(pixel_values=pixel_values_view2).logits
+                # logits_combined = torch.cat([logits_view1, logits_view2], dim=0)
+                
+                loss_vol = vol_loss_fn(logits_view1, labels, volume_ids)
+                #                       torch.cat([volume_ids, volume_ids], dim=0))
+                
+                # # Combine losses (you can adjust weights)
+                loss = loss_contrastive + 0.3 * loss_vol  # Weight volume loss lower
+                
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
 
-            print(f"✅ Epoch {epoch+1} | Loss {total_loss/len(train_loader):.4f}")
+            print(f"✅ Epoch {epoch+1} | Contrastive Loss {total_loss/len(train_loader):.4f}")
 
         # === Save incremental checkpoint ===
         torch.save({
@@ -193,12 +277,15 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
 
 if __name__ == "__main__":
     cfg = Config()
-    cfg.master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
+    # cfg.master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
+    cfg.master_base_path = '/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/'
+    
     cfg.base_paths = [f"{cfg.master_base_path}{i}" for i in os.listdir(cfg.master_base_path)]
     cfg.image_filepaths = []
+    cfg.batch_size = 8
     cfg.val_filepaths = []
     
-    cfg.save_path = "checkpoint_lowlr_epoch_mdvivi1_control"
+    cfg.save_path = "checkpoint_contrastive_nocodazole_colchicine"
     if not os.path.exists(cfg.save_path):
         os.makedirs(cfg.save_path, exist_ok=True)
     print(cfg.base_paths[1])
@@ -210,11 +297,11 @@ if __name__ == "__main__":
         # "20240802-1",#tbhp
         # "20240814-1",#valinomycin
         # "20240911-1",#nigericin
-        # "20240826-1",#nocodazole
-        # "20240830-1",#colchicine
+        "20240826-1",#nocodazole
+        "20240830-1",#colchicine
         # "20240816-1",#mitomycinC
         # "20240905-1",#cisplatin
-        "20240823-1",#mdivi1
+        # "20240823-1",#mdivi1
         # Add more folder names or date-based identifiers as needed
     ]
     # If you want to match multiple folders per pick_label, just add them above
