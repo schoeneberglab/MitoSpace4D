@@ -7,14 +7,14 @@ data_params:
     start: 0
     end: 60
   dataset_name: mitospace
-  data_path: /mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_data_encoded
+  data_path: /home/earkfeld/Projects/MitoSpace4D/data/2024v2_encoded_data
   patch_size: 256
   samples_per_drug: None
   transforms:
     ResizedCrop:
       p: 0.5
       size: 256
-      scale: [0.35, 1.0]
+      scale: [ 0.35, 1.0 ]
     HorizontalFlip3D:
       p: 0.3
     VerticalFlip3D:
@@ -24,10 +24,10 @@ data_params:
     GaussianNoise:
       p: 0.5
       mu: 0.0
-      scale: 0.05
+      scale: 0.001
     GaussianBlur:
       p: 0.5
-      sigma: 1.5
+      sigma: 1.0
       kernel_size: 13
     RandomRotation3D:
       p: 0.5
@@ -35,7 +35,7 @@ data_params:
     RandomAffine3D:
       p: 0.5
       degrees: 0
-      translate: [0.2, 0.2, 0.1]
+      translate: [ 0.2, 0.2, 0.1 ]
     RandomTimeFlip:
       p: 0.0
     RandomTimeMask:
@@ -44,13 +44,14 @@ data_params:
       p: 0.5
     RandomErasing:
       p: 0.5
-      scale: [0.02, 0.33]
-      ratio: [0.3, 3.3]
+      scale: [ 0.02, 0.33 ]
+      ratio: [ 0.3, 3.3 ]
       value: 0
     RandomBrightness:
       p: 0.5
-      lower: -0.5
-      upper: 0.5
+      lower: -0.1
+      upper: 0.1
+      per_channel: True # Original mitospace trained w/ False; true to decouple channels
   filters: null
 logging_params:
   save_path: /home/earkfeld/Projects/MitoSpace4D/runs
@@ -60,8 +61,7 @@ model_params:
   pretrained: False
   out_dim: 512
   in_channels: 1
-  # channels: [1] # 0: TMRM, 1: Morphology
-  channels: [0] # EXPERIMENT
+  channels: [1]
   num_z: 60
   timesteps: 20
 training:

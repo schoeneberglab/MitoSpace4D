@@ -65,7 +65,7 @@ def get_per_frame_vals(vals, n_frames=20):
         frame_vals.extend(np.repeat(val, n_frames).tolist())
     return np.array(frame_vals)
 
-def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, label_drug_dict=None, decoder=None):
+def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, label_drug_dict=None, decoder=None, legend_colors=None):
     print("")
     print(
         "1) Please pick at least three correspondences using [shift + left click]"
@@ -73,16 +73,47 @@ def pick_points(pcd, labels, label_names, image_paths=None, image_times=None, la
     print("   Press [shift + right click] to undo point picking")
     print("2) After picking points, press 'Q' to close the window")
 
-    # get_label_name_fn = lambda idx: label_names[(labels[idx])]
+    # Setup legend for pcd colors
+    fig, ax = plt.subplots()
+
+    for legend_entry in legend_colors:
+        ax.scatter(
+            [],
+            [],
+            c=legend_entry[2],
+            label=f"{legend_entry[0]}: {legend_entry[1]}",
+            s=100,
+        )
+    ax.axis("off")
+    legend = ax.legend(
+        loc="center",
+        frameon=False,
+        fontsize=12,
+        markerscale=1.5,
+    )
+
+    # resize figure to legend size
+    fig.canvas.draw()  # needed to compute legend size
+    bbox = legend.get_window_extent()
+    width, height = bbox.width / fig.dpi, bbox.height / fig.dpi
+    fig.set_size_inches(width, height)
+    legend.set_bbox_to_anchor((0.5, 0.5), transform=fig.transFigure)
+    plt.tight_layout()
+    plt.show(block=False)
+    plt.pause(0.5)
 
     vis = o3d.visualization.VisualizerWithEditing()
+
     vis.create_window()
     vis.add_geometry(pcd)
     print(f"Number of Points: {len(pcd.points)}")
     vis.get_render_option().point_size = 5.0
 
+    # vis.get_render_option().background_color = np.asarray([0, 0, 0]) # black
+
     vis.run()  # user picks points
     idxs = vis.get_picked_points()
+    plt.close(fig) # clean up legend
 
     if len(idxs) == 0:
         print("No points picked, closing the visualizer.")
@@ -435,6 +466,24 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
             colors[labels < 0] = 0
             colors = colors[:, :3]
 
+    # >>> Color legend experiment >>>
+    # Show a legend for the unique conditions and colors in the point cloud
+    unique_label_vals = np.unique(labels)
+
+    legend_colors = []
+    for i, l in enumerate(unique_label_vals):
+        legend_colors.append([l, label_drug_dict[int(l)], color_palette[int(l)]])
+
+
+    # Show a legend for the colors (no plot, legend only)
+    #fig, ax = plt.subplots()
+    # for i, l in enumerate(unique_label_vals):
+    #     ax.scatter([], [], c=color_palette[int(l)], label=f'{l}: {label_drug_dict[int(l)]}')
+    # ax.legend()
+    # ax.axis('off')
+    # plt.show()
+    # # <<< Color legend experiment <<<
+
     # max_label = labels.max()
     # color_palette = generate_distinct_colors(max_label + 1)
     
@@ -451,7 +500,7 @@ def make_mitospace(embedding_dir, pick_labels=None, color_palette=None, image_pa
         o3d.io.write_point_cloud(save_pcd, pcd)
     
     while True:
-        pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict, decoder)
+        pick_points(pcd, labels, label_names, image_paths, image_times, label_drug_dict, decoder, legend_colors)
 
 def plot_confusion_matrix(cm,
                           label_names,
@@ -465,16 +514,13 @@ def plot_confusion_matrix(cm,
 
     if cmap is None:
         cmap = plt.get_cmap('Blues')
-    plt.figure(figsize=(20, 20))
+    # plt.figure(figsize=(20, 20))
+    plt.figure(figsize=(10, 10), constrained_layout=True)
     # plt.figure(figsize=(3, 3), dpi=300)
 
     tickmarks = np.arange(cm.shape[0])
     plt.xticks(tickmarks, label_names, rotation=90)
     plt.yticks(tickmarks, label_names)
-    
-    # Set no ticks nor labels
-    # plt.xticks([])
-    # plt.yticks([])
 
     if normalize:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
@@ -492,7 +538,7 @@ def plot_confusion_matrix(cm,
                      horizontalalignment="center",
                      color="white" if cm[i, j] > thresh else "black")
 
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.show()

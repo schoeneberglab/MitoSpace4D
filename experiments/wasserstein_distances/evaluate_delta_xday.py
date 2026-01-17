@@ -15,6 +15,7 @@ import argparse
 
 from simclr.models_simple import Lightweight3DResNet
 from utils.utils import *
+from utils.wasserstein_distance import *
 from data_aug.dataset_utils import get_mitospace_data_loaders
 import torch
 from train_simclr import SimCLRRunner
@@ -42,8 +43,6 @@ parser.add_argument('--dist_metric', default='cosine',
                     type=str, help='Metric to use for distance calculation between embeddings')
 parser.add_argument('--labels', nargs='+', type=int, default=None, 
                     help='List of labels to evaluate on')
-# parser.add_argument('--balance_labels', action='store_true', default=False,
-#                     help='Balance the label counts in the dataset')
 
 
 def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs,
@@ -283,7 +282,7 @@ def l2_distance(eval_embeddings, train_embeddings):
     dist_matrix = dist_matrix.argsort(1)
     return dist_matrix
 
-def balance_label_counts(embeddings, labels, seed=1123, shuffle=True):
+def balance_label_counts(embeddings, labels, n_samples=None, seed=1123, shuffle=True):
     embeddings = np.asarray(embeddings)
     labels = np.asarray(labels)
 
@@ -295,6 +294,10 @@ def balance_label_counts(embeddings, labels, seed=1123, shuffle=True):
     unique_labels = np.unique(labels)
     label_counts = {lbl: np.sum(labels == lbl) for lbl in unique_labels}
     min_count = min(label_counts.values())
+
+    if n_samples is not None:
+        min_count = min(min_count, n_samples)
+        print(f"Min count is {min_count}")
 
     indices = []
     for lbl in unique_labels:
@@ -340,10 +343,29 @@ def split_dataset(embeddings, labels, split_perc=0.9, balanced=True, seed=1123):
     val_indices = np.array(val_indices)
     return embeddings[train_indices], labels[train_indices], embeddings[val_indices], labels[val_indices]
 
+def filter_by_days(ds_days, embeddings, labels, img_paths):
+    """ Filters data by day """
+    ds_days = set(ds_days)
+
+    filtered_embeddings = []
+    filtered_labels = []
+    filtered_img_paths = []
+
+    for img_path in img_paths:
+        # Check if any of the ds_days is in the img_path
+        if any(day in img_path for day in ds_days):
+            idx = img_paths.index(img_path)
+            filtered_embeddings.append(embeddings[idx])
+            filtered_labels.append(labels[idx])
+            filtered_img_paths.append(img_path)
+
+    return np.array(filtered_embeddings), np.array(filtered_labels), filtered_img_paths
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/home/earkfeld/Projects/MitoSpace4D"
+    proj_dir = "/"
     
     already_have_embeddings = True
     balance_classes = True
@@ -361,11 +383,8 @@ if __name__ == "__main__":
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_decoupled-tmrm_eps256_r20251120"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_ablated-tmrm_eps291_r20251120"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_2024v2-model_ablated-tmrm_eps162_r20251124"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
+    embeddings_dir = "/runs/embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp1_modified_embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
-    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
 
     drug_labels_dict = {}
     label_drug_dict = {}
@@ -375,220 +394,109 @@ if __name__ == "__main__":
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
 
-    # args.labels = [33, 34]
-    # args.labels = [33, 34, 35]
+    # A_label = 30
+    # A_prime_label = 33
+    # B_label = 31
+    # B_prime_label = 34
 
-    if already_have_embeddings:
-        print("Loading pre-extracted embeddings...")
-        embeddings = np.load(
-            f'{embeddings_dir}/embeddings_raw.npy')
-        labels = np.load(
-            f'{embeddings_dir}/labels.npy')
-        
-        # Filter the drug label dicts to only include the labels present in the dataset
-        unique_labels_in_dataset = set(labels)
-        drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in unique_labels_in_dataset}
-        label_drug_dict = {label: drug for label, drug  in label_drug_dict.items() if label in unique_labels_in_dataset}
+    n_samples = None
 
-        if args.labels:
-            embeddings, labels, drug_labels_dict, label_drug_dict = filter_by_label(args.labels, embeddings, labels, drug_labels_dict, label_drug_dict)
-        
-        if balance_classes:
-            embeddings, labels = balance_label_counts(embeddings, labels)
-            # balance_label_counts(embeddings, labels)
-            print(f"Balanced to {len(np.unique(labels))} classes with {np.bincount(labels)} samples each")
-            print({k: (labels == k).sum() for k in np.unique(labels)})
+    # ds_days = ["20251215", "20251217"]
+    # ds_days = ["20251216", "20251218"]
+    # ds_days = ["20251215", "20251218"]
+    # ds_days = ["20251215", "20251216"]
+    ds_days = ["20251217", "20251218"]
+    args.labels = [35]
 
-        # shuffle them with seed 1123
-        # random.seed(1123)
-        # data = list(zip(embeddings, labels))
-        # random.shuffle(data)
-        # embeddings, labels = zip(*data)
-        # embeddings, labels = np.array(embeddings), np.array(labels)
+    print("Loading pre-extracted embeddings...")
+    embeddings = np.load(
+        f'{embeddings_dir}/embeddings_raw.npy')
+    labels = np.load(
+        f'{embeddings_dir}/labels.npy')
+    img_paths = np.loadtxt(f'{embeddings_dir}/image_paths.csv', dtype=str).tolist()
 
-        # len_all_data = round(len(labels) * 1.)
-        # train_split = round(len_all_data * split_perc)
-        # val_split = round(len_all_data * (1 - split_perc))
-        #
-        # train_embeddings, eval_embeddings = embeddings[:train_split], embeddings[train_split: train_split + val_split]
-        # train_labels, eval_labels = labels[:train_split], labels[train_split: train_split + val_split]
+    # Filter the drug label dicts to only include the labels present in the dataset
+    unique_labels_in_dataset = set(labels)
+    drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in unique_labels_in_dataset}
+    label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in unique_labels_in_dataset}
 
-        train_embeddings, train_labels, eval_embeddings, eval_labels = split_dataset(embeddings,
-                                                                                     labels,
-                                                                                     split_perc=split_perc,
-                                                                                     balanced=balanced_split)
+    # Normalize embeddings & scale to [0, 1]
+    embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+    # emb_min = embeddings.min()
+    # emb_max = embeddings.max()
+    # embeddings = (embeddings - emb_min) / (emb_max - emb_min)
 
-        # train_embeddings = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/embeddings.npy')
-        # train_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/labels.npy')
-        #
-        # eval_embeddings = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_5/embeddings.npy')
-        # eval_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_5/labels.npy')
+    # EXPERIMENT: Comparing across days
+    A_embeddings, A_labels, _ = filter_by_days([ds_days[0]], embeddings, labels, img_paths)
+    A_prime_embeddings, A_prime_labels, _ = filter_by_days([ds_days[1]], embeddings, labels, img_paths)
 
-        if len(train_embeddings.shape) > 2:
-            train_embeddings = train_embeddings[:, -1]  # take only the final time step
+    A_embeddings, _, _, _ = filter_by_label(args.labels, A_embeddings, A_labels, drug_labels_dict, label_drug_dict)
+    A_prime_embeddings, _, _, _ = filter_by_label(args.labels, A_prime_embeddings, A_prime_labels, drug_labels_dict, label_drug_dict)
 
-        if len(eval_embeddings.shape) > 2:
-            eval_embeddings = eval_embeddings[:, -1]  # take only the final time step
+    min_size = min(len(A_embeddings), len(A_prime_embeddings))
+    A_embeddings = A_embeddings[:min_size]
+    A_prime_embeddings = A_prime_embeddings[:min_size]
 
-    else:
-        print("Generating embeddings...")
-        model = Lightweight3DResNet(embedding_size=2048, 
-                                    cfg=cfg,
-                                    # cfg_aug=cfg['data_params']['transforms'],
-                                    apply_aug=False)
+    # if args.labels:
+    #     embeddings, labels, drug_labels_dict, label_drug_dict = filter_by_label(args.labels, embeddings, labels, drug_labels_dict, label_drug_dict)
 
-        # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
-        # checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt"
-        checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=138-step=24742-val_loss=0.00.ckpt"
-        dataset_name = cfg["evaluate"]["dataset"]
+    # embeddings, labels, img_paths = filter_by_days(ds_days, embeddings, labels, img_paths)
 
-        # print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
+    if balance_classes:
+        embeddings, labels = balance_label_counts(embeddings, labels, n_samples)
+        # balance_label_counts(embeddings, labels)
+        print(f"Balanced classes.")
 
-        model = SimCLRRunner.load_from_checkpoint(
-            checkpoint_path, model=model, cfg=cfg
-        )
-        model.eval()
+    # Separate the embeddings according to labels
+    # A_embeddings = embeddings[labels == A_label]
+    # A_prime_embeddings = embeddings[labels == A_prime_label]
+    # B_embeddings = embeddings[labels == B_label]
+    # B_prime_embeddings = embeddings[labels == B_prime_label]
 
-        loaders_reference = get_mitospace_data_loaders(
-            f'{proj_dir}/data/2024_subdata/',
-            shuffle=False, batch_size=2, to_load=["train"],
-            timesteps=cfg['data_params']['timesteps'],
-            zstacks=cfg['data_params']['zstacks'],
-            samples_per_drug=cfg['data_params']['samples_per_drug'],
-            pick_labels=None)
+    w2, beta_w2 = exact_wasserstein_sensitivity(A_embeddings, A_prime_embeddings)
+    print(f"W2 sensitivity: {beta_w2:.4f}")
 
-        loaders_eval = get_mitospace_data_loaders(
-            f'{proj_dir}/data/2024_subdata/',
-            shuffle=False, batch_size=2, to_load=["val"],
-            timesteps=cfg['data_params']['timesteps'],
-            zstacks=cfg['data_params']['zstacks'],
-            samples_per_drug=cfg['data_params']['samples_per_drug'],
-            pick_labels=None
-        )
+    # pca_dim = 100
+    # n_proj = 512
+    # n_perm = 2000
+    #
+    # # Calculate the wasserstein distance between the embeddings of A and A'
+    # S, p = sw2(A_embeddings,
+    #            A_prime_embeddings,
+    #            pca_dim=pca_dim,
+    #            n_proj=n_proj,
+    #            n_perm=n_perm,
+    #            seed=1123)
+    #
+    # print(f"n: {len(A_embeddings)}")
+    # print(f"SW2: {S:.6f}")
+    # print(f"p-value: {p:.6f}")
 
-        train_loader, eval_loader = (loaders_reference["train"], loaders_eval["val"])
+    # # Calculate the differential for the perturbation using wasserstein metric
+    # SA, SB, T, p = differential_sw2(A_embeddings,
+    #                                 A_prime_embeddings,
+    #                                 B_embeddings,
+    #                                 B_prime_embeddings,
+    #                                 pca_dim=pca_dim,
+    #                                 n_proj=n_proj,
+    #                                 n_perm=n_perm,
+    #                                 seed=1123)
+    #
+    # print(f"=== Params ===")
+    # print(f"Distribution Labels:\n"
+    #       f"A: {label_drug_dict[A_label]} ({A_label}, n={len(A_embeddings)})\n"
+    #       f"A': {label_drug_dict[A_prime_label]} ({A_prime_label}), n={len(A_prime_embeddings)})\n"
+    #       f"B: {label_drug_dict[B_label]} ({B_label}, n={len(B_embeddings)})\n"
+    #       f"B': {label_drug_dict[B_prime_label]} ({B_prime_label}, n={len(B_prime_embeddings)})")
+    # print(f"n_proj: {n_proj}")
+    # print(f"n_perm: {n_perm}")
+    # print(f"PCA dim: {pca_dim}")
+    # print(f"Seed: {1123}\n")
+    #
+    # print(f"=== Results ===")
+    # print(f"SW2(A,A') = {SA:.6f}")
+    # print(f"SW2(B,B') = {SB:.6f}")
+    # print(f"T = SA - SB = {T:.6f}")
+    # print(f"Permutation p-value (two-sided) = {p:.6g}")
 
-        train_embeddings, train_images, train_labels, train_im_paths = extract_embeddings_from_model(train_loader,
-                                                                                                     model.model,
-                                                                                                     normalize_embeddings=True,
-                                                                                                     get_images=False,
-                                                                                                     get_labels=True,
-                                                                                                     messup_tmrm=False,
-                                                                                                     visualise_model_layer=False,
-                                                                                                     get_fpaths=True)
-
-        eval_embeddings, eval_images, eval_labels, eval_im_paths = extract_embeddings_from_model(eval_loader, model.model,
-                                                                                                 normalize_embeddings=True,
-                                                                                                 get_images=False,
-                                                                                                 get_labels=True,
-                                                                                                 messup_tmrm=False,
-                                                                                                 visualise_model_layer=False,
-                                                                                                 get_fpaths=True)
-
-    # eval_embeddings, eval_images, eval_labels = train_embeddings, train_images, train_labels
-
-    # Evaluation on cosine similarity
-    if args.dist_metric == 'cosine':
-        print("Evaluating full dimensional embeddings using cosine distance")
-        dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings, train_embeddings, weighted=False,
-                                                        temperature=cfg["training"]["loss"]["temperature"])
-        preds, correct_preds_idxs, incorrect_preds_idxs = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs=dist_matrix_idxs)
-
-        with open(f'{proj_dir}/correct_preds_idxs.pkl', 'wb') as f:
-            pickle.dump(correct_preds_idxs, f)
-        with open(f'{proj_dir}/incorrect_preds_idxs.pkl', 'wb') as f:
-            pickle.dump(incorrect_preds_idxs, f)
-
-        # plot confusion matrix
-        cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
-
-    # Evaluate on L2 Distance
-    if args.dist_metric == 'l2':
-        print("Building Tree")
-        tree = KDTree(train_embeddings)
-        print("Tree Built")
-
-        num_neighbors = [100]
-
-        accs = []
-        for k in num_neighbors:
-            dist, nearest_ind = tree.query(eval_embeddings, k=k)
-            predicted_labels = []
-
-            for top_n in top_ns:
-                correct = 0
-                for i in tqdm(range(len(eval_embeddings))):
-                    eval_lbl = eval_labels[i]
-                    k_nearest_nbs = train_labels[nearest_ind[i]]
-                    top_most_freq_lbls = topKfrequent(k_nearest_nbs, top_n)
-                    correct += 1 if eval_lbl in top_most_freq_lbls else 0
-
-                print(f"------------------Top-{top_n} Evaluation for {k} Neighbors------------------------")
-                print(f"Correct: {correct}; Total: {len(eval_embeddings)}")
-                acc = correct * 100. / len(eval_labels)
-                accs.append(acc)
-                print("Accuracy(%): ", acc)
-
-    # Measure cluster quality in both high and low dimensional space
-    reducer = UMAP(verbose=True, n_components=3, n_neighbors=15, min_dist=0.1, metric='l2')
-    all_embeddings = np.concatenate([train_embeddings, eval_embeddings])
-    all_embeddings_reduced = reducer.fit_transform(all_embeddings.reshape(all_embeddings.shape[0], -1))
-    all_embeddings_reduced = all_embeddings_reduced / np.linalg.norm(all_embeddings_reduced, axis=1)[:, None]
-
-    train_embeddings_reduced = all_embeddings_reduced[:len(train_embeddings)]
-    eval_embeddings_reduced = all_embeddings_reduced[len(train_embeddings):]
-
-    # Evaluation on cosine similarity
-    if args.dist_metric == 'cosine':
-        print("Evaluating umap projected embeddings using cosine distance")
-        dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings_reduced, train_embeddings_reduced)
-        preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, num_neighbors=[100], dist_matrix_idxs=dist_matrix_idxs)
-
-        # plot confusion matrix
-        # cm = plot_cm(eval_labels, preds[1], label_drug_dict)
-
-    # Evaluate on L2 Distance
-    if args.dist_metric == 'l2':
-        print("Building Tree")
-        tree = KDTree(train_embeddings_reduced)
-        print("Tree Built")
-
-        num_neighbors = [100]
-
-        accs = []
-        for k in num_neighbors:
-            dist, nearest_ind = tree.query(eval_embeddings_reduced, k=k)
-            predicted_labels = []
-
-            for top_n in top_ns:
-                correct = 0
-                for i in tqdm(range(len(eval_embeddings_reduced))):
-                    eval_lbl = eval_labels[i]
-                    k_nearest_nbs = train_labels[nearest_ind[i]]
-                    top_most_freq_lbls = topKfrequent(k_nearest_nbs, top_n)
-                    correct += 1 if eval_lbl in top_most_freq_lbls else 0
-
-                print(f"------------------Top-{top_n} Evaluation for {k} Neighbors------------------------")
-                print(f"Correct: {correct}; Total: {len(eval_embeddings_reduced)}")
-                acc = correct * 100. / len(eval_labels)
-                accs.append(acc)
-                print("Accuracy(%): ", acc)
-
-    original_distances = pairwise_distances(all_embeddings)
-    reduced_distances = pairwise_distances(all_embeddings_reduced)
-
-    # Normalize distances (optional but recommended)
-    original_distances_normalized = (original_distances - np.min(original_distances)) / (
-            np.max(original_distances) - np.min(original_distances))
-    reduced_distances_normalized = (reduced_distances - np.min(reduced_distances)) / (
-            np.max(reduced_distances) - np.min(reduced_distances))
-
-    # Flatten the distance matrices to 1D arrays
-    original_distances_flat = original_distances_normalized.flatten()
-    reduced_distances_flat = reduced_distances_normalized.flatten()
-
-    # Compute KL divergence
-    kl_divergence = entropy(original_distances_flat, reduced_distances_flat)
-
-    print("KL Divergence:", kl_divergence)
 

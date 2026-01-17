@@ -1,6 +1,7 @@
 archive/
 runs/
 checkpoints/
+data/
 *.pyc
 *.bak
 *.ckpt

@@ -48,6 +48,7 @@ class Lightweight3DResNet(nn.Module):
         self.augment_pipeline = DataAugmentation(cfg['data_params']['transforms'], zero_mean_norm=True)
         self._with_decoder = True if decoder_checkpoint_path is not None else False
         # self._n_channels = cfg['model_params']['in_channels']
+        self.decoder = None
 
         # Get the channels to use from config and convert to tensor for on-device indexing
         self._channels = cfg['model_params']['channels']
@@ -146,19 +147,23 @@ class Lightweight3DResNet(nn.Module):
 
         # Forward pass through 3D ResNet
         x = self.resnet(x)
-        x = x.view(batch_size, time_steps, -1)  # Reshape for LSTM
+        x_resnet = x.view(batch_size, time_steps, -1)  # Reshape for LSTM
 
         # Forward pass through BiLSTM
-        x, _ = self.lstm(x)
-        x = x[:, -1, :] # Use the last timestep from LSTM output
+        x, _ = self.lstm(x_resnet)
+        # x = x[:, -1, :] # Use the last timestep from LSTM output
 
         # feature embedding
+        x = x.view(batch_size * time_steps, x.size(-1)) # (b * t, d)
         x = self.fc(x)
-
-        # projection head for SimCLR loss eval
         out = self.proj(x)
 
-        return x, out
+        x = x.view(batch_size, time_steps, -1) # (b, t, d)
+
+        # projection head for SimCLR loss eval
+        # out = self.proj(x)
+
+        return x, x_resnet, out
     
 
 if __name__ == '__main__':

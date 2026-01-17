@@ -34,7 +34,9 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
-from simclr.models_simple import Lightweight3DResNet # newly trained model (some dict changes)
+# from simclr.models_simple_exp import Lightweight3DResNet # Getting resnet feats too
+from simclr.models_simple_3d import Lightweight3DResNet # 3D resnet model
+# from simclr.models_simple import Lightweight3DResNet # newly trained model (some dict changes)
 # from simclr.models_simple_original import Lightweight3DResNet
 
 # from simclr.models import MitoSpace4DConvLSTM
@@ -53,21 +55,22 @@ parser.add_argument('--checkpoint_path', help='Checkpoint path',
                     # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115_epoch=161-step=28836-val_loss=0.00.ckpt",
                     # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_decoupled-tmrm_r20251115_epoch=256-step=41120-val_loss=0.00.ckpt",
                     # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_ablated-tmrm_r20251115_epoch=291-step=46720-val_loss=0.00.ckpt",
-                    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps-ckpt_kinetics_ablated-tmrm_r20260105.ckpt"
+                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps-ckpt_kinetics_ablated-tmrm_r20260105.ckpt",
+                    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnet3d_encoded_kinetics_ablated-tmrm_singleframe_r20260108.ckpt"
                     )
 
 parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str, help='Config path.')
 parser.add_argument('--data_path', help='Data to predict',
                     # default="/home/earkfeld/Projects/MitoSpace4D/data/2024v2_encoded_data",
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_summer_new/", # 2024v2 Dataset
+                    # default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data", # 2024v2 Dataset
                     # default="/mnt/DATA_02/2024_data_encoded", # 2024v2 Dataset Encoded
                     # default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data", # Kinetics Dataset
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_data_encoded/", # Kinetics Dataset Encoded
+                    default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data", # Kinetics Dataset Encoded
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data"
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_3b"
                     # default="/run/user/1002/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/leukemia_drug_resistance_data")
-                    #     default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_4",
-                    default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data"
+                    # default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_4",
+                    # default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data"
                     )
 
 parser.add_argument('--decoder_ckpt', help='Path to decoder checkpoint',
@@ -214,19 +217,33 @@ if __name__ == '__main__':
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer-resistance-trial3b_2024v2-model_ablated-tmrm_eps162_r20251204')
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220')
     # embeddings_dir = osp.join(save_dir, "exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220")
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106')
-    embeddings_dir = osp.join(save_dir, '/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all')
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260108_kinetics_morphology_resnet_embeddings_val-set"
+    # embeddings_dir = osp.join(save_dir, '20260108_kinetics_morphology_resnet_embeddings_all')
+    # embeddings_dir = osp.join(save_dir, '20260110_kinetics_morphology_resnet_embeddings_val-set_tscrambled')
+    # embeddings_dir = osp.join(save_dir, '20260111_pten_embeddings_resnet3d-kinetics-300eps_ablated-tmrm')
 
-    # if args.embeddings_dir is not None:
-    #     embeddings_dir = osp.join(save_dir, args.embeddings_dir)
-    # else:
-    #     # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_full_single_frames')
-    #     embeddings_dir = osp.join(save_dir, 'embeddings_kinetics')
-    #     # embeddings_dir = osp.join(save_dir, "embeddings_cancer_umap_testing")
-    
+    # embeddings_dir = osp.join(save_dir, '20260111_kinetics-all-60frames_embeddings_resnet3d-kinetics-300eps_ablated-tmrm')
+    embeddings_dir = osp.join(save_dir, '20260115_kinetics-embeddings_kinetics-resnet3d_ablated_tmrm')
+
+    # embeddings_dir = osp.join(save_dir, 'tmp')
+
+    # embeddings_dir = osp.join(save_dir, '20260108_kinetics_embeddings_tscrambled_2024v2-model_morphology_only')
+    # embeddings_dir = osp.join(save_dir, '20260108_kinetics_morphology_resnet_embeddings_all')
+
+    # embeddings_dir = osp.join("/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/PTEN_deepprofiler_pooled-clones")
+
     os.makedirs(embeddings_dir, exist_ok=True)
 
+    # save merged config and args to embeddings dir
+    with open(osp.join(embeddings_dir, "config.yaml"), "w") as f:
+        yaml.safe_dump(cfg, f)
+
+    with open(osp.join(embeddings_dir, "args.yaml"), "w") as f:
+        yaml.safe_dump(vars(args), f)
+
     checkpoint_path = args.checkpoint_path
+    print(f"Ckpt Path: {args.checkpoint_path}")
+    print(f"Data Path: {args.data_path}")
     image_paths = None  # define upfront; populated only in visualize pass or left None
 
     drug_labels_dict = {}
@@ -267,36 +284,16 @@ if __name__ == '__main__':
                                 apply_aug=False, 
                                 decoder_checkpoint_path=args.decoder_ckpt,
                                 )
-    
-    # if args.decoder_ckpt is not None:
-    #     decoder=model.decoder
-    # else:
-    #     decoder=None
 
     model = SimCLRRunner.load_from_checkpoint(checkpoint_path, model=model, cfg=cfg, strict=False).model
     model.eval().to(device)
+
+    decoder = model.decoder
 
     for param in model.parameters():
         param.requires_grad = False
 
     if args.save_embeddings:
-
-        # # Build and load model
-        # model = Lightweight3DResNet(embedding_size=2048, 
-        #                             # cfg_aug=cfg['data_params']['transforms'],
-        #                             cfg=cfg, 
-        #                             apply_aug=False, 
-        #                             decoder_checkpoint_path=args.decoder_ckpt,
-        #                             # decoder_checkpoint_path=None,
-        #                             )
-        # if args.decoder_ckpt is not None:
-        #     decoder=model.decoder
-
-        # model = SimCLRRunner.load_from_checkpoint(checkpoint_path, model=model, cfg=cfg, strict=False).model
-        # model.eval().to(device)
-
-        # for param in model.parameters():
-        #     param.requires_grad = False
 
         data_paths = [args.data_path]
         loaders = []
@@ -329,12 +326,6 @@ if __name__ == '__main__':
                     im, lbl, img_pth = batch[0], batch[1], batch[2]
                 else:
                     im, lbl, img_pth = batch["images"], batch["classes"], batch["image_paths"]
-
-                # -- [EXPERIMENT] Keep only the first 10 timesteps for the images
-                # im = im[:, :, :10, :, :, :]  # (B, C, T, D, H, W)
-
-                # -- [EXPERIMENT] Copy mitotracker channel over the TMRM
-                # im[:, 0, :, :, :, :] = im[:, 1, :, :, :, :]
 
                 B = im.shape[0]
 
@@ -379,8 +370,10 @@ if __name__ == '__main__':
                     img_pth_list.extend(img_pth)
 
                     with torch.no_grad():
+                        # im = einops.rearrange(im, 'b t c d h w -> t b c d h w')
                         # model expects (B, T, C, D, H, W)
                         features, _ = model(im.to(device))
+                        # features = einops.rearrange(features, 't d -> 1 t d')  # (1, T, D)
                         # print(features.size())
                         features = F.normalize(features, dim=-1)  # (B, 2048) or (B, T, 2048)
 
@@ -392,6 +385,7 @@ if __name__ == '__main__':
         
         # Convert lists to arrays and save once
         embeddings_arr = np.asarray(embeddings_list, dtype=np.float32)
+
         labels_arr = np.asarray(labels_list, dtype=np.int32)
         np.save(emb_raw_path, embeddings_arr)
         np.save(lbl_path, labels_arr)
@@ -435,16 +429,6 @@ if __name__ == '__main__':
                                 np.array(list(drug_labels_dict.keys())),
                                 scope="global",
                                 control_label=args.control_label,)
-            # try:
-                # labels_all = np.load(lbl_path)  # (N,)
-                # ctrl_mask = np.array([label_drug_dict.get(int(l)) == 'control' for l in labels_all], dtype=bool)
-                # if ctrl_mask.sum() > 0:
-                #     feats = tvn_global(feats, ctrl_mask, eps=1e-6, ledoit_wolf=False).astype(np.float32)
-                #     print(f"Applied TVN using {ctrl_mask.sum()} control samples (control).")
-                # else:
-                #     print("Warning: --tvn set but no control samples found in labels; skipping TVN.")
-            # except Exception as e:
-            #     print(f"Warning: TVN failed with error: {e}. Proceeding without TVN.")
 
         N_total = feats.shape[0]
 
@@ -488,21 +472,6 @@ if __name__ == '__main__':
                 min_dist=0.01,
                 metric='cosine',
             )
-
-        # #-- Kinetics CuML umap (3D embeddings) - settings for large N
-        # reducer = UMAP(
-        #     n_components=3,
-        #     n_neighbors=25,
-        #     min_dist=0.1,
-        #     # spread=1.5,
-        #     negative_sample_rate=2,
-        #     local_connectivity=3,
-        #     metric='cosine',
-        #     n_epochs=1000,
-        #     learning_rate=0.5,
-        #     repulsion_strength=1.5,
-        #     # init='pca',
-        # )
 
             emb3d = reducer.fit_transform(feats_red).astype(np.float32)
             # Save the transform for future use

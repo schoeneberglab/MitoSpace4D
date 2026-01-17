@@ -1,9 +1,8 @@
-
 import pickle
 import random
 
 import numpy as np
-import umap
+from umap import UMAP
 from tqdm import tqdm
 from sklearn.neighbors import KDTree
 import pandas as pd
@@ -24,6 +23,7 @@ from utils.vis import plot_cm
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 
+
 global device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 from scipy.stats import entropy
@@ -31,8 +31,6 @@ from scipy.stats import entropy
 import torch.multiprocessing
 
 torch.multiprocessing.set_sharing_strategy('file_system')
-
-RNG_SEED = None  # 1123
 
 parser = argparse.ArgumentParser(description='MitoSpace Evaluation')
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
@@ -42,6 +40,10 @@ parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
 parser.add_argument('--dist_metric', default='cosine',
                     type=str, help='Metric to use for distance calculation between embeddings')
+parser.add_argument('--labels', nargs='+', type=int, default=None, 
+                    help='List of labels to evaluate on')
+# parser.add_argument('--balance_labels', action='store_true', default=False,
+#                     help='Balance the label counts in the dataset')
 
 
 def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs,
@@ -273,50 +275,53 @@ def cosine_distance(eval_embeddings, train_embeddings, weighted=False, temperatu
 
     dist_matrix_idxs = (-1 * dist_matrix).argsort(1)  # because we want to sort in descending order of distances
     dist_matrix_sorted = np.take_along_axis(dist_matrix, dist_matrix_idxs, axis=1)
-
     return dist_matrix_sorted, dist_matrix_idxs
+
 
 def l2_distance(eval_embeddings, train_embeddings):
     dist_matrix = np.linalg.norm(eval_embeddings[:, None] - train_embeddings[None, :], axis=-1)
     dist_matrix = dist_matrix.argsort(1)
-
     return dist_matrix
 
-def balance_label_counts(embeddings, labels, seed=RNG_SEED, n_samples=None):
-    """
-    Downsample each class to the same number of samples (the minimum class count),
-    and shuffle the balanced set deterministically.
-    """
+def balance_label_counts(embeddings, labels, seed=1123, shuffle=True):
+    embeddings = np.asarray(embeddings)
     labels = np.asarray(labels)
-    unique_labels = np.unique(labels)
 
-    # Count the number of occurrences of each label
-    label_counts = {lbl: int(np.sum(labels == lbl)) for lbl in unique_labels}
-    print(label_counts)
-
-    min_count = min(label_counts.values())
-
-    if n_samples is not None:
-        # Limit to n_samples if specified and if it's less than min_count
-        min_count = min(min_count, n_samples)
+    if embeddings.shape[0] != labels.shape[0]:
+        raise ValueError(f"embeddings has {embeddings.shape[0]} rows but labels has length {labels.shape[0]}")
 
     rng = np.random.default_rng(seed)
-    selected_indices = []
 
+    unique_labels = np.unique(labels)
+    label_counts = {lbl: np.sum(labels == lbl) for lbl in unique_labels}
+    min_count = min(label_counts.values())
+
+    indices = []
     for lbl in unique_labels:
         lbl_indices = np.where(labels == lbl)[0]
-        # Randomly select exactly min_count indices for this label
-        chosen = rng.choice(lbl_indices, size=min_count, replace=False)
-        selected_indices.append(chosen)
+        selected = rng.choice(lbl_indices, size=min_count, replace=False)
+        indices.append(selected)
 
-    selected_indices = np.concatenate(selected_indices)
-    # Shuffle so downstream slicing doesn't group by label
-    rng.shuffle(selected_indices)
+    indices = np.concatenate(indices)
 
-    return embeddings[selected_indices], labels[selected_indices]
+    # Re-shuffle the labels
+    if shuffle:
+        rng.shuffle(indices)
 
-def split_dataset(embeddings, labels, split_perc=0.9, per_label=True, seed=RNG_SEED):
-    if per_label:
+    return embeddings[indices], labels[indices]
+
+def filter_by_label(pick_labels, embeddings, labels, drug_labels_dict, label_drug_dict):
+    drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in pick_labels}
+    label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in pick_labels}
+
+    # mask the embeddings and labels
+    mask = np.isin(labels, pick_labels)
+    embeddings = embeddings[mask]
+    labels = labels[mask]
+    return embeddings, labels, drug_labels_dict, label_drug_dict
+
+def split_dataset(embeddings, labels, split_perc=0.9, balanced=True, seed=1123):
+    if balanced:
         # Split each label separately to maintain class distribution
         unique_labels = np.unique(labels)
         train_indices = []
@@ -330,10 +335,10 @@ def split_dataset(embeddings, labels, split_perc=0.9, per_label=True, seed=RNG_S
         # Split the entire dataset at once
         all_indices = np.arange(len(labels))
         train_indices, val_indices = train_test_split(all_indices, train_size=split_perc, random_state=seed, shuffle=True)
+
     train_indices = np.array(train_indices)
     val_indices = np.array(val_indices)
     return embeddings[train_indices], labels[train_indices], embeddings[val_indices], labels[val_indices]
-
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -342,18 +347,34 @@ if __name__ == "__main__":
     
     already_have_embeddings = True
     balance_classes = True
+    balanced_split = True
+    
     split_perc = 0.9
-    split_per_label = True
-    n_samples = 465 # per class; uses the minimum class count from the selected labels if None
-
-    pick_datasets = ["20250922-1", "20250922-2", "20250922-3", "20250925-1", "20250925-2", "20250925-3"]
-    pick_labels = [30, 31]
-
     top_ns = cfg["evaluate"]["top_ns"]
 
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames_modified_labels_for_eval"
-    embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20251002_single_frames_modified_labels_for_eval"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_debug_eps149_r20251109"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps138_r20251118"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps145_r20251119"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/archived_linuxc_embeddings/embeddings_2024v2-encoded_ablated-tmrm_eps162_r20251120"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_decoupled-tmrm_eps256_r20251120"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_ablated-tmrm_eps291_r20251120"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_2024v2-model_ablated-tmrm_eps162_r20251124"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp1_modified_embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260108_kinetics_morphology_resnet_embeddings_val-set"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260108_kinetics_morphology_resnet_embeddings_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260109_kinetics_morphology_resnet_embeddings_all_tscrambled"
+
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/archived_linuxc_embeddings/embeddings_2024v2-encoded_ablated-tmrm_eps162_r20251120"
+
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/2024v2/2024v2_deepprofiler"
+    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260111_kinetics-all-60frames_embeddings_resnet3d-kinetics-300eps_ablated-tmrm"
+
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/PTEN_deepprofiler_pooled-clones"
 
     drug_labels_dict = {}
     label_drug_dict = {}
@@ -363,34 +384,50 @@ if __name__ == "__main__":
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
 
-    if pick_labels is not None:
-        # Remove any labels not in pick_labels
-        drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in pick_labels}
-        label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in pick_labels}
+    # args.labels = [33, 34]
+    # args.labels = [33, 34, 35]
 
     if already_have_embeddings:
+        print("Loading pre-extracted embeddings...")
         embeddings = np.load(
             f'{embeddings_dir}/embeddings_raw.npy')
         labels = np.load(
             f'{embeddings_dir}/labels.npy')
-        print(f"Embeddings Shape: {embeddings.shape}")
-        print(f"Labels Shape: {labels.shape}")
-        
-        df_img_paths = pd.read_csv(f'{embeddings_dir}/image_paths.csv', header=None)
-        img_paths = df_img_paths[0].tolist()
 
-        if pick_datasets is not None:
-            keep_idxs = []
-            for i, path in enumerate(img_paths):
-                if any(ds in path for ds in pick_datasets):
-                    keep_idxs.append(i)
-            embeddings = embeddings[keep_idxs]
-            labels = labels[keep_idxs]
+        # # Splitting Kinetics-60 frames into 3x20 for evaluation
+        # new_labels = []
+        # new_embeddings = []
+        # for i in range(embeddings.shape[0]):
+        #     emb = np.split(embeddings[i], 3, axis=0)
+        #     lbl = [labels[i]]*3
+        #     new_embeddings.extend(emb)
+        #     new_labels.extend(lbl)
+        # embeddings = np.array(new_embeddings)
+        # labels = np.array(new_labels)
+        
+        # Filter the drug label dicts to only include the labels present in the dataset
+        unique_labels_in_dataset = set(labels)
+        drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in unique_labels_in_dataset}
+        label_drug_dict = {label: drug for label, drug  in label_drug_dict.items() if label in unique_labels_in_dataset}
+
+        # Shuffle the labels and embeddings
+        np.random.seed(1123)
+        indices = np.arange(len(labels))
+        np.random.shuffle(indices)
+        embeddings = embeddings[indices]
+        labels = labels[indices]
+
+        # Normalize the embeddings
+        embeddings = embeddings / np.linalg.norm(embeddings, axis=-1, keepdims=True)
+
+        if args.labels:
+            embeddings, labels, drug_labels_dict, label_drug_dict = filter_by_label(args.labels, embeddings, labels, drug_labels_dict, label_drug_dict)
         
         if balance_classes:
-            embeddings, labels = balance_label_counts(embeddings, labels, n_samples=n_samples)
+            embeddings, labels = balance_label_counts(embeddings, labels)
             # balance_label_counts(embeddings, labels)
             print(f"Balanced to {len(np.unique(labels))} classes with {np.bincount(labels)} samples each")
+            print({k: (labels == k).sum() for k in np.unique(labels)})
 
         # shuffle them with seed 1123
         # random.seed(1123)
@@ -402,11 +439,14 @@ if __name__ == "__main__":
         # len_all_data = round(len(labels) * 1.)
         # train_split = round(len_all_data * split_perc)
         # val_split = round(len_all_data * (1 - split_perc))
-
+        #
         # train_embeddings, eval_embeddings = embeddings[:train_split], embeddings[train_split: train_split + val_split]
         # train_labels, eval_labels = labels[:train_split], labels[train_split: train_split + val_split]
 
-        train_embeddings, train_labels, eval_embeddings, eval_labels = split_dataset(embeddings, labels, split_perc=split_perc, per_label=True)
+        train_embeddings, train_labels, eval_embeddings, eval_labels = split_dataset(embeddings,
+                                                                                     labels,
+                                                                                     split_perc=split_perc,
+                                                                                     balanced=balanced_split)
 
         # train_embeddings = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/embeddings.npy')
         # train_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings/labels.npy')
@@ -421,12 +461,15 @@ if __name__ == "__main__":
             eval_embeddings = eval_embeddings[:, -1]  # take only the final time step
 
     else:
+        print("Generating embeddings...")
         model = Lightweight3DResNet(embedding_size=2048, 
-                                    cfg_aug=cfg['data_params']['transforms'],
+                                    cfg=cfg,
+                                    # cfg_aug=cfg['data_params']['transforms'],
                                     apply_aug=False)
 
         # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
-        checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt"
+        # checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt"
+        checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=138-step=24742-val_loss=0.00.ckpt"
         dataset_name = cfg["evaluate"]["dataset"]
 
         # print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
@@ -487,7 +530,13 @@ if __name__ == "__main__":
             pickle.dump(incorrect_preds_idxs, f)
 
         # plot confusion matrix
-        cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False, vmin=0., vmax=1.)  # top 1 confusion matrix
+        cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
+
+        # # save to file
+        # # np.save(f'{proj_dir}/lstm_top1_cm.npy', cm)
+        #
+        # label_names = np.array([v for v in label_drug_dict.values()])
+        # np.save(f"{proj_dir}/label_names_cm.npy", label_names)
 
     # Evaluate on L2 Distance
     if args.dist_metric == 'l2':
@@ -517,7 +566,7 @@ if __name__ == "__main__":
                 print("Accuracy(%): ", acc)
 
     # Measure cluster quality in both high and low dimensional space
-    reducer = umap.UMAP(verbose=True, n_components=3, n_neighbors=15, min_dist=0.1, metric='l2')
+    reducer = UMAP(verbose=True, n_components=3, n_neighbors=15, min_dist=0.1, metric='l2')
     all_embeddings = np.concatenate([train_embeddings, eval_embeddings])
     all_embeddings_reduced = reducer.fit_transform(all_embeddings.reshape(all_embeddings.shape[0], -1))
     all_embeddings_reduced = all_embeddings_reduced / np.linalg.norm(all_embeddings_reduced, axis=1)[:, None]
@@ -578,3 +627,4 @@ if __name__ == "__main__":
     kl_divergence = entropy(original_distances_flat, reduced_distances_flat)
 
     print("KL Divergence:", kl_divergence)
+

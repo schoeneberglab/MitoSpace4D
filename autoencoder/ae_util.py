@@ -7,7 +7,7 @@ from tqdm import tqdm
 # UPDATE THESE IF NEEDED
 from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
 from autoencoder.autoencoder_runner import AutoEncoderRunner
-CKPT_PATH = "/home/earkfeld/Projects/MitoSpace4D/autoencoder/mitospace_resnet_autoencoder_20251018.ckpt"
+CKPT_PATH = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
 
 class AEUtil:
     def __init__(self, ckpt_path=CKPT_PATH):
@@ -39,7 +39,7 @@ class AEUtil:
         """
 
         encoded = np.load(path)  # (T,latent_dim,D,H,W)
-        print(encoded.shape)
+        # print(encoded.shape)
         with torch.no_grad():
             z = torch.from_numpy(encoded).unsqueeze(0).float().to(self.device)  # (1,T,latent_dim,D,H,W)
             x_recon = self.decoder(z)                                           # (1,T,C,Z,Y,X)

@@ -341,7 +341,7 @@ def split_dataset(embeddings, labels, split_perc=0.9, per_label=True, seed=1123,
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
-    proj_dir = "/home/earkfeld/Projects/MitoSpace4D"
+    proj_dir = "/"
     
     already_have_embeddings = True
     balance_classes = False

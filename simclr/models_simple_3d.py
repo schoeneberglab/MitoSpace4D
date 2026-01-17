@@ -8,6 +8,7 @@ from simclr.augmentations import DataAugmentation
 from autoencoder.autoencoder_runner import AutoEncoderRunner
 from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
 
+
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(Basic3DBlock, self).__init__()
@@ -33,13 +34,14 @@ class Basic3DBlock(nn.Module):
         out += identity
         return F.relu(out)
 
+
 class Lightweight3DResNet(nn.Module):
-    def __init__(self, 
+    def __init__(self,
                  embedding_size=2048,
-                 cfg=None, 
-                #  cfg_aug=None, 
-                 apply_aug=False, 
-                 decoder_checkpoint_path=None
+                 cfg=None,
+                 #  cfg_aug=None,
+                 apply_aug=False,
+                 decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
                  ) -> None:
         super(Lightweight3DResNet, self).__init__()
 
@@ -52,19 +54,20 @@ class Lightweight3DResNet(nn.Module):
         # Get the channels to use from config and convert to tensor for on-device indexing
         self._channels = cfg['model_params']['channels']
         print(f"Using channels: {self._channels} for input.")
-        
+
         in_channels = len(self._channels)
         self._channels = torch.tensor(self._channels).to(torch.int32)
-        
+        self.decoder = None
+
         if self._with_decoder:
             dec_checkpoint_path = decoder_checkpoint_path
             ae_model = MitoSpace3DAutoencoder()
             ae_model = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=ae_model)
-        
+
             self.decoder = ae_model.model.decoder
             self.decoder.eval()
 
-            del ae_model # Delete the full model to free up memory
+            del ae_model  # Delete the full model to free up memory
 
             # Freeze decoder parameters
             for param in self.decoder.parameters():
@@ -93,14 +96,15 @@ class Lightweight3DResNet(nn.Module):
         )
 
         # BiLSTM for temporal encoding
-        self.lstm = nn.LSTM(input_size=512, hidden_size=1024, num_layers=2, batch_first=True, bidirectional=cfg['model_params']['bidirectional'])
+        # self.lstm = nn.LSTM(input_size=512, hidden_size=1024, num_layers=2, batch_first=True, bidirectional=cfg['model_params']['bidirectional'])
 
         # Final fully connected layer for embedding
-        self.fc = nn.Linear(1024 * 2, embedding_size) if cfg['model_params']['bidirectional'] else nn.Linear(1024, embedding_size)
+        # self.fc = nn.Linear(1024 * 2, embedding_size) if cfg['model_params']['bidirectional'] else nn.Linear(1024, embedding_size)
+        self.fc = nn.Linear(512, embedding_size)
 
         # Projection head for SimCLR
         self.proj = nn.Sequential(
-            nn.Linear(2048, 512, bias=False), 
+            nn.Linear(2048, 512, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Linear(512, 512, bias=True)
@@ -127,17 +131,25 @@ class Lightweight3DResNet(nn.Module):
 
                 decoded_chunks = []
                 for i in range(0, b, micro_bs):
-                    chunk = x[i:i + micro_bs]          # (micro_bs, t, c, d, h, w)
-                    out   = self.decoder(chunk)        # same shape, (micro_bs, t, c, d, h, w)
+                    chunk = x[i:i + micro_bs]  # (micro_bs, t, c, d, h, w)
+                    out = self.decoder(chunk)  # same shape, (micro_bs, t, c, d, h, w)
                     decoded_chunks.append(out)
 
                 # Concatenate all decoded chunks back along the batch dimension
-                x = torch.cat(decoded_chunks, dim=0)   # (b, t, c, d, h, w)
+                x = torch.cat(decoded_chunks, dim=0)  # (b, t, c, d, h, w)
+
+        # keep single frame in time dimension
+        # x = x[:, -1:, ...]  # last frame
+        # time_idx = torch.randint(0, x.size(1), (1,)).item() # Random timepoint
+        # x = x[:, time_idx:time_idx+1, ...]  # (b, 1, c, d, h, w)
+
+        # EVAL ONLY
+        x = einops.rearrange(x, "b t c d h w -> t b c d h w")
 
         x = self.augment_pipeline(x) if self.apply_aug else (2 * x - 1)
-        
+
         # Keep only the selected channels
-        x = x[:, :, self._channels, ...] # (b, t, c, d, h, w)
+        x = x[:, :, self._channels, ...]  # (b, t, c, d, h, w)
 
         batch_size, time_steps, channels, depth, height, width = x.size()
 
@@ -146,11 +158,12 @@ class Lightweight3DResNet(nn.Module):
 
         # Forward pass through 3D ResNet
         x = self.resnet(x)
-        x = x.view(batch_size, time_steps, -1)  # Reshape for LSTM
 
-        # Forward pass through BiLSTM
-        x, _ = self.lstm(x)
-        x = x[:, -1, :] # Use the last timestep from LSTM output
+        # TRAINING Reshape to (batch_size, feature_size=512)
+        # x = x.view(batch_size, -1)
+
+        # EVAL ONLY
+        x = x.view(batch_size * time_steps, -1)
 
         # feature embedding
         x = self.fc(x)
@@ -158,16 +171,19 @@ class Lightweight3DResNet(nn.Module):
         # projection head for SimCLR loss eval
         out = self.proj(x)
 
+        # EVAL ONLY
+        x = einops.rearrange(x, "t d -> 1 t d")
+
         return x, out
-    
+
 
 if __name__ == '__main__':
     cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")
     # Initialize model and print the output shape
-    model = Lightweight3DResNet(embedding_size=2048, 
-                                cfg_aug=cfg['data_params']['transforms'],
+    model = Lightweight3DResNet(embedding_size=2048,
+                                # cfg_aug=cfg['data_params']['transforms'],
                                 apply_aug=True).cuda()
-    
+
     # print number of parameters
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     sample_input = torch.randn(1, 20, 2, 30, 256, 256).cuda()  # Example input

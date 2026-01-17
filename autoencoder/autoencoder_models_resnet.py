@@ -197,7 +197,6 @@ class MitoSpace3DAutoencoder(nn.Module):
 if __name__ == '__main__':
     batch_size = 1
     autoencoder = MitoSpace3DAutoencoder()
-    # summary(autoencoder, input_size=(10, 2, 60, 256, 256), batch_size=batch_size)
 
     encoder = MitoSpace3DEncoder(latent_dim=4).cuda()
     decoder = MitoSpace3DDecoder(latent_dim=4, output_dim=2).cuda()
