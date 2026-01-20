@@ -234,7 +234,7 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
                 # Compute contrastive loss
                 # SupConLoss will internally reshape features from (batch_size * n_views, feature_dim)
                 # to (batch_size, n_views, feature_dim)
-                loss_contrastive, (acc1, acc5) = contrastive_loss_fn(
+                loss, (acc1, acc5) = contrastive_loss_fn(
                     features=features,  # Pass flat tensor: (2*batch_size, hidden_size)
                     bs=batch_size,
                     n_views=2,
@@ -243,15 +243,15 @@ def incremental_train_z_predictor(cfg, batch_group_size=2):
                 
                 # Optional: Add volume loss using logits from classification head
                 # Get logits for volume loss computation
-                logits_view1 = model(pixel_values=pixel_values_view1).logits
-                # logits_view2 = model(pixel_values=pixel_values_view2).logits
-                # logits_combined = torch.cat([logits_view1, logits_view2], dim=0)
+                # logits_view1 = model(pixel_values=pixel_values_view1).logits
+                # # logits_view2 = model(pixel_values=pixel_values_view2).logits
+                # # logits_combined = torch.cat([logits_view1, logits_view2], dim=0)
                 
-                loss_vol = vol_loss_fn(logits_view1, labels, volume_ids)
-                #                       torch.cat([volume_ids, volume_ids], dim=0))
+                # loss_vol = vol_loss_fn(logits_view1, labels, volume_ids)
+                # #                       torch.cat([volume_ids, volume_ids], dim=0))
                 
-                # # Combine losses (you can adjust weights)
-                loss = loss_contrastive + 0.3 * loss_vol  # Weight volume loss lower
+                # # # Combine losses (you can adjust weights)
+                # loss = loss_contrastive + 0.3 * loss_vol  # Weight volume loss lower
                 
                 loss.backward()
                 optimizer.step()
@@ -282,9 +282,9 @@ if __name__ == "__main__":
     
     cfg.base_paths = [f"{cfg.master_base_path}{i}" for i in os.listdir(cfg.master_base_path)]
     cfg.image_filepaths = []
-    cfg.batch_size = 8
+    cfg.batch_size = 6
     cfg.val_filepaths = []
-    
+    cfg.learning_rate = 1e-6
     cfg.save_path = "checkpoint_contrastive_nocodazole_colchicine"
     if not os.path.exists(cfg.save_path):
         os.makedirs(cfg.save_path, exist_ok=True)

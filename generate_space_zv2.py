@@ -297,7 +297,7 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
 # 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Visualize existing embeddings as MitoSpace')
-    parser.add_argument('--checkpoint_dir', default='checkpoint_combined_drugs', type=str,
+    parser.add_argument('--checkpoint_dir', default='checkpoint_contrastive_nocodazole_colchicine', type=str,
                         help='Path to checkpoint directory containing embeddings/')
     parser.add_argument('--colors_file', default='extraction_utils/colors_eric.txt',
                         type=str, help='Path to colors file for label palette')

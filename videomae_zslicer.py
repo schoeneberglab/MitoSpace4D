@@ -112,7 +112,8 @@ class Config:
     # master_base_path = "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/"
     # master_base_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/"
     # master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
-    master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
+    # master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
+    master_base_path = '/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/'
     # --- Channel Handling ---
     # True to create a 3rd channel from 'functional_masked' output of normalize_and_mask
     create_third_channel = False 
@@ -132,7 +133,7 @@ class Config:
     device = "cuda:0"
     save_path = ""
 
-# Initialize file paths after class definition
+# # Initialize file paths after class definition
 Config.base_paths = [f"{Config.master_base_path}{i}" for i in os.listdir(Config.master_base_path)]
 Config.image_filepaths = []
 Config.val_filepaths = []
