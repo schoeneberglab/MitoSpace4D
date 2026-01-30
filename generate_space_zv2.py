@@ -93,7 +93,7 @@ def maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names):
     if not osp.exists(label_names_path) and label_names.size > 0:
         np.save(label_names_path, label_names)
 
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=None, files=None, show=True, colors_palette=None):
     """
@@ -141,9 +141,10 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
     
     # Allow interactive filtering: Pick only some labels/classes
 
-    # pick_names = ['control', 'nocodazole', 'valinomycin', 'nigericin', 'h2o2', 'mitomycinc',  'cisplatin']#'h2o2', 'mitomycinC', 'p110', 'cisplatin']
-    # pick_names = []
-    pick_names = list(np.unique(label_names))
+    # pick_names = ['control', 'mdivi1']#'nocodazole', 'valinomycin', 'nigericin', 'h2o2', 'mitomycinc',  'cisplatin']#'h2o2', 'mitomycinC', 'p110', 'cisplatin']
+    pick_names = []
+    if not pick_names and label_names is not None:
+        pick_names = list(np.unique(label_names))
     # print(pick_names)
     # After loading label_names and labels, filter only those in pick_names
         # Set color values per point if palette and labels are available (with fallback)
@@ -167,47 +168,19 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
         files = [f for f, keep in zip(files, mask) if keep]
         # Now the resulting arrays contain only selected embeddings
 
-
-    fig = plt.figure(figsize=(18, 14))
-    ax = fig.add_subplot(111, projection="3d")
-    plt.subplots_adjust(left=0.09, right=0.94, top=0.93, bottom=0.08)
-    if scatter_colors is not None and len(scatter_colors) == len(x):
-        pts = ax.scatter(x, y, z, s=20, alpha=0.8, c=scatter_colors)
-    else:
-        pts = ax.scatter(x, y, z, s=20, alpha=0.8)
-    plt.title("Click on a point to show its image\n(Use mouse wheel to zoom!)")
-
-    # Add a legend for the labels, if available (one dot per class with color)
-    if label_names is not None and colors_palette is not None:
-        legend_patches = []
-        for i, label_name in enumerate(label_names):
-            if isinstance(colors_palette, dict):
-                color = colors_palette.get(i, (0.6, 0.6, 0.6))
-            else:
-                color = colors_palette[i] if i < len(colors_palette) else (0.6, 0.6, 0.6)
-            legend_patches.append(mpatches.Patch(color=color, label=str(label_name)))
-        if legend_patches:
-            ax.legend(handles=legend_patches, bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-
-    # store [ind] in the plot object; workaround for old matplotlib
-    selected_idx = [None]
-
-    def onpick(event):
-        if hasattr(event, 'ind'):
-            ind = event.ind[0]
-            selected_idx[0] = ind
-            highlight_and_show(ind)
-    
     def highlight_and_show(idx):
-        ax.scatter([x[idx]], [y[idx]], [z[idx]], s=100, c="red", marker="*", alpha=1.0)
-        fig.canvas.draw_idle()
+        """Handle point selection and display image"""
         fname = files[idx]
         print(f"Selected idx: {idx}, file: {fname}")
         # Infer folder/image from fname: e.g. embeddings_<folder>_<imgname>.npy
         parts = fname.split("_")
         if len(parts) >= 3:
             folder = parts[1]
+            if "-1" not in folder:
+                folder = folder + "-1"
             img_basename = "_".join(parts[2:]).replace(".npy", "")
+            if "-0" not in img_basename:
+                img_basename = img_basename + "-0"
         else:
             folder = "unknown"
             img_basename = fname.replace(".npy", "")
@@ -219,7 +192,8 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
             # osp.join(embeddings_dir, folder),
             # osp.abspath(osp.join(embeddings_dir, '..', folder))
             # "/media/mayunagupta/easystore/MitoSpace4D/data/2024_data/processed_data/",
-            "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/"
+            # "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/20240830-1/",
+            '/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/'
             # "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/",
             # "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
 
@@ -230,6 +204,7 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
             for d in possible_dirs:
                 fullpath = osp.join(d, folder, img_basename + ext)
                 
+                
                 print(f"Found path: {fullpath}")
                 if osp.exists(fullpath):
                     found_path = fullpath
@@ -239,59 +214,354 @@ def select_and_plot_embedding(embeddings_dir, embeddings_umap=None, embeddings=N
                 break
         # Now, candidate_paths contains all checked paths in order.
 
-        # view_4d_image_with_sliders(found_path, position = idx)
-        viewer = napari.Viewer(ndisplay=3)
-        add_to_viewer(viewer, found_path, translate=(0, 0), channel=0)
-        add_to_viewer(viewer, found_path, translate=(0, 256 + 10), channel=1)
-        napari.run()
+        view_4d_image_with_sliders(found_path, position = idx)
+        # viewer = napari.Viewer(ndisplay=3)
+        # add_to_viewer(viewer, found_path, translate=(0, 0), channel=0)
+        # add_to_viewer(viewer, found_path, translate=(0, 256 + 10), channel=1)
+        # napari.run()
 
-    # --- Zooming interaction support for 3D plot ---
-    # https://stackoverflow.com/questions/24177974/matplotlib-3d-plot-zooming-with-scroll-wheel
-    def zoom_factory(ax, base_scale = 1.2):
-        def zoom_fun(event):
-            # Only act on scroll event in axes and if it's our axes
-            if event.inaxes != ax:
-                return
+    # Prepare colors for Plotly (convert RGB tuples to hex strings)
+    def rgb_to_hex(rgb):
+        """Convert RGB tuple to hex string"""
+        if isinstance(rgb, (list, tuple, np.ndarray)):
+            if len(rgb) >= 3:
+                r, g, b = int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
+                return f'#{r:02x}{g:02x}{b:02x}'
+        return '#999999'  # default gray
 
-            # For 3D axes, limit to zooming along all 3 axes equally
-            scale_factor = 1
-            if event.button == 'up':
-                # zoom in
-                scale_factor = 1/base_scale
-            elif event.button == 'down':
-                # zoom out
-                scale_factor = base_scale
+    # Convert scatter_colors to hex if available
+    if scatter_colors is not None and len(scatter_colors) == len(x):
+        colors_hex = [rgb_to_hex(c) for c in scatter_colors]
+    else:
+        colors_hex = None
+
+    # Create hover text with file names
+    hover_texts = [f"Index: {i}<br>File: {f}" for i, f in enumerate(files)]
+
+    # Create the 3D scatter plot
+    fig = go.Figure()
+
+    # If we have colors, we might want to group by label for legend
+    if label_names is not None and colors_palette is not None and labels is not None:
+        # Group points by label for better legend
+        unique_labels = np.unique(labels)
+        for label_val in unique_labels:
+            mask_label = labels == label_val
+            x_subset = x[mask_label]
+            y_subset = y[mask_label]
+            z_subset = z[mask_label]
+            hover_subset = [hover_texts[i] for i in range(len(hover_texts)) if mask_label[i]]
+            
+            # Get color for this label
+            if isinstance(colors_palette, dict):
+                color = colors_palette.get(int(label_val), (0.6, 0.6, 0.6))
             else:
-                # unknown event, ignore
-                return
+                color = colors_palette[int(label_val)] if (int(label_val) < len(colors_palette) and label_val >= 0) else (0.6, 0.6, 0.6)
+            color_hex = rgb_to_hex(color)
+            
+            # Get label name
+            label_name = str(label_names[label_val]) if label_val < len(label_names) else f"Label {label_val}"
+            
+            fig.add_trace(go.Scatter3d(
+                x=x_subset,
+                y=y_subset,
+                z=z_subset,
+                mode='markers',
+                marker=dict(
+                    size=5,
+                    color=color_hex,
+                    opacity=0.8,
+                ),
+                name=label_name,
+                text=hover_subset,
+                hovertemplate='%{text}<extra></extra>',
+                customdata=np.where(mask_label)[0],  # Store original indices
+            ))
+    else:
+        # Single trace with all points
+        fig.add_trace(go.Scatter3d(
+            x=x,
+            y=y,
+            z=z,
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=colors_hex if colors_hex else None,
+                opacity=0.8,
+            ),
+            text=hover_texts,
+            hovertemplate='%{text}<extra></extra>',
+            customdata=list(range(len(x))),  # Store original indices
+        ))
 
-            xlim = ax.get_xlim3d()
-            ylim = ax.get_ylim3d()
-            zlim = ax.get_zlim3d()
+    # Update layout
+    fig.update_layout(
+        title="Click on a point to show its image<br>(Use mouse wheel to zoom!)",
+        scene=dict(
+            xaxis_title="UMAP 1",
+            yaxis_title="UMAP 2",
+            zaxis_title="UMAP 3",
+        ),
+        width=1200,
+        height=900,
+        hovermode='closest',
+        legend=dict(
+            title="Labels",
+            x=-0.07,      # Move legend to the left out of plot area
+            y=1,
+            xanchor='right',
+            yanchor='top',
+            bgcolor='rgba(255, 255, 255, 0.8)',
+            bordercolor='rgba(0, 0, 0, 0.2)',
+            borderwidth=1,
+            font=dict(size=10),
+            itemsizing='constant',
+            itemwidth=30
+        ),
+        margin=dict(l=150, r=0, t=50, b=0),  # Add left margin for legend
+    )
 
-            xmean = np.mean(xlim)
-            ymean = np.mean(ylim)
-            zmean = np.mean(zlim)
-
-            x_range = (xlim[1] - xlim[0]) * scale_factor
-            y_range = (ylim[1] - ylim[0]) * scale_factor
-            z_range = (zlim[1] - zlim[0]) * scale_factor
-
-            ax.set_xlim3d([xmean - x_range/2, xmean + x_range/2])
-            ax.set_ylim3d([ymean - y_range/2, ymean + y_range/2])
-            ax.set_zlim3d([zmean - z_range/2, zmean + z_range/2])
-            fig.canvas.draw_idle()
-        return zoom_fun
-
-    # Connect click events to picking
-    fig.canvas.mpl_connect('pick_event', onpick)
-    pts.set_picker(True)
-    
-    # Connect scroll for zooming
-    fig.canvas.mpl_connect('scroll_event', zoom_factory(ax, base_scale=1.2))
-
+    # Use Dash for reliable click event handling in standalone scripts
     if show:
-        plt.show()
+        try:
+            from dash import Dash, dcc, html, Input, Output, State
+            
+            app = Dash(__name__)
+            
+            # Store image data globally for the callback
+            image_data_store = {'data': None, 'path': None, 'idx': None}
+            
+            def load_image_data_from_file(fname):
+                """Load image data from the embedding filename"""
+                print(f"Loading image for file: {fname}")
+                
+                # Extract folder and image basename from embedding filename
+                # Format: embeddings_<folder>_<imgname>.npy
+                parts = fname.replace(".npy", "").split("_")
+                if len(parts) >= 3:
+                    folder = parts[1]
+                    if "-1" not in folder:
+                        folder = folder + "-1"
+                    img_basename = "_".join(parts[2:])
+                    if "-0" not in img_basename:
+                        img_basename = img_basename + "-0"
+                else:
+                    folder = "unknown"
+                    img_basename = fname.replace(".npy", "")
+                
+                # Try to locate the image file
+                possible_dirs = [
+                    '/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/'
+                ]
+                
+                print(f"Searching for image - Folder: {folder}, Image basename: {img_basename}")
+                found_path = None
+                for ext in ['.npy']:
+                    for d in possible_dirs:
+                        fullpath = osp.join(d, folder, img_basename + ext)
+                        print(f"Checking path: {fullpath}")
+                        print(f"  Path exists: {osp.exists(fullpath)}")
+                        if osp.exists(fullpath):
+                            found_path = fullpath
+                            print(f"✓ Found path: {found_path}")
+                            break
+                    if found_path:
+                        break
+                
+                if not found_path:
+                    print(f"✗ Image not found for folder: {folder}, basename: {img_basename}")
+                
+                if found_path:
+                    try:
+                        image_data = np.load(found_path)
+                        # Handle shape: (time_points, z_slices, y_dim, x_dim, channels) or (channels, time_points, z_slices, y_dim, x_dim)
+                        if image_data.ndim == 5:
+                            if image_data.shape[0] == 2:
+                                # Shape is (channels, time_points, z_slices, y_dim, x_dim)
+                                image_data = image_data.transpose(1, 0, 2, 3, 4)
+                            # Now shape is (time_points, channels, z_slices, y_dim, x_dim)
+                            image_data_store['data'] = image_data
+                            image_data_store['path'] = found_path
+                            image_data_store['fname'] = fname
+                            return True
+                    except Exception as e:
+                        print(f"Error loading image: {e}")
+                        return False
+                return False
+            
+            app.layout = html.Div([
+                html.Div([
+                    dcc.Graph(
+                        id='umap-plot',
+                        figure=fig,
+                        config={'displayModeBar': True},
+                        style={'width': '60%', 'display': 'inline-block'}
+                    ),
+                    html.Div([
+                        html.Div(id='image-info', style={'margin': '10px'}),
+                        dcc.Graph(id='channel1-plot', style={'width': '100%'}),
+                        dcc.Graph(id='channel2-plot', style={'width': '100%'}),
+                        html.Div([
+                            html.Label('Time:', style={'margin-right': '10px'}),
+                            dcc.Slider(
+                                id='time-slider',
+                                min=0,
+                                max=1,
+                                value=0,
+                                step=1,
+                                marks={},
+                                disabled=True
+                            ),
+                        ], style={'width': '100%', 'margin': '20px 0'}),
+                        html.Div([
+                            html.Label('Z-Slice:', style={'margin-right': '10px'}),
+                            dcc.Slider(
+                                id='z-slider',
+                                min=0,
+                                max=1,
+                                value=0,
+                                step=1,
+                                marks={},
+                                disabled=True
+                            ),
+                        ], style={'width': '100%', 'margin': '20px 0'}),
+                    ], style={'width': '38%', 'display': 'inline-block', 'vertical-align': 'top', 'padding': '10px'})
+                ], style={'display': 'flex'}),
+                html.Div(id='click-output', style={'display': 'none'})
+            ])
+            
+            @app.callback(
+                [Output('click-output', 'children'),
+                 Output('image-info', 'children'),
+                 Output('time-slider', 'max'),
+                 Output('time-slider', 'value'),
+                 Output('time-slider', 'disabled'),
+                 Output('time-slider', 'marks'),
+                 Output('z-slider', 'max'),
+                 Output('z-slider', 'value'),
+                 Output('z-slider', 'disabled'),
+                 Output('z-slider', 'marks')],
+                Input('umap-plot', 'clickData')
+            )
+            def handle_click(clickData):
+                print(f"handle_click called with clickData: {clickData}")
+                if clickData and 'points' in clickData and len(clickData['points']) > 0:
+                    point = clickData['points'][0]
+                    # Extract filename from the text field in click data
+                    # Format: "Index: 2796<br>File: embeddings_20240805-1_001009-0.npy"
+                    text = point.get('text', '')
+                    fname = None
+                    if 'File:' in text:
+                        # Extract filename from text
+                        file_part = text.split('File:')[1].strip()
+                        # Remove any HTML tags if present
+                        fname = file_part.replace('<br>', '').replace('</br>', '').strip()
+                        print(f"Extracted filename from click data: {fname}")
+                    
+                    if fname:
+                        if load_image_data_from_file(fname):
+                            data = image_data_store['data']
+                            time_points, num_channels, z_slices, y_dim, x_dim = data.shape
+                            
+                            folder, basename = osp.split(image_data_store['path'])
+                            folder = osp.basename(folder)
+                            
+                            info_text = f"File: {basename}<br>Folder: {folder}<br>Embedding: {image_data_store.get('fname', 'N/A')}<br>Shape: {data.shape}"
+                            
+                            return (
+                                '',  # click-output
+                                html.Div([html.P(info_text, style={'white-space': 'pre-wrap'})]),  # image-info
+                                time_points - 1, 0, False, {},  # time slider
+                                z_slices - 1, z_slices // 2, False, {}  # z slider
+                            )
+                        else:
+                            return (
+                                '', html.Div([html.P("Image not found")]),
+                                1, 0, True, {}, 1, 0, True, {}
+                            )
+                    else:
+                        print("Could not extract filename from click data")
+                        return (
+                            '', html.Div([html.P("Could not extract filename from click data")]),
+                            1, 0, True, {}, 1, 0, True, {}
+                        )
+                
+                return ('', html.Div([]), 1, 0, True, {}, 1, 0, True, {})
+            
+            @app.callback(
+                [Output('channel1-plot', 'figure'),
+                 Output('channel2-plot', 'figure')],
+                [Input('time-slider', 'value'),
+                 Input('z-slider', 'value')]
+            )
+            def update_images(time_val, z_val):
+                if image_data_store['data'] is None:
+                    empty_fig = go.Figure()
+                    empty_fig.add_annotation(text="Click on a point to load image", xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
+                    return empty_fig, empty_fig
+                
+                data = image_data_store['data']
+                time_points, num_channels, z_slices, y_dim, x_dim = data.shape
+                
+                time_idx = int(time_val) if time_val is not None else 0
+                z_idx = int(z_val) if z_val is not None else z_slices // 2
+                
+                # Ensure indices are valid
+                time_idx = max(0, min(time_idx, time_points - 1))
+                z_idx = max(0, min(z_idx, z_slices - 1))
+                
+                # Get slices for both channels
+                channel1_slice = data[time_idx, 0, z_idx, :, :]
+                channel2_slice = data[time_idx, 1, z_idx, :, :] if num_channels >= 2 else np.zeros_like(channel1_slice)
+                
+                # Create Plotly figures
+                fig1 = go.Figure(data=go.Heatmap(
+                    z=channel1_slice,
+                    colorscale='gray',
+                    showscale=True
+                ))
+                fig1.update_layout(
+                    title=f"Channel 1 (Time: {time_idx}, Z: {z_idx})",
+                    width=400,
+                    height=400,
+                    xaxis=dict(scaleanchor="y", scaleratio=1),
+                    yaxis=dict(autorange='reversed')
+                )
+                
+                fig2 = go.Figure(data=go.Heatmap(
+                    z=channel2_slice,
+                    colorscale='gray',
+                    showscale=True
+                ))
+                fig2.update_layout(
+                    title=f"Channel 2 (Time: {time_idx}, Z: {z_idx})",
+                    width=400,
+                    height=400,
+                    xaxis=dict(scaleanchor="y", scaleratio=1),
+                    yaxis=dict(autorange='reversed')
+                )
+                
+                return fig1, fig2
+            
+            # Run Dash app
+            print("\n" + "="*60)
+            print("Starting interactive visualization server...")
+            print("Click on any point in the plot to view its image.")
+            print("Server running at http://127.0.0.1:1050")
+            print("Press Ctrl+C to stop.")
+            print("="*60 + "\n")
+            
+            app.run(debug=False, port=1050)
+            
+        except ImportError as e:
+            print(f"Warning: Required packages not available: {e}")
+            print("Install with: pip install dash pillow")
+            print("Falling back to basic Plotly display.")
+            fig.show()
+    else:
+        return fig
+
+    return fig
 
 # Example usage:
 # 
@@ -305,8 +575,10 @@ if __name__ == '__main__':
                         type=str, help='Path to folder->drug->label mapping file')
     parser.add_argument('--pick_labels', nargs='*', type=int, default=None,
                         help='Subset of labels to visualize')
-    parser.add_argument("--visualize", type=bool, default=True, help="Whether to visualize the embeddings")
+    parser.add_argument("--visualize", type=bool, default=False, help="Whether to visualize the embeddings")
     parser.add_argument('--embedding_folder', help='Path to embedding folder', default="embeddings")
+    parser.add_argument('--output_name', help='Name of the output file', default="entropy_metrics")
+    parser.add_argument('--evaluate', type=bool, default=True, help="Whether to evaluate the embeddings")
     args = parser.parse_args()
 
     embeddings_dir = osp.join(args.checkpoint_dir, args.embedding_folder)
@@ -315,18 +587,18 @@ if __name__ == '__main__':
     maybe_build_umap_embeddings(embeddings_dir, folder_to_label, label_names)
 
     if args.visualize:
-        select_and_plot_embedding(embeddings_dir=embeddings_dir, colors_palette=colors)
+        select_and_plot_embedding(embeddings_dir=embeddings_dir, colors_palette=colors, )
  
     
     # make_mitospace_minimal(embedding_dir=embeddings_dir,
     #                        pick_labels=args.pick_labels,
     #                        color_palette=colors)
-    
-    print("Computing confusion matrix and entropy from embeddings folder")
-    metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label, label_drug_dict=label_to_drug_dict)
-    print(metrics)
-    import json
-    with open(osp.join(args.checkpoint_dir, "entropy_metrics.json"), "w") as f:
-        json.dump(metrics, f)
+    if args.evaluate:
+        print("Computing confusion matrix and entropy from embeddings folder")
+        metrics = compute_confusion_matrix_and_entropy_from_embeddings_folder(embeddings_dir, folder_to_drug, folder_to_label, label_drug_dict=label_to_drug_dict)
+        print(metrics)
+        import json
+        with open(osp.join(args.checkpoint_dir, "entropy_metrics_"+args.output_name+".json"), "w") as f:
+            json.dump(metrics, f)
 
 

@@ -728,7 +728,7 @@ if __name__ == "__main__":
     cfg = Config()
     # model_path = "checkpoint_20240826/z_pred_0.03.pth"
     
-    cfg.save_path = "checkpoint_all_drugs_300"
+    cfg.save_path = "all_drugs_delta"
     model_path = f"{cfg.save_path}/z_predictor_incremental.pth"
     aggregate_method = "max"
     # cfg.val_filepaths_2 = cfg.val_filepaths[0:]
@@ -760,8 +760,8 @@ if __name__ == "__main__":
     exp_name = cfg.save_path.split("_")[1]
     save_umap_path = f"umap_validation_{exp_name}"
 
-    filtered_base_paths = [bp for bp in cfg.base_paths if any(bp.endswith(pick) for pick in pick_folders[11:])]
-    train_split = 400
+    filtered_base_paths = [bp for bp in cfg.base_paths if any(bp.endswith(pick) for pick in pick_folders)]
+    train_split = 500
     # print("Picked folders:", filtered_base_paths)
     for base_path in filtered_base_paths:
         # print("Checking:", base_path)
@@ -770,7 +770,7 @@ if __name__ == "__main__":
         for i in files[train_split:]:
             cfg.val_filepaths.append(f"{base_path}/{i}")
     # cfg.val_filepaths_2 = cfg.val_filepaths[i:i+100]
-    batch_size = 130
+    batch_size = 100
 
     print("debug train split", train_split)
 

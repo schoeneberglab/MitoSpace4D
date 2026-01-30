@@ -207,10 +207,10 @@ class MitoSpace3DDecoder(nn.Module):
 
     def forward(self, x):
         assert(len(x.shape) == 6)
+        print("x shape", x.shape)
+        batch_size, channels ,timesteps = x.shape[:3]
 
-        batch_size, timesteps = x.shape[:2]
-
-        x = x.view(batch_size*timesteps, 4, 15, 64, 64)
+        x = x.view(batch_size*timesteps, 4, 15, 64,64)
 
         x = self.deconv1(x)
         x = self.deconv2(x)

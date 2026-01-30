@@ -474,8 +474,8 @@ def get_fpaths(root_dir, seed=1123):
             folder, drug, label = line.split()
             drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-    drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data'))])
-
+    drug_folders = sorted([file for file in os.listdir(osp.join(root_dir, 'processed_data')) if osp.isdir(osp.join(root_dir, 'processed_data', file))])
+    # print(drug_folders)
     all_filenames = []
 
     for drug_folder in drug_folders:

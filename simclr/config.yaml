@@ -1,4 +1,4 @@
-experiment_name: resnetbilstm_encoded_normal
+experiment_name: generate_all_embeddings
 data_params:
   timesteps:
     start: 0
@@ -7,7 +7,7 @@ data_params:
     start: 20
     end: 80
   dataset_name: mitospace
-  data_path: /tscc/lustre/ddn/scratch/d5agarwal/projects/MitoSpace4D/data/2024_data
+  data_path: /run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/
   patch_size: 256
   samples_per_drug: None
   transforms:

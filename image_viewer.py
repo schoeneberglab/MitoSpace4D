@@ -386,10 +386,13 @@ if __name__ == "__main__":
     # your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240729-1/000003-0.npy"
     # your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240808-1/001283-0.npy"
     # your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240826-1/001023-0.npy"
-    your_image_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/20240826-1/000519-0.npy"
+    # your_image_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/20240826-1/000519-0.npy"
+    your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/20240823-1/000249-0.npy"
+
+
     #  = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/20240730-1/000000-0.npy"
     # your_image_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/20240730-1/000000-0.npy"
     view_4d_image_with_sliders_new_data(your_image_path)
     # view_4d_image_with_sliders(dummy_filename)
 
-    
+    your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/20240729-1/000249-0.npy"

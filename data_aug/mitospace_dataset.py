@@ -54,7 +54,16 @@ class MitoSpaceDataset(Dataset):
                 folder, drug, label = line.split()
                 drug_labels[folder] = {'drug': drug, 'label': int(label)}
 
-        drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data'))])
+        # drug_folders = sorted([file for file in os.listdir(osp.join(self.root_dir, 'processed_data'))])
+        drug_folders = []
+        for file in os.listdir(osp.join(self.root_dir, 'encoded_data')):
+            if osp.isdir(osp.join(self.root_dir, 'encoded_data', file)):
+                if file.startswith('2024'):
+                    drug_folders.append(file)
+                else:
+                    continue
+        drug_folders = sorted(drug_folders)
+        print(drug_folders)
 
         self.all_filenames = []
         self.all_labels = []
@@ -68,7 +77,8 @@ class MitoSpaceDataset(Dataset):
                 filenames = filenames[samples_per_drug: samples_per_drug*2]
 
             self.all_filenames.extend(filenames)
-            self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
+            drug_folder_name = drug_folder.split('-')[0]
+            self.all_labels.extend([drug_labels[drug_folder_name]['label']] * len(filenames))
 
         self.data = list(zip(self.all_filenames, self.all_labels))
 
@@ -149,3 +159,9 @@ class MitoSpaceDataset(Dataset):
         #print(img_name, label)
 
         return {"images": image, "classes": label, "image_paths": img_name}
+
+
+if __name__ == "__main__":
+    dataset = MitoSpaceDataset(root_dir="/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/20240729-1", flag="all")
+    print(len(dataset))
+    print(dataset[0])
