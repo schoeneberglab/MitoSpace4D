@@ -66,13 +66,13 @@ if __name__ == '__main__':
                 else:
                     colors[int(index)] = [float(r), float(g), float(b)]
 
-    if args.visualise_space:
-        if not osp.exists(f"{save_dir}/embeddings/"):
-            print("Embeddings are not saved. Please run the script again with --save_embeddings flag")
+    # if args.visualise_space:
+    #     if not osp.exists(f"{save_dir}/embeddings/"):
+    #         print("Embeddings are not saved. Please run the script again with --save_embeddings flag")
 
-        make_mitospace(embedding_dir=f"{save_dir}/embeddings/", pick_labels=pick_labels[0], color_palette=colors,
-                       image_paths=image_paths)
-        exit()
+    #     make_mitospace(embedding_dir=f"{save_dir}/embeddings/", pick_labels=pick_labels[0], color_palette=colors,
+    #                    image_paths=image_paths)
+    #     exit()
 
     # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=219-step=47300-val_loss=0.00.ckpt"
     checkpoint_path = f"{proj_dir}/runs/epoch=287-step=83534-val_loss=0.00.ckpt"
@@ -94,7 +94,7 @@ if __name__ == '__main__':
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
 
-    data_paths = ['flybrain_data/chunks/']
+    data_paths = ['flybrain_data/chunks_128']
 
     loaders = []
     for data_path, pick_label in zip(data_paths, pick_labels):

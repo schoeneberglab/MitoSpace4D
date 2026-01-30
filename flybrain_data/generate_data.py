@@ -3,6 +3,7 @@ import numpy as np
 import napari
 from skimage.transform import resize
 # Read the file into a NumPy array
+import tqdm
 # my_array = nd2.imread("mdi-GFP-60x_B001 - Deconvolved.nd2")
 
 # # You can then check its shape, dtype, etc.
@@ -35,7 +36,7 @@ def preprocess_nd2(file_path, target_size=(256, 256)):
             
     return resized_images
 
-def divide_into_slices(image_path, slice_size=(256, 256)):
+def divide_into_slices(image_path, slice_size=(128, 128)):
     with nd2.ND2File(image_path) as s:
         img_data = s.asarray()
     num_frames, num_channels = img_data.shape[0], img_data.shape[1]
@@ -49,8 +50,8 @@ def divide_into_slices(image_path, slice_size=(256, 256)):
     n_x = img_data.shape[3] // stride_x
     # For each (i, j), collect all frames and all channels for that chunk location,
     # combine them into a single array with shape (1, all_f, c, 256, 256)
-    for i in range(n_y):
-        for j in range(n_x):
+    for i in tqdm.tqdm(range(n_y)):
+        for j in tqdm.tqdm(range(n_x)):
             # Gather the chunk (256x256) from all frames and all channels at (i, j)
             
             # for f_idx in range(num_frames):
@@ -64,7 +65,21 @@ def divide_into_slices(image_path, slice_size=(256, 256)):
             chunk = np.expand_dims(chunk, axis=0)
             chunk = chunk.astype(np.float32)
             # chunk = np.transpose(chunk, (0, 2,1,3,4))
-
+            # If slice_size < 256, resize chunk spatially to (256, 256) using interpolation
+            if slice_size[0] < 256 or slice_size[1] < 256:
+                # chunk shape: (1, all_f, c, y, x)
+                target_shape = (256, 256)
+                new_chunk = np.zeros((chunk.shape[0], chunk.shape[1], chunk.shape[2], target_shape[0], target_shape[1]), dtype=np.float32)
+                for batch in range(chunk.shape[0]):
+                    for z in range(chunk.shape[1]):
+                        for chan in range(chunk.shape[2]):
+                            new_chunk[batch, z, chan] = resize(
+                                chunk[batch, z, chan],
+                                target_shape,
+                                anti_aliasing=True,
+                                preserve_range=True
+                            )
+                chunk = new_chunk
 
             # For each chunk, split across z (frame) slices into 2 halves, pad to 60 in both halves, center original z
             # chunk: (1, all_f, c, 256, 256) -> we want (1, 60, c, 256, 256) two times, pad/crop along axis=1
@@ -116,7 +131,7 @@ for file_path in file_paths:
     print(f"Slice shape: {slices[0].shape}")
     print(f"Slice data type: {slices[0].dtype}")
 
-    output_path = f"chunks/{file_path.split('/')[-1].split(' - ')[0]}-slices.npy"   
+    output_path = f"chunks_128/{file_path.split('/')[-1].split(' - ')[0]}-slices.npy"   
     np.save(output_path, slices)
 
 # file_path = "mdi-GFP-60x_B001 - Deconvolved.nd2"

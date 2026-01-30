@@ -4,10 +4,10 @@ data_params:
     start: 0
     end: 20
   zstacks:
-    start: 20
-    end: 80
+    start: 0
+    end: 60
   dataset_name: flybrain
-  data_path: flybrain_data/chunks
+  data_path: flybrain_data/chunks_128
   patch_size: 256
   samples_per_drug: None
   transforms:
