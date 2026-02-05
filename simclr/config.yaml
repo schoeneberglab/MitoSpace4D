@@ -61,7 +61,7 @@ model_params:
   pretrained: False
   out_dim: 512
   in_channels: 1
-  channels: [1]
+  channels: [0]
   num_z: 60
   timesteps: 20
 training:

@@ -50,10 +50,11 @@ parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 parser.add_argument('--checkpoint_path', help='Checkpoint path', 
                     # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt"
                     # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=145-step=25988-val_loss=0.00.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115_epoch=161-step=28836-val_loss=0.00.ckpt",
+                    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115_epoch=161-step=28836-val_loss=0.00.ckpt",
                     # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_decoupled-tmrm_r20251115_epoch=256-step=41120-val_loss=0.00.ckpt",
                     # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_ablated-tmrm_r20251115_epoch=291-step=46720-val_loss=0.00.ckpt",
-                    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps-ckpt_kinetics_ablated-tmrm_r20260105.ckpt"
+                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps-ckpt_kinetics_ablated-tmrm_r20260105.ckpt",
+                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps_ft-kinetics60_ablated-tmrm_r20260110_epoch=178-step=28819_best.ckpt"
                     )
 
 parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str, help='Config path.')
@@ -61,18 +62,18 @@ parser.add_argument('--data_path', help='Data to predict',
                     # default="/home/earkfeld/Projects/MitoSpace4D/data/2024v2_encoded_data",
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_summer_new/", # 2024v2 Dataset
                     # default="/mnt/DATA_02/2024_data_encoded", # 2024v2 Dataset Encoded
-                    # default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data", # Kinetics Dataset
+                    default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data", # Kinetics Dataset
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_data_encoded/", # Kinetics Dataset Encoded
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data"
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_3b"
                     # default="/run/user/1002/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/leukemia_drug_resistance_data")
                     #     default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_4",
-                    default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data"
+                    # default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data"
                     )
 
 parser.add_argument('--decoder_ckpt', help='Path to decoder checkpoint',
-                    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
-                    # default=None,
+                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
+                    default=None,
                     )
 
 parser.add_argument('--embeddings_dir', help='Directory to save/load embeddings', default=None)
@@ -181,6 +182,8 @@ if __name__ == '__main__':
     proj_dir = "/home/earkfeld/Projects/MitoSpace4D/"
     save_dir = f"{proj_dir}/runs/"
 
+    decoder=None
+
     # data_path = cfg['data_params']['data_path']
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_20250828')
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_combined_r20250905')
@@ -215,7 +218,15 @@ if __name__ == '__main__':
     # embeddings_dir = osp.join(save_dir, 'embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220')
     # embeddings_dir = osp.join(save_dir, "exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220")
     # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106')
-    embeddings_dir = osp.join(save_dir, '/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all')
+    # embeddings_dir = osp.join(save_dir, '/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all')
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_3D-embeddings_Kinetics3D-model"
+    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_4D-embeddings_2024v2-model"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260120_kinetics-60frame-embeddings_2024v2-ft-kinetics-60frame"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260120_kinetics-60frame-embeddings_2024v2-ft-kinetics-60frame"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260127_2024v2-4D-embeddings_2024v2-161eps_tscrambled_ablated-tmrm"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_2024v2-4D-embeddings_2024v2-161eps_ablated-tmrm"
+
+    # embedding_dirs = []
 
     # if args.embeddings_dir is not None:
     #     embeddings_dir = osp.join(save_dir, args.embeddings_dir)
@@ -472,7 +483,6 @@ if __name__ == '__main__':
             emb3d = reducer.transform(feats_red).astype(np.float32)
         else:
 
-            # -- original umap
             # reducer = UMAP(
             #     verbose=True,
             #     n_components=3,
@@ -481,6 +491,7 @@ if __name__ == '__main__':
             #     metric='cosine',
             # )
 
+            # 3D Visualization
             reducer = UMAP(
                 verbose=True,
                 n_components=3,

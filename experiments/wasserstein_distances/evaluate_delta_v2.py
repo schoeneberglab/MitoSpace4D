@@ -381,8 +381,8 @@ if __name__ == "__main__":
 
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
     embeddings_dir = "/runs/exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/cellpaint_features/hela_mito"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/PTEN_deepprofiler_pooled-clones"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classifier/cellpaint_features/hela_mito"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classifier/deepprofiler_features/PTEN_deepprofiler_pooled-clones"
 
     # DP sensitivity: 0.8315
     # CP sensitivity:

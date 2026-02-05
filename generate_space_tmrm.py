@@ -69,9 +69,9 @@ parser.add_argument('--checkpoint_path', help='Checkpoint path',
 parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str, help='Config path.')
 parser.add_argument('--data_path', help='Data to predict',
                     # default="/home/earkfeld/Projects/MitoSpace4D/data/2024v2_encoded_data",
-                    # default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data", # 2024v2 Dataset
+                    default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data", # 2024v2 Dataset
                     # default="/mnt/DATA_02/2024_data_encoded", # 2024v2 Dataset Encoded
-                    default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data", # Kinetics Dataset
+                    # default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data", # Kinetics Dataset
                     # default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data", # Kinetics Dataset Encoded
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data"
                     # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_3b"
@@ -181,21 +181,6 @@ def perform_tvn(embeddings, labels, img_names, label_names, control_label='wt_ca
 
 def get_tmrm_intensity(img):
 
-    # raw_mean_intensities = np.zeros(img.shape[1])
-    # otsu_mean_intensities = np.zeros(img.shape[1])
-    #
-    # for t in range(img.shape[1]):
-    #     # Otsu threshold the morphology channel get a mask
-    #     thr = threshold_otsu(img[1, t, ...])
-    #     mask = img[1, t, ...] > thr
-    #
-    #     # Raw mean intensity of the tmrm channel
-    #     raw_mean_intensities[t] = img[0, t, ...].mean()
-    #
-    #     # Masked mean intensity of the tmrm channel
-    #     img[0, t, ...] = img[0, t, ...] * mask
-    #     otsu_mean_intensities[t] = img[0, t, ...].mean()
-
     # (B, T, C, Z, Y, Z)
     img = img.cpu().numpy()
     raw_mean_intensities = np.zeros(img.shape[1])
@@ -268,13 +253,14 @@ if __name__ == '__main__':
     # embeddings_dir = osp.join(save_dir, '20260108_kinetics_embeddings_tscrambled_2024v2-model_morphology_only')
     # embeddings_dir = osp.join(save_dir, '20260108_kinetics_morphology_resnet_embeddings_all')
 
-    # embeddings_dir = osp.join("/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/PTEN_deepprofiler_pooled-clones")
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/2024v2/2024v2_deepprofiler"
+    # embeddings_dir = osp.join("/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classifier/deepprofiler_features/PTEN_deepprofiler_pooled-clones")
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classifier/deepprofiler_features/2024v2/2024v2_deepprofiler"
 
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260111_kinetics-val-60frames_embeddings_resnet3d-kinetics-300eps_ablated-tmrm"
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260111_kinetics-all-60frames_embeddings_resnet3d-kinetics-300eps_ablated-tmrm"
 
-    embeddings_dir = osp.join(save_dir, '20260116_kinetics-raw_kinetics-resnet3d_ablated_tmrm_extract_tmrm')
+    # embeddings_dir = osp.join(save_dir, '20260116_kinetics-raw_kinetics-resnet3d_ablated_tmrm_extract_tmrm')
+    embeddings_dir = osp.join(save_dir, '20260117_2024v2-raw_kinetics-resnet3d_ablated_tmrm_extract_tmrm')
     os.makedirs(embeddings_dir, exist_ok=True)
 
     checkpoint_path = args.checkpoint_path

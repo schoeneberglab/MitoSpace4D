@@ -371,10 +371,10 @@ if __name__ == "__main__":
 
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/archived_linuxc_embeddings/embeddings_2024v2-encoded_ablated-tmrm_eps162_r20251120"
 
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/2024v2/2024v2_deepprofiler"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classifier/deepprofiler_features/2024v2/2024v2_deepprofiler"
     embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260111_kinetics-all-60frames_embeddings_resnet3d-kinetics-300eps_ablated-tmrm"
 
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classification/deepprofiler_features/PTEN_deepprofiler_pooled-clones"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/adaptors/pten_classifier/deepprofiler_features/PTEN_deepprofiler_pooled-clones"
 
     drug_labels_dict = {}
     label_drug_dict = {}

@@ -102,3 +102,6 @@
 20251218-1 PTEN_C5_cisplatin 35
 20251218-2 NTC_cisplatin 33
 20251218-3 PTEN_C4_cisplatin 34
+20260121-1 control 0
+20260121-2 troglitazone 36
+20260121-3 fialuridine 37

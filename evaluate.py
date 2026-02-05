@@ -357,6 +357,7 @@ if __name__ == "__main__":
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_debug_eps149_r20251109"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps138_r20251118"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps145_r20251119"
+    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps145_r20251119"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2-encoded_ablated-tmrm_eps162_r20251120"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_decoupled-tmrm_eps256_r20251120"
     # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_ablated-tmrm_eps291_r20251120"
@@ -365,7 +366,21 @@ if __name__ == "__main__":
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp1_modified_embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
-    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_3D-embeddings_Kinetics3D-model"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_4D-embeddings_2024v2-model"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260120_kinetics-60frame-embeddings_2024v2-ft-kinetics-60frame"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_kinetics-4D-embeddings_2024v2-161eps_ablated-tmrm"
+
+    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_2024v2-raw_kinetics-resnet3d_ablated_tmrm_extract_tmrm"
+
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_2024v2-4D-embeddings_2024v2-161eps_ablated-tmrm"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260127_2024v2-4D-embeddings_2024v2-161eps_tscrambled_ablated-tmrm"
 
     drug_labels_dict = {}
     label_drug_dict = {}
@@ -382,6 +397,7 @@ if __name__ == "__main__":
         print("Loading pre-extracted embeddings...")
         embeddings = np.load(
             f'{embeddings_dir}/embeddings_raw.npy')
+            # f'{embeddings_dir}/embeddings_resnet.npy')
         labels = np.load(
             f'{embeddings_dir}/labels.npy')
         

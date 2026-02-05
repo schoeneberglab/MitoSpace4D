@@ -5,3 +5,4 @@ data/
 *.pyc
 *.bak
 *.ckpt
+.env

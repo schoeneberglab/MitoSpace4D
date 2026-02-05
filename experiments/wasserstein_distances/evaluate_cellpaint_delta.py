@@ -349,7 +349,7 @@ if __name__ == "__main__":
     cfg = load_config(args.config)
 
     proj_dir = "/"
-    embeddings_dir = "/adaptors/pten_classification/cellpaint_features"
+    embeddings_dir = "/adaptors/pten_classifier/cellpaint_features"
     dataset = "hela_mito"
 
     already_have_embeddings = True
