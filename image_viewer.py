@@ -395,4 +395,4 @@ if __name__ == "__main__":
     view_4d_image_with_sliders_new_data(your_image_path)
     # view_4d_image_with_sliders(dummy_filename)
 
-    your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/20240729-1/000249-0.npy"
+    your_image_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/202408223-1/000249-0.npy"

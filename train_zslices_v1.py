@@ -95,6 +95,8 @@ def train_z_predictor_with_custom_loss(cfg):
         for filepath in tqdm(batch_files, desc=f"Loading files in batch {batch_num}/{total_batches} (files {batch_start}-{batch_end-1})"):
             try:
                 full_image_data_np = np.load(filepath)
+                # print("full_image_data_np.shape", full_image_data_np.shape)
+                # full_image_data_np = np.transpose(full_image_data_np, (2, 1, 0, 3, 4)) #Convert to time slices
                 # Ensure it's a PyTorch tensor
                 current_data_tensor = torch.from_numpy(full_image_data_np)                 
                 # Expected (T, C, Z, H, W)
@@ -108,7 +110,7 @@ def train_z_predictor_with_custom_loss(cfg):
 
             # Extract each z-slice as a (T, C, H, W) video clip
             for z_idx_in_file in range(z_slices_file):
-                video_clip_for_z = current_data_tensor[3:19, :, z_idx_in_file, :, :] # (T, C, H, W)
+                video_clip_for_z = current_data_tensor[:, :, z_idx_in_file, :, :] # (T, C, H, W)
                 z_video_clips.append(video_clip_for_z)
                 # We need a unique Z identifier across all files if Z values can overlap
                 # Or, if Z-indices are truly unique per biological sample (e.g., cell)
@@ -150,7 +152,7 @@ def train_z_predictor_with_custom_loss(cfg):
     # Create a consistent mapping from *all unique original Z-indices* to model class labels (0 to N-1)
     # This is critical for consistent labeling across train and test datasets.
     # num_labels = len(all_unique_original_z_indices)
-    num_labels = 3
+    num_labels = 2
     divider = max_z//num_labels
     all_unique_original_z_indices = sorted(list(set(train_original_z_indices + test_original_z_indices)))
     z_to_label_mapping = {z: i//divider for i, z in enumerate(all_unique_original_z_indices)}

@@ -113,7 +113,7 @@ class Config:
     # master_base_path = "/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024_summer_new/"
     # master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
     # master_base_path = "/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024_summer_new/"
-    master_base_path = '/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/'
+    master_base_path = '/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024v2_data/processed_data/'
     # --- Channel Handling ---
     # True to create a 3rd channel from 'functional_masked' output of normalize_and_mask
     create_third_channel = False 
@@ -125,7 +125,7 @@ class Config:
     
     # --- Training specific ---
     test_size_z = 0.3 # 30% of Z-slices for testing, 70% for training
-    batch_size = 16 # Reduced batch size, especially if creating 3 channels and multiple files
+    batch_size = 4 # Reduced batch size, especially if creating 3 channels and multiple files
     num_epochs = 50
     learning_rate = 1e-6
     random_seed = 42
@@ -242,7 +242,7 @@ class ZSliceDataset(Dataset):
 
     def __getitem__(self, idx: int):
         """Returns one video clip and its corresponding label + volume ID."""
-        video_clip_raw = self.all_data_combined[idx]  # (T, C, H, W)
+        video_clip_raw = self.all_data_combined[idx]  # (Z, C, H, W)
         original_z_index = self.original_z_indices[idx]
         volume_id = self.volume_ids[idx]
 
@@ -278,6 +278,7 @@ class ZSliceDataset(Dataset):
 
         # Stack → (T, C_new, H, W)
         processed_video_clip = torch.stack(current_channels, dim=1)
+        # print("processed_video_clip.shape", processed_video_clip.shape)
 
         # -------------------------------
         # 2️⃣ Normalization

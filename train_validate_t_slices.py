@@ -26,7 +26,7 @@ import os
 import random
 import matplotlib.pyplot as plt
 from pathlib import Path
-from validation_zslices import pick_folders, validate_saved_model
+from validation_zslices import validate_saved_model
 
 # Import your utilities from the main Z-predictor training script
 from videomae_zslicer import (
@@ -65,28 +65,54 @@ def load_data_subset(cfg, start_idx, end_idx):
 
         z_all, num_channels_orig, time_points, H, W = current_data_tensor.shape
 
-        print(f"Loaded {filepath}: (T={time_points}, C={num_channels_orig}, Z={z_all}, H={H}, W={W})")
+        # print(f"Loaded {filepath}: (T={time_points}, C={num_channels_orig}, Z={z_all}, H={H}, W={W})")
 
 
         for t_idx_in_file in range(time_points):
-            video_clip_for_z_1 = current_data_tensor[0:z_all:4, :, t_idx_in_file, :, :] # (z_all/4, C, H, W)
-            video_clip_for_z_2 = current_data_tensor[z_all-1:z_all, :, t_idx_in_file, :, :] # (1, C, H, W)
+            video_clip_for_z = current_data_tensor[6:z_all-6:3, :, t_idx_in_file, :, :] # (z_all/4, C, H, W)
+            # video_clip_for_z_2 = current_data_tensor[z_all-1:z_all, :, t_idx_in_file, :, :] # (1, C, H, W)
             # print("video_clip_for_z_1.shape", video_clip_for_z_1.shape)
             # print("video_clip_for_z_2.shape", video_clip_for_z_2.shape)
-            video_clip_for_z = torch.cat([video_clip_for_z_1, video_clip_for_z_2], dim=0) # (z_all/4 + 1, C, H, W)
+            # video_clip_for_z = torch.cat([video_clip_for_z_1, video_clip_for_z_2], dim=0) # (z_all/4 + 1, C, H, W)
 
             z_video_clips.append(video_clip_for_z)
             
-            all_original_z_indices.append(t_idx_in_file) 
-            global_slice_counter.append(global_t_idx_counter)
-            global_volume_counter.append(volume_id_counter)
-            global_t_idx_counter += 1
-            volume_id_counter += 1
+            all_original_z_indices.append(t_idx_in_file)
+            global_volume_counter.append(global_volume_ID)
+            global_slice_counter += 1
+
 
         global_volume_ID += 1
 
     data_tensor = torch.stack(z_video_clips, dim=0).to(torch.float32)
     return data_tensor, all_original_z_indices, global_volume_counter
+
+
+@torch.no_grad()
+def evaluate_z_predictor(model, dataloader, device):
+    model.eval()
+    correct, total = 0, 0
+    vol_accs = []
+
+    for batch in dataloader:
+        pixel_values = batch["pixel_values"].to(device)
+        labels = batch["labels"].to(device)
+        volume_ids = batch["volume_id"].to(device)
+
+        outputs = model(pixel_values=pixel_values)
+        preds = outputs.logits.argmax(dim=1)
+        correct_mask = (preds == labels).float()
+
+        for vid in torch.unique(volume_ids):
+            mask = (volume_ids == vid)
+            vol_accs.append(correct_mask[mask].mean())
+
+        correct += correct_mask.sum().item()
+        total += labels.numel()
+
+    slice_acc = correct / total
+    vol_acc = torch.stack(vol_accs).mean().item() if vol_accs else 0.0
+    return slice_acc, vol_acc
 
 
 def incremental_train_t_predictor(cfg):
@@ -110,7 +136,7 @@ def incremental_train_t_predictor(cfg):
 
     start_file_idx = 0
     total_files = len(cfg.image_filepaths)
-    cfg.batch_size_files = 50  # same as before
+    # cfg.batch_size_files = 20  # same as before
     total_batches = (total_files + cfg.batch_size_files - 1) // cfg.batch_size_files
 
     print(f"Total files: {total_files} -> {total_batches} batches of {cfg.batch_size_files}")
@@ -145,8 +171,8 @@ def incremental_train_t_predictor(cfg):
                                 [vol_ids[i] for i in test_idx], image_processor)
         
         
-        num_labels = 3
-        max_z = 60
+        num_labels = 2
+        max_z = 20
         divider = max_z//num_labels
         all_unique_original_z_indices = sorted(list(set(orig_z_indices)))
         z_to_label_mapping = {z: i//divider for i, z in enumerate(all_unique_original_z_indices)}
@@ -162,7 +188,8 @@ def incremental_train_t_predictor(cfg):
         print(f"🚀 Training on files {batch_start}–{batch_end}")
         for epoch in range(cfg.num_epochs):
             model.train()
-            total_loss = 0
+            epoch_total, epoch_ce, epoch_vol = 0.0, 0.0, 0.0
+
             for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.num_epochs}"):
                 pixel_values = batch["pixel_values"].to(device)
                 labels = batch["labels"].to(device)
@@ -172,12 +199,24 @@ def incremental_train_t_predictor(cfg):
                 logits = model(pixel_values=pixel_values).logits
                 loss_ce = ce_loss_fn(logits, labels)
                 loss_vol = vol_loss_fn(logits, labels, volume_ids)
-                loss = 0.5 * loss_ce + 0.5 * loss_vol 
+                loss = loss_ce + 0.5 * loss_vol 
                 loss.backward()
                 optimizer.step()
-                total_loss += loss.item()
 
-            print(f"✅ Epoch {epoch+1} | Loss {total_loss/len(train_loader):.4f}")
+                epoch_total += loss.item()
+                epoch_ce += loss_ce.item()
+                epoch_vol += loss_vol.item()
+
+            avg_total = epoch_total / len(train_loader)
+            avg_ce = epoch_ce / len(train_loader)
+            avg_vol = epoch_vol / len(train_loader)
+            val_slice, val_vol = evaluate_z_predictor(model, val_loader, device)
+
+            print(
+                f"Epoch {epoch+1}: Loss {avg_total:.4f} "
+                f"(CE {avg_ce:.4f}, Vol {avg_vol:.4f}) "
+                f"| Val Slice {val_slice:.3f} Val Vol {val_vol:.3f}"
+            )
 
         # === Save incremental checkpoint ===
         torch.save({
@@ -210,13 +249,13 @@ if __name__ == "__main__":
         help="List of folder names (space separated) to include for training. Example: --pick_folders 20240729-1 20240823-1"
     )
     parser.add_argument("--save_path", default="checkpoint_time_test_2", help="Path to save the checkpoint")
-    parser.add_argument("--master_base_path", default="/run/user/1004/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/2024v2_data/processed_data/", help="Path to the master base path")
-    parser.add_argument("--batch_size", default=20, help="Batch size for training")
-    parser.add_argument("--num_epochs", default=30, help="Number of epochs for training")
+    parser.add_argument("--master_base_path", default="/run/user/1004/gvfs/afp-volume:host=JSLab-Server1.local,user=JSLab_FileShare,volume=SSD_Processing/Others/MitoSpace4D/2024v2_data/processed_data/", help="Path to the master base path")
+    parser.add_argument("--batch_size", default=16, help="Batch size for training")
+    parser.add_argument("--num_epochs", default=8, help="Number of epochs for training")
     parser.add_argument("--learning_rate", default=1e-4, help="Learning rate for training")
     parser.add_argument("--test_size_z", default=0.3, help="Test size for Z-slices")
     parser.add_argument("--batch_size_files", default=100, help="Batch size for files")
-    parser.add_argument("--train_split", default=300, help="Split point for training and validation")
+    parser.add_argument("--train_split", default=700, help="Split point for training and validation")
     parser.add_argument("--device", default="cuda:0", help="Device to use for training")
     parser.add_argument("--image_processor_name", default="MCG-NJU/videomae-base", help="Image processor name")
     parser.add_argument("--all_drugs", default=False, help="Use all drugs")
@@ -230,8 +269,20 @@ if __name__ == "__main__":
     cfg.val_filepaths = []
     all_drugs = [i for i in os.listdir(cfg.master_base_path) if os.path.isdir(os.path.join(cfg.master_base_path, i))]
     
-    pick_folders = all_drugs[10:]
-    print(pick_folders)
+    pick_folders = [  
+        "20240729-1",#control
+        "20240805-1",#H2O2
+        "20240802-1",#tbhp
+        "20240814-1",#valinomycin
+        "20240911-1",#nigericin
+        "20240826-1",#nocodazole
+        "20240830-1",#colchicine
+        "20240816-1",#mitomycinC
+        "20240905-1",#cisplatin
+        "20240823-1",#mdivi1
+        ]
+    # pick_folders = ["20240729-1","20240823-1"]
+    print("Picked folders:", pick_folders)
     # if not args.all_drugs:
     #     pick_folders = args.pick_folders
     # else:
