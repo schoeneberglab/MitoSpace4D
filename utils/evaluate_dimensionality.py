@@ -25,20 +25,12 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.colors import Normalize
 from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import squareform
 from sklearn.metrics import (
     confusion_matrix, f1_score, silhouette_score, calinski_harabasz_score
 )
 from sklearn.model_selection import train_test_split
-
-# ──────────────────────────────────────────────
-#  CONFIGURATION – edit these paths
-# ──────────────────────────────────────────────
-# ROOT_DIR = "/Volumes/ALPHA/4dms_2024v3_manuscript-v2_project/manuscript_v2/data"
-# PROJ_DIR = "/Users/earkfeld/Projects/MitoSpace4D"
 
 EMBEDDING_DIRS = {
     "4D": "ms4d_2024v3_252eps",
@@ -59,10 +51,6 @@ BOXPLOT_K_VALUES = [5, 10, 25, 50, 100]  # subset used for the boxplot figure
 # Colour palette for the three dimensionalities
 COLORS = {"4D": "#2166ac", "3D": "#66c2a5", "2D": "#fc8d62"}
 
-
-# ──────────────────────────────────────────────
-#  Helper functions
-# ──────────────────────────────────────────────
 
 def load_drug_label_dicts(proj_dir):
     drug_labels_dict = {}
@@ -159,17 +147,11 @@ def get_entry_id(path):
     parts = path.split("/")
     return parts[-2] + "/" + parts[-1]
 
-
-# ──────────────────────────────────────────────
-#  Main
-# ──────────────────────────────────────────────
-
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     drug_labels_dict, label_drug_dict = load_drug_label_dicts(PROJ_DIR)
 
-    # ── Load and evaluate each dimensionality ──
     results = {}
 
     for dim_label, emb_subdir in EMBEDDING_DIRS.items():
@@ -182,7 +164,6 @@ def main():
 
         df["entry_id"] = df["image_paths"].apply(get_entry_id)
 
-        # ── Build exclusion set and filter by index (no DataFrame needed) ──
         exclude_paths = pd.read_parquet(osp.join(ROOT_DIR, "2024v3_exclude_paths.parquet"))
         print(exclude_paths.columns)
         exclude_paths = exclude_paths["image_paths"].tolist()

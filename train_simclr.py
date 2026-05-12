@@ -1,19 +1,15 @@
 import argparse
 import torch
-import torch.backends.cudnn as cudnn
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 from torchvision import models
-from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
-from simclr.models import MitoSpace4DConvLSTM
-from simclr.models_transformer import MitoSpace4DTransformer
+from data.contrastive_learning_dataset import ContrastiveLearningDataset
 from simclr.simclr import SimCLRRunner
-from simclr.models_simple import Lightweight3DResNet
+from simclr.model import Lightweight3DResNet
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from utils.utils import load_config
 import warnings
-from pytorch_lightning.profilers import AdvancedProfiler
 
 
 model_names = sorted(name for name in models.__dict__

@@ -234,7 +234,6 @@ class Trainer:
         print(f"Starting training on {self.device}")
         print(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
 
-        # Calculate and print effective batch size
         batch_size = self.config['training']['batch_size']
         grad_acc_steps = self.config['training'].get('grad_acc_steps', 1)
         effective_batch_size = batch_size * grad_acc_steps

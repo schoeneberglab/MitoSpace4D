@@ -1,28 +1,27 @@
 import torch
 import torch.nn as nn
-from torchsummary import summary
 
-
-# -----------------------
-# Residual building blocks
-# -----------------------
 def conv3x3(in_c, out_c, stride=1, padding=1, padding_mode="reflect", bias=False):
     return nn.Conv3d(in_c, out_c, kernel_size=3, stride=stride,
                      padding=padding, padding_mode=padding_mode, bias=bias)
 
 
 def conv1x1(in_c, out_c, stride=1, bias=False):
-    # 1x1x1 projection for the residual path
     return nn.Conv3d(in_c, out_c, kernel_size=1, stride=stride, padding=0, bias=bias)
+
+def load_model(checkpoint_path: str, device: torch.device):
+    model = MitoSpace3DAutoencoder(input_dim=1, latent_dim=2, output_dim=1)
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(device)
+    model.eval()
+
+    print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
+    return model
 
 
 class ResDown3D(nn.Module):
-    """
-    Residual block for downsampling or same-res encoding.
-    - If stride=2, it downsamples spatially.
-    - Two 3x3 convs with BN and LeakyReLU; residual projection if shape changes.
-    """
-
     def __init__(self, in_c, out_c, stride=1, padding_mode="reflect", norm=nn.BatchNorm3d, negative_slope=0.1):
         super().__init__()
         self.stride = stride
@@ -33,7 +32,6 @@ class ResDown3D(nn.Module):
         self.conv2 = conv3x3(out_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False)
         self.bn2 = norm(out_c)
 
-        # Residual projection if channels or spatial size change
         if stride != 1 or in_c != out_c:
             self.proj = nn.Sequential(
                 conv1x1(in_c, out_c, stride=stride, bias=False),
@@ -60,13 +58,6 @@ class ResDown3D(nn.Module):
 
 
 class ResUp3D(nn.Module):
-    """
-    Residual block for upsampling or same-res decoding.
-    - If scale_factor=2, it upsamples spatially (trilinear) before convs.
-    - Two 3x3 convs with BN and LeakyReLU; residual path is upsampled
-      and projected via 1x1 if channels differ.
-    """
-
     def __init__(self, in_c, out_c, scale_factor=1, padding_mode="reflect", norm=nn.BatchNorm3d, negative_slope=0.1):
         super().__init__()
         self.scale = scale_factor
@@ -80,7 +71,6 @@ class ResUp3D(nn.Module):
         self.conv2 = conv3x3(out_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False)
         self.bn2 = norm(out_c)
 
-        # Residual projection: upsample then 1x1 if needed
         proj = []
         if self.scale != 1:
             proj.append(nn.Upsample(scale_factor=self.scale, mode='trilinear', align_corners=False))
@@ -106,10 +96,6 @@ class ResUp3D(nn.Module):
         out = self.act(out)
         return out
 
-
-# -----------------------
-# Encoder / Decoder
-# -----------------------
 class MitoSpace3DEncoder(nn.Module):
     def __init__(self, input_dim=1, latent_dim=4):
         super(MitoSpace3DEncoder, self).__init__()
@@ -124,7 +110,7 @@ class MitoSpace3DEncoder(nn.Module):
         self.block8 = ResDown3D(64, latent_dim, stride=1)
 
     def forward(self, x):
-        # Input shape: (B, C, D, H, W)
+        # B, C, D, H, W)
         x = self.block1(x)
         x = self.block2(x)
         x = self.block3(x)
@@ -141,20 +127,16 @@ class MitoSpace3DDecoder(nn.Module):
         super(MitoSpace3DDecoder, self).__init__()
         self.output_dim = output_dim
 
-        # Same-res decode blocks
         self.up1 = ResUp3D(latent_dim, 64, scale_factor=1)
         self.up2 = ResUp3D(64, 64, scale_factor=1)
         self.up3 = ResUp3D(64, 128, scale_factor=1)
         self.up4 = ResUp3D(128, 64, scale_factor=1)
 
-        # First upsample ×2
         self.up5 = ResUp3D(64, 8, scale_factor=2)
 
-        # More same-res
         self.up6 = ResUp3D(8, 8, scale_factor=1)
         self.up7 = ResUp3D(8, 4, scale_factor=1)
 
-        # Final upsample ×2 inside a residual block to 4ch, then project to output_dim
         self.up8 = ResUp3D(4, 4, scale_factor=2)
         self.head = nn.Sequential(
             conv3x3(4, output_dim, stride=1, padding=1, padding_mode="reflect", bias=True),
@@ -162,7 +144,7 @@ class MitoSpace3DDecoder(nn.Module):
         )
 
     def forward(self, x):
-        # Input shape: (B, C, D, H, W)
+        # (B, C, D, H, W)
         x = self.up1(x)
         x = self.up2(x)
         x = self.up3(x)
@@ -189,11 +171,10 @@ class MitoSpace3DAutoencoder(nn.Module):
 
 if __name__ == '__main__':
     batch_size = 1
-    # Initialize models
     encoder = MitoSpace3DEncoder(latent_dim=2).cuda()
     decoder = MitoSpace3DDecoder(latent_dim=2, output_dim=1).cuda()
 
-    # Input shape: (B, C, D, H, W)
+    # (B, C, D, H, W)
     x = torch.randn(batch_size, 1, 64, 256, 256).cuda()
 
     z = encoder(x)
@@ -215,7 +196,6 @@ if __name__ == '__main__':
     print(f"Trainable parameters: {trainable_params:,}")
     print(f"Model size: {total_params * 4 / (1024**2):.2f} MB (float32)")
 
-    # Test forward pass
     with torch.no_grad():
         test_out = autoencoder(x)
         print(f"Forward pass successful: {x.shape} -> {test_out.shape}")

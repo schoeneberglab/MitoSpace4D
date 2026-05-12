@@ -7,7 +7,7 @@ from utils.utils import load_config
 from simclr.augmentations import DataAugmentation
 from autoencoder.autoencoder_runner import AutoEncoderRunner
 # from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
-from mitospace_autoencoder.utils import load_model
+from autoencoder.utils import load_model
 
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):

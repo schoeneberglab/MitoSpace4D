@@ -41,9 +41,9 @@ class ReconstructionLoss(nn.Module):
         w_l1: float   = 0.25,
         w_mse: float  = 0.25,
         w_grad: float = 0.0,
-        w_tv: float   = 0.0,        # enable only if you observe speckle/checkerboard
-        use_mask: bool = False,      # focus loss where signal exists
-        mask_thresh: float = 0.05,  # soft threshold on target intensity
+        w_tv: float   = 0.0,
+        use_mask: bool = False,
+        mask_thresh: float = 0.05,
         mask_softness: float = 40.0,
         win_size_ssim: int = 7,
         data_range: float = 1.0
@@ -60,7 +60,6 @@ class ReconstructionLoss(nn.Module):
         self.data_range = data_range
 
         if _HAS_MSSSIM and self.w_ssim > 0:
-            # MS-SSIM over 3D with C channels; expects (N, C, D, H, W)
             self.ms_ssim = MS_SSIM(
                 data_range=data_range,
                 size_average=True,
@@ -74,7 +73,6 @@ class ReconstructionLoss(nn.Module):
 
     @staticmethod
     def _soft_mask(x: torch.Tensor, thresh: float, softness: float):
-        # x in [0,1]; emphasize foreground (> thresh) with a soft mask
         return torch.sigmoid(softness * (x - thresh))
 
     @staticmethod
@@ -93,21 +91,16 @@ class ReconstructionLoss(nn.Module):
         B, C, D, H, W = pred.shape
         device = pred.device
 
-        # Foreground soft mask (computed on target)
         mask_bcdhw = None
         if self.use_mask:
-            # (B,C,D,H,W) -> (B,C,D,H,W)
             mask_bcdhw = self._soft_mask(target, self.mask_thresh, self.mask_softness).detach()
 
-        # --- MS-SSIM over 3D ---
         if self.ms_ssim is not None and self.w_ssim > 0:
-            # No reshape needed, inputs are already (B, C, D, H, W)
-            ssim_val = self.ms_ssim(pred, target)  # scalar in [0,1]
+            ssim_val = self.ms_ssim(pred, target)
             loss_ssim = 1.0 - ssim_val
         else:
             loss_ssim = torch.tensor(0.0, device=device, dtype=pred.dtype)
 
-        # --- Pixel-wise losses ---
         diff = pred - target
         l1_map = diff.abs()
         l2_map = diff.square()
@@ -115,7 +108,6 @@ class ReconstructionLoss(nn.Module):
         loss_l1  = self._masked_mean(l1_map, mask_bcdhw)
         loss_mse = self._masked_mean(l2_map, mask_bcdhw)
 
-        # --- Gradient consistency (edge/detail preservation) ---
         if self.w_grad > 0:
             pD, pH, pW = _finite_diff_3d(pred)
             tD, tH, tW = _finite_diff_3d(target)
@@ -125,14 +117,11 @@ class ReconstructionLoss(nn.Module):
         else:
             loss_grad = torch.tensor(0.0, device=device, dtype=pred.dtype)
 
-        # --- Optional TV regularizer (very light if enabled) ---
         if self.w_tv > 0:
-            # Note: Relies on pD, pH, pW being computed in w_grad block
             tv = pD.abs().mean() + pH.abs().mean() + pW.abs().mean()
         else:
             tv = torch.tensor(0.0, device=device, dtype=pred.dtype)
 
-        # --- Final weighted sum ---
         loss = (
             self.w_ssim * loss_ssim +
             self.w_l1   * loss_l1   +
@@ -141,7 +130,6 @@ class ReconstructionLoss(nn.Module):
             self.w_tv   * tv
         )
 
-        # Metrics dict for logging
         metrics = {
             "recon_loss": loss.detach(),
             "ms_ssim_term": loss_ssim.detach(),

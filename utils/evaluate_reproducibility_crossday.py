@@ -13,7 +13,7 @@ from data_aug.mitospace_dataset import *
 from simclr.conv3d_lstm import *
 import argparse
 
-from simclr.models_simple import Lightweight3DResNet
+from simclr.model import Lightweight3DResNet
 from utils.utils import *
 from data_aug.dataset_utils import get_mitospace_data_loaders
 import torch

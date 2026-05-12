@@ -5,8 +5,8 @@ import einops
 
 from utils.utils import load_config
 from simclr.augmentations import DataAugmentation
-from autoencoder.autoencoder_runner import AutoEncoderRunner
-from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
+
+from autoencoder.model import MitoSpace3DAutoencoder, load_model
 
 
 class Basic3DBlock(nn.Module):
@@ -39,9 +39,8 @@ class Lightweight3DResNet(nn.Module):
     def __init__(self,
                  embedding_size=2048,
                  cfg=None,
-                 #  cfg_aug=None,
                  apply_aug=False,
-                 decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
+                 decoder_checkpoint_path=None
                  ) -> None:
         super(Lightweight3DResNet, self).__init__()
 

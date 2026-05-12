@@ -14,12 +14,10 @@ import joblib
 from tqdm import trange
 import os
 import os.path as osp
-import argparse
-
 
 def get_label_colormap():
     colors = {}
-    with open("/home/earkfeld/Projects/MitoSpace4D/extraction_utils/colors.txt", "r") as file:
+    with open("/home/earkfeld/Projects/MitoSpace4D/metadata/colors.txt", "r") as file:
         for line in file:
             parts = line.strip().split()
             if len(parts) == 6:
@@ -38,6 +36,7 @@ class NonlinearRegressor(nn.Module):
 
         self.regressor = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(hidden_dim, 1)
@@ -239,7 +238,7 @@ def train_model(embeddings, targets, save_dir, regression_target="target", desc=
 
 def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_scaler, title=None, save_path=None,
                       save_boxplot_path=None, save_csv_path=None, generate_plot=True, show_plot=True,
-                      feature_name="feature"):
+                      feature_name="feature", y_min=None, y_max=None):
     model.eval()
     device = next(model.parameters()).device
 
@@ -255,11 +254,17 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
     mae = abs_errors.mean()
     mae_std = abs_errors.std()
 
-    # Normalized Absolute Percent Error: |y - y_hat| / |y| * 100, excluding samples where |y| is ~0
+    # Normalized Absolute Percent Error: |y - y_hat| / |y_max - y_min| * 100,
+    # where (y_min, y_max) span the entire dataset (passed in by caller) so the
+    # denominator is constant across samples and conditions.
     eps = 1e-9
-    valid = np.abs(y_val) > eps
-    if valid.any():
-        abs_pct_errors = np.abs(y_val[valid] - preds_orig[valid]) / np.abs(y_val[valid]) * 100.0
+    if y_min is None:
+        y_min = float(np.min(y_val))
+    if y_max is None:
+        y_max = float(np.max(y_val))
+    y_range = y_max - y_min
+    if y_range > eps:
+        abs_pct_errors = np.abs(y_val - preds_orig) / y_range * 100.0
         nape = abs_pct_errors.mean()
         nape_std = abs_pct_errors.std()
     else:
@@ -297,9 +302,8 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
             mae_cond = abs_errors_cond.mean()
             mae_std_cond = abs_errors_cond.std()
 
-            valid_cond = np.abs(y_val_cond) > eps
-            if valid_cond.any():
-                pct_cond = np.abs(y_val_cond[valid_cond] - preds_cond[valid_cond]) / np.abs(y_val_cond[valid_cond]) * 100.0
+            if y_range > eps and len(y_val_cond) > 0:
+                pct_cond = np.abs(y_val_cond - preds_cond) / y_range * 100.0
                 nape_cond = pct_cond.mean()
                 nape_std_cond = pct_cond.std()
             else:
@@ -346,21 +350,12 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
 
     if generate_plot:
 
-        # 1. Regression scatter plot — plotted in [0, 1] via min-max normalization
-        # over the combined (y_val, preds_orig) range, so units are comparable
-        # across regression targets and both axes live in [0, 1] with y=x as the
-        # diagonal. Metrics above (R², MAE, NAPE) and the per-condition NAPE
-        # boxplot still use the original scale.
-        combined = np.concatenate([y_val, preds_orig])
-        plot_lo = float(combined.min())
-        plot_hi = float(combined.max())
-        plot_range = plot_hi - plot_lo if plot_hi > plot_lo else 1.0
-        y_val_norm = (y_val - plot_lo) / plot_range
-        preds_norm = (preds_orig - plot_lo) / plot_range
-
+        # 1. Regression scatter plot — `y_val` and `preds_orig` are already in
+        # the normalized [0, 1] space set up in main(), so we plot them directly
+        # with axes locked to [0, 1] and y=x as the diagonal.
         plt.figure(figsize=(8, 6), dpi=300)
-        sns.regplot(x=y_val_norm,
-                    y=preds_norm,
+        sns.regplot(x=y_val,
+                    y=preds_orig,
                     scatter_kws={'alpha': 0.3},
                     line_kws={'color': 'red', 'alpha': 0.5},
                     ci=None,
@@ -444,6 +439,7 @@ def main(local_df,
          show_plot=True,
          frame_index=-1,
          seed=1123):
+
     torch.manual_seed(seed)
     np.random.seed(seed)
     if torch.cuda.is_available():
@@ -504,20 +500,35 @@ def main(local_df,
 
         # Restrict to the 1st–99th percentile of target values so extreme outliers
         # don't dominate MSE/MAE and skew per-condition NAPE.
-        lo_thr, hi_thr = np.percentile(target_vals, [1, 99])
-        keep_mask = (target_vals >= lo_thr) & (target_vals <= hi_thr)
-        n_kept = int(keep_mask.sum())
-        n_dropped_pct = len(target_vals) - n_kept
-        print(f"Filtering target to 1st–99th pct of {regression_target}: "
-              f"[{lo_thr:.4g}, {hi_thr:.4g}], kept {n_kept}/{len(target_vals)} "
-              f"(dropped {n_dropped_pct}).")
-        target_vals = target_vals[keep_mask]
-        if isinstance(inputs, pd.DataFrame):
-            inputs = inputs.iloc[keep_mask].reset_index(drop=True)
-        else:
-            inputs = inputs[keep_mask]
-        labels = labels[keep_mask]
-        label_names = label_names[keep_mask]
+        # lo_thr, hi_thr = np.percentile(target_vals, [1, 99])
+        # keep_mask = (target_vals >= lo_thr) & (target_vals <= hi_thr)
+        # n_kept = int(keep_mask.sum())
+        # n_dropped_pct = len(target_vals) - n_kept
+        #
+        # print(f"Filtering target to 1st–99th pct of {regression_target}: "
+        #       f"[{lo_thr:.4g}, {hi_thr:.4g}], kept {n_kept}/{len(target_vals)} "
+        #       f"(dropped {n_dropped_pct}).")
+        # target_vals = target_vals[keep_mask]
+        # if isinstance(inputs, pd.DataFrame):
+        #     inputs = inputs.iloc[keep_mask].reset_index(drop=True)
+        # else:
+        #     inputs = inputs[keep_mask]
+        # labels = labels[keep_mask]
+        # label_names = label_names[keep_mask]
+
+        # Min-max normalize target_vals to [0, 1] once, here. The rest of the
+        # pipeline (training, scaling, NAPE, plotting) then operates entirely in
+        # the normalized space, so y_range = 1 and the plot axes map directly to
+        # [0, 1] without any per-call re-normalization.
+        y_min_raw = float(target_vals.min())
+        y_max_raw = float(target_vals.max())
+        y_range_raw = y_max_raw - y_min_raw
+        if y_range_raw > 0:
+            target_vals = ((target_vals - y_min_raw) / y_range_raw).astype(np.float32)
+            print(f"Normalized {regression_target} to [0, 1] using raw range "
+                  f"[{y_min_raw:.4g}, {y_max_raw:.4g}].")
+        y_min_global = 0.0
+        y_max_global = 1.0
 
         model, scaler, X_val, y_val, val_conditions, val_labels, best_epoch = train_model(
             inputs,
@@ -552,6 +563,8 @@ def main(local_df,
             save_csv_path=None,  # aggregated below into a single combined CSV
             generate_plot=generate_plot,
             show_plot=show_plot,
+            y_min=y_min_global,
+            y_max=y_max_global,
         )
 
         if results_df is not None:
@@ -606,6 +619,7 @@ def main(local_df,
             medianprops={'color': 'red'},
             ax=ax,
         )
+
         # Lock the plotted region (axes box) to a 12:5 width:height aspect ratio
         # — independent of figsize / tick label sizes — so the figure always
         # renders with the same plot proportions.
@@ -635,7 +649,7 @@ def main(local_df,
 if __name__ == "__main__":
     # embeddings_dir = '/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms2d_2024v3'
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms3d_2024v3_225eps"
-    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_252eps"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_252eps"
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_supcon_190eps"
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_zero-shot_241eps"
     # embeddings_dir = '/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_resnet_252eps'
@@ -648,6 +662,8 @@ if __name__ == "__main__":
 
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/mitotnt_2024v3"
 
+    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_testing"
+
     # Columns must already exist in embeddings+metadata.parquet and be scalar per-cell values.
     # regression_targets = ["segment_length_mean", "fragment_diffusivity_mean"]
     # regression_targets = ["tmrm_intensities"]
@@ -656,131 +672,7 @@ if __name__ == "__main__":
     # several embedding columns, or just scalar features alone.
     feature_columns = ["embeddings"]
 
-    # feature_columns = [
-    #     "segment_diffusivity_mean",
-    #     "fragment_diffusivity_mean",
-    #     "node_diffusivity_mean",
-    #     "fusion_rate_mean",
-    #     "fission_rate_mean",
-    #     "total_node_count_mean",
-    #     "graph_efficiency_mean",
-    #     "fragment_diameter_mean",
-    #     "segment_length_mean",
-    #     "graph_clustering_coefficient_mean",
-    #     "fragment_branching_index_mean",
-    #     "graph_density_mean",
-    #     "fragment_length_mean",
-    # ]
-
-    # feature_columns = [
-    #     "fragment_branching_index_mean",
-    #     "fragment_branching_index_std",
-    #     "fragment_branchpoint_to_endpoint_ratio_mean",
-    #     "fragment_tortuosity_mean",
-    #     "fragment_tortuosity_std",
-    #     "graph_clustering_coefficient_mean",
-    #     "graph_density_mean",
-    #     "graph_efficiency_mean",
-    #     "graph_mean_betweenness_mean",
-    #     "segment_average_width_mean",
-    #     "segment_average_width_std",
-    #     "segment_length_mean",
-    #     "segment_length_std",
-    #     "total_fragment_count_mean",
-    #     "node_diffusivity_mean",
-    #     "node_diffusivity_std",
-    #     "fission_rate_mean",
-    #     "fusion_rate_mean"
-    # ]
-
-    # feature_columns = [
-    #     "fragment_branching_index_mean",
-    #     "fragment_branching_index_max",
-    #     "fragment_branching_index_min",
-    #     "fragment_branching_index_std",
-    #     "fragment_branchpoint_to_endpoint_ratio_mean",
-    #     "fragment_branchpoint_to_endpoint_ratio_max",
-    #     "fragment_branchpoint_to_endpoint_ratio_min",
-    #     "fragment_branchpoint_to_endpoint_ratio_std",
-    #     "fragment_diameter_mean",
-    #     "fragment_diameter_max",
-    #     "fragment_diameter_min",
-    #     "fragment_diameter_std",
-    #     "fragment_length_mean",
-    #     "fragment_length_max",
-    #     "fragment_length_min",
-    #     "fragment_length_std",
-    #     "fragment_tortuosity_mean",
-    #     "fragment_tortuosity_max",
-    #     "fragment_tortuosity_min",
-    #     "fragment_tortuosity_std",
-    #     "graph_clustering_coefficient_mean",
-    #     "graph_clustering_coefficient_max",
-    #     "graph_clustering_coefficient_min",
-    #     "graph_clustering_coefficient_std",
-    #     "graph_density_mean",
-    #     "graph_density_max",
-    #     "graph_density_min",
-    #     "graph_density_std",
-    #     "graph_efficiency_mean",
-    #     "graph_efficiency_max",
-    #     "graph_efficiency_min",
-    #     "graph_efficiency_std",
-    #     "graph_max_betweenness_mean",
-    #     "graph_max_betweenness_max",
-    #     "graph_max_betweenness_min",
-    #     "graph_max_betweenness_std",
-    #     "graph_mean_betweenness_mean",
-    #     "graph_mean_betweenness_max",
-    #     "graph_mean_betweenness_min",
-    #     "graph_mean_betweenness_std",
-    #     "segment_average_width_mean",
-    #     "segment_average_width_max",
-    #     "segment_average_width_min",
-    #     "segment_average_width_std",
-    #     "segment_length_mean",
-    #     "segment_length_max",
-    #     "segment_length_min",
-    #     "segment_length_std",
-    #     "segment_sum_width_mean",
-    #     "segment_sum_width_max",
-    #     "segment_sum_width_min",
-    #     "segment_sum_width_std",
-    #     "total_fragment_count_mean",
-    #     "total_fragment_count_max",
-    #     "total_fragment_count_min",
-    #     "total_fragment_count_std",
-    #     "total_node_count_mean",
-    #     "total_node_count_max",
-    #     "total_node_count_min",
-    #     "total_node_count_std",
-    #     "total_segment_count_mean",
-    #     "total_segment_count_max",
-    #     "total_segment_count_min",
-    #     "total_segment_count_std",
-    #     "fragment_diffusivity_mean",
-    #     "fragment_diffusivity_max",
-    #     "fragment_diffusivity_min",
-    #     "fragment_diffusivity_std",
-    #     "node_diffusivity_mean",
-    #     "node_diffusivity_max",
-    #     "node_diffusivity_min",
-    #     "node_diffusivity_std",
-    #     "segment_diffusivity_mean",
-    #     "segment_diffusivity_max",
-    #     "segment_diffusivity_min",
-    #     "segment_diffusivity_std",
-    #     "fission_rate_mean",
-    #     "fission_rate_max",
-    #     "fission_rate_min",
-    #     "fission_rate_std",
-    #     "fusion_rate_mean",
-    #     "fusion_rate_max",
-    #     "fusion_rate_min",
-    #     "fusion_rate_std"
-    # ]
-
-    # regression_targets = ["tmrm_intensities"]
+    # regression_targets = ["morph_intensities"]
     regression_targets = [
         "fragment_diameter_mean",
         "fragment_length_mean",
@@ -804,9 +696,10 @@ if __name__ == "__main__":
     exclude_labels = None
     # desc = None
     frame_index = -1
+
     # desc = "frame=-1_mnae-plot_subset"
-    # desc = "frame=-1_tmrm"
-    desc = "frame=-1_mitotnt-feats"
+    # desc = "frame=-1_tmrm_v4"
+    desc = "frame=-1_mitotnt-feats_v3"
     # desc = "tmp"
 
     # desc = "non_extreme_conditions"

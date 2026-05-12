@@ -1,92 +1,89 @@
-import os
-import os.path as osp
-import numpy as np
 import torch
+import numpy as np
+import argparse
+from pathlib import Path
+from glob import glob
 from tqdm import tqdm
-from einops import rearrange
 
-from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
-from autoencoder.autoencoder_runner import AutoEncoderRunner
+from model import MitoSpace3DAutoencoder
 
-if __name__ == "__main__":
-    print("Encoding data...")
+@torch.no_grad()
+def normalize_channel(tensor: torch.Tensor):
+    """Normalize tensor to [0, 1] range."""
+    return (tensor - tensor.min()) / (tensor.max() - tensor.min() + 1e-9)
 
-    # Local paths
-    ckpt_path = "/home/earkfeld/Projects/MitoSpace4D/autoencoder/mitospace_resnet_autoencoder_20251018.ckpt"
-    src_root  = "/mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_summer_new"      # Summer 2024
-    # src_root = "/mnt/aquila/SSD_processing/Others/MitoSpace4D/summer_2025_new"  # Summer 2025
-    dst_root  = "/mnt/DATA_02/reprocessed_summer_2024_encoded"
-    
-    # Delta Paths
-    # ckpt_path = "/u/earkfeld/MitoSpace4D/autoencoder/runs/1081149/lightning_logs/kinetics_autoencoder/checkpoints/last.ckpt"
-    # src_root = "/work/nvme/begq/MitoSpace4D/data/2025_data/"
-    # dst_root = "/work/nvme/begq/MitoSpace4D/data/2025_data_encoded/"
 
-    # Data normalization settings
-    normalize_data = False
-    max_value_tmrm = 25_000
-    max_value_tracker = 10_000
+def preprocess_data(data: np.ndarray):
+    if data.ndim == 4:
+        data = data[:, np.newaxis, ...]
 
-    # Traverse source directory, mirror to destination, collect all npy files
-    infiles, outfiles = [], []
-    for src_dir in sorted(os.listdir(src_root)):
-        src_dir_path = osp.join(src_root, src_dir)
-        if not osp.isdir(src_dir_path):
-            continue
-        dst_dir_path = osp.join(dst_root, src_dir)
-        os.makedirs(dst_dir_path, exist_ok=True)
-        for file in sorted(os.listdir(src_dir_path)):
-            if file.endswith(".npy"):
+    original_depth = data.shape[2]
+    if original_depth < 64:
+        pad_width = ((0, 0), (0, 0), (0, 64 - original_depth), (0, 0), (0, 0))
+        data = np.pad(data, pad_width, mode='constant', constant_values=0)
 
-                infile = osp.join(src_dir_path, file)
-                outfile = osp.join(dst_dir_path, file)
-                
-                if osp.exists(outfile):
-                    continue
-                
-                infiles.append(osp.join(src_dir_path, file))
-                outfiles.append(osp.join(dst_dir_path, file))
+    return data, original_depth
 
-    print(f"Found {len(infiles)} files to encode.")
+@torch.no_grad()
+def encode_file(file_path: Path, model: MitoSpace3DAutoencoder, device: torch.device, output_dir: Path):
+    data = np.load(file_path, mmap_mode='r')
+    data, original_depth = preprocess_data(data)
 
-    # Model setup
-    model = MitoSpace3DAutoencoder()
-    runner = AutoEncoderRunner.load_from_checkpoint(ckpt_path, model=model)
-    print("Loaded model from checkpoint.")
+    data_tensor = torch.from_numpy(data).float().to(device)
 
-    encoder = runner.model.encoder
-    
-    encoder.eval()
-    for p in encoder.parameters():
-        p.requires_grad = False
+    data_tensor = normalize_channel(data_tensor)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder.to(device)
+    encoded_data = []
+    for i in range(data_tensor.shape[0]):
+        encoded = model.encoder(data_tensor[i:i+1])
+        encoded_data.append(encoded.cpu().numpy())
 
-    # Encode all the files!
-    for infile, outfile in tqdm(zip(infiles, outfiles), total=len(infiles)):
-        image = np.load(infile)  # (T,C,Z,Y,X)
-        
-        if normalize_data:
-            image[:, 0] = np.clip(image[:, 0], 0, max_value_tmrm) / max_value_tmrm
-            image[:, 1] = np.clip(image[:, 1], 0, max_value_tracker) / max_value_tracker
+    encoded = np.concatenate(encoded_data, axis=0)
 
-        # Swap to (C,T,Z,Y,X)
-        image = rearrange(image, "t c z y x -> c t z y x")
+    relative_path = file_path.relative_to(file_path.parents[2])
+    output_file = output_dir / relative_path
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with torch.no_grad():
-            x = torch.from_numpy(image).unsqueeze(0).float().to(device)     # (B=1,T,C,Z,Y,X)
-            z = encoder(x)                                                  # (1,T,latent_dim,D,H,W)
-            encoded = z.squeeze(0).cpu().numpy()                            # (T,latent_dim,D,H,W)
+    np.save(output_file, encoded)
 
-        try:    
-            np.save(outfile, encoded)
+
+def main():
+    parser = argparse.ArgumentParser(description='Encode dataset using trained autoencoder')
+    parser.add_argument('--checkpoint', type=str, default='./runs/2024v3_ft_sequence-norm/latest.pt',
+                        help='Path to model checkpoint')
+    parser.add_argument('--data_root', type=str,
+                        default='/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v3_data/processed_data/',
+                        help='Root directory of processed data')
+    parser.add_argument('--pattern', type=str, default='2024*/*-0-1.npy',
+                        help='Glob pattern for finding input files')
+    args = parser.parse_args()
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    print(f"Loading model from {args.checkpoint}")
+    model = load_model(args.checkpoint, device)
+
+    data_root = Path(args.data_root)
+    files = sorted(glob(str(data_root / args.pattern)))
+    print(f"Found {len(files)} files to encode")
+
+    if len(files) == 0:
+        print("No files found! Check your data_root and pattern.")
+        return
+
+    output_dir = data_root.parent / 'encoded_data'
+    output_dir.mkdir(exist_ok=True)
+    print(f"Output directory: {output_dir}")
+
+    print("\nEncoding dataset...")
+    for file_path in tqdm(files, desc="Encoding", unit="file"):
+        try:
+            encode_file(Path(file_path), model, device, output_dir)
         except Exception as e:
-            print(f"Error saving {outfile}: {e}")
-            
-            if osp.exists(outfile):
-                os.remove(outfile)
+            print(f"\n✗ Failed to encode {file_path}: {e}")
+            continue
 
-        # print(f"Encoded {infile} -> {outfile}, shape: {encoded.shape}")
-        # break  # TEMPORARY: only do one file for testing
 
+if __name__ == '__main__':
+    main()

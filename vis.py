@@ -37,7 +37,7 @@ from utils.utils import normalize, load_config, get_fpaths
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-from simclr.models_simple import Lightweight3DResNet  # newly trained model (some dict changes)
+from simclr.model import Lightweight3DResNet  # newly trained model (some dict changes)
 # from simclr.models_simple_original import Lightweight3DResNet
 
 # from simclr.models import MitoSpace4DConvLSTM

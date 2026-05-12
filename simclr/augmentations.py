@@ -21,19 +21,14 @@ class RandomTimeFlip(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t, c, z, h, w = x.size()
-        x = x.permute(0, 3, 2, 1, 4, 5) # (b, z, c, t, h, w)
+        x = x.permute(0, 3, 2, 1, 4, 5)
         x = x.reshape(b*z, c, t, h, w)
         x = self.flipper(x)
         x = x.view(b, z, c, t, h, w)
-        x = x.permute(0, 3, 2, 1, 4, 5) # (b, t, c, z, h, w)
+        x = x.permute(0, 3, 2, 1, 4, 5)
         return x
 
 class RandomExchangeFlip(nn.Module):
-    """Randomly exchange the two halves along z/h/w by rolling by floor(N/2).
-
-    Input:  x with shape (B, C, Z, H, W)
-    Effect: For each of dims (Z,H,W), with prob p, shift by N//2 (no-op if N//2==0).
-    """
     def __init__(self, p: float = 0.5) -> None:
         super().__init__()
         self.p = float(p)
@@ -82,13 +77,11 @@ class RandomTimeMask(nn.Module):
     def forward(self, x: torch.Tensor):
         if self.p == 0:
             return [x] * self.n_views
-        
-        # Pick a random length of the clip using the predefined probabilities and pytorch
+
         idx = torch.multinomial(self.clip_len_probs, 1)
         clip_len = int(self.clip_len[idx].item())
 
         if x.size(1) > clip_len:
-            # Pick a random integer start point for the clip
             start = torch.randint(0, (x.size(1) - clip_len), (1,), device=x.device).item()
         else:
             start = 0
@@ -100,19 +93,16 @@ class RandomTimeMask(nn.Module):
         
         x_1 = x * mask
 
-        # Early return if only 1 view is needed
         if self.n_views == 1:
             return [x_1]
         elif self.n_views == 2:
 
-            # sample time_delay with given probabilities and cap at clip_len
             td_probs = torch.as_tensor(self.probs_time_delay, dtype=torch.float, device=x.device)
             td_vals = torch.as_tensor(self.time_delay, dtype=torch.long, device=x.device)
             td_idx = torch.multinomial(td_probs, 1, replacement=True).item()
             time_delay = int(td_vals[td_idx].item())
             time_delay = min(time_delay, clip_len)
 
-            # second mask shifted by time_delay
             mask_2 = mask.clone()
             if time_delay > 0:
                 mask_2[:, start:start + time_delay, :, :, :] = 0
@@ -133,11 +123,7 @@ class RandomBrightness(nn.Module):
                  add_lower=-0.05, 
                  add_upper=0.05, 
                  per_channel=True) -> None:
-        """
-        3D random intensity augmentation (Gain + Offset).
-        Expects x with shape (b, t, c, z, h, w).
-        Simulates y = \alpha x + \beta.
-        """
+
         super().__init__()
         self.p = float(p)
         self.mult_lower = float(lower)
@@ -239,28 +225,3 @@ class DataAugmentation(nn.Module):
             return 2 * views - 1  # scale to [-1, 1]
         
         return views
-
-if __name__ == "__main__":
-    # cfg = load_config("/simclr/config.yaml")
-    # aug = DataAugmentation(cfg_aug=cfg['data_params']['transforms'], zero_mean_norm=True, n_views=2)
-
-    random_brightness = RandomBrightness(p=1.0, lower=-0.2, upper=0.2, per_channel=True)
-
-    x = torch.zeros((2, 10, 2, 5, 32, 32))  # (b, t, c, z, h, w)
-    b, t, c, z, h, w = x.size()
-    print("x", x.size())
-
-    x_orig = x.clone()
-
-    x_aug = random_brightness(x.view(b * t, c, z, h, w))
-    
-    print("x_aug", x_aug.size())
-    x_aug = x_aug.view(b, t, c, z, h, w) # (b, t, c, z, h, w)
-
-    # Get a single b,t slice to visualize
-    x0_orig = x_orig[0, 0, :, :, :]
-    x0_aug = x_aug[0, 0, :, :, :]
-
-    # Print mean of channels spatially
-    print("x0_orig", x0_orig[0, :, :, :].mean(), x0_orig[1, :, :, :].mean())
-    print("x0_aug", x0_aug[0, :, :, :].mean(), x0_aug[1, :, :, :].mean())
