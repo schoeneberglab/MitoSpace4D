@@ -48,7 +48,7 @@ class Basic3DBlock(nn.Module):
         return F.relu(out)
 
 
-class Lightweight3DResNet(nn.Module):
+class MitoSpace4D(nn.Module):
     def __init__(
         self,
         embedding_size=2048,
@@ -57,7 +57,7 @@ class Lightweight3DResNet(nn.Module):
         decoder_checkpoint_path=None,
     ) -> None:
 
-        super(Lightweight3DResNet, self).__init__()
+        super(MitoSpace4D, self).__init__()
         self.apply_aug = apply_aug
         self.augment_pipeline = DataAugmentation(
             cfg["data_params"]["transforms"], zero_mean_norm=True
@@ -183,7 +183,7 @@ class Lightweight3DResNet(nn.Module):
 
 if __name__ == "__main__":
     cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")
-    model = Lightweight3DResNet(
+    model = MitoSpace4D(
         embedding_size=2048, cfg_aug=cfg["data_params"]["transforms"], apply_aug=True
     ).cuda()
 

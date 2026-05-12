@@ -37,7 +37,7 @@ from tqdm import tqdm as tqdm_bar
 
 from data.dataset_utils import get_mitospace_data_loaders
 from data.mitospace_dataset import *
-from simclr.model import Lightweight3DResNet
+from simclr.model import MitoSpace4D
 from train_simclr import SimCLRRunner
 from utils.utils import *
 
@@ -213,7 +213,7 @@ def generate_embeddings(args, cfg, embeddings_dir, drug_labels_dict, label_drug_
     img_pathfile = osp.join(embeddings_dir, "image_paths.csv")  # (N,) object
 
     # Build and load model
-    model = Lightweight3DResNet(
+    model = MitoSpace4D(
         embedding_size=2048,
         cfg=cfg,
         apply_aug=False,

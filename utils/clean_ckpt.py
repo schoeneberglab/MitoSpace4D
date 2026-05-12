@@ -18,7 +18,7 @@ for _mod_name in (
             _stub.MitoSpace3DAutoencoder = object
         sys.modules[_mod_name] = _stub
 
-from simclr.model import Lightweight3DResNet  # noqa: E402
+from simclr.model import MitoSpace4D  # noqa: E402
 from simclr.simclr import SimCLRRunner  # noqa: E402
 from utils.utils import load_config  # noqa: E402
 
@@ -51,7 +51,7 @@ def verify_checkpoint(ckpt_path, config_path, dropped_prefixes=("model.decoder."
     cfg = load_config(config_path)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = Lightweight3DResNet(
+    model = MitoSpace4D(
         embedding_size=2048,
         cfg=cfg,
         apply_aug=False,

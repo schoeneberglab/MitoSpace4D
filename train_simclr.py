@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torchvision import models
 
 from data.contrastive_learning_dataset import ContrastiveLearningDataset
-from simclr.model import Lightweight3DResNet
+from simclr.model import MitoSpace4D
 from simclr.simclr import SimCLRRunner
 from utils.utils import load_config
 
@@ -96,7 +96,7 @@ def main():
 
     # model = MitoSpace4DTransformer(cfg_aug=cfg['data_params']['transforms'], apply_aug=True)
 
-    model = Lightweight3DResNet(
+    model = MitoSpace4D(
         embedding_size=2048, cfg_aug=cfg["data_params"]["transforms"], apply_aug=True
     )
 

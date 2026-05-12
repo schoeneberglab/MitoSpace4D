@@ -11,9 +11,8 @@ from torch.utils.data import DataLoader
 from torchvision import models
 from tqdm import tqdm
 
-from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
-from simclr.conv3d_lstm import MitoSpace4DConvLSTM
-from simclr.models_transformer import MitoSpace4DTransformer
+from data.contrastive_learning_dataset import ContrastiveLearningDataset
+from simclr.model import MitoSpace4D
 from simclr.simclr import SimCLRRunner
 from utils.utils import load_config
 
