@@ -161,7 +161,7 @@ class DataAugmentation(nn.Module):
         self.zero_mean_norm = zero_mean_norm
 
         self.temporal_transform_1 = RandomTimeMask(p=cfg_aug['RandomTimeMask']['p'], n_views=self.n_views)
-        self.temporal_transform_2 = RandomTimeFlip(p=cfg_aug['RandomTimeFlip']['p'])
+        self.temporal_transform_2 = RandomTimeFlip(p=cfg_aug['RandomTimeFlip']['p'])  # )  # Always set to 0; kept for completeness. We do not reverse the time dimension, since a time-reversed sequence should not be treated as a positive pair.
 
         self.transforms_2d = nn.Sequential(
             RandomResizedCrop(p=cfg_aug['ResizedCrop']['p'],
