@@ -8,3 +8,8 @@ data_old/
 *.bak
 *.ckpt
 .env
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
