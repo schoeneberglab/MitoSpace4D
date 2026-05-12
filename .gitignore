@@ -1,9 +1,15 @@
-# IDE / OS / local secrets
+archive/
+runs/
+checkpoints/
+website_data/
+manuscript_v2/
+data_old/
+*.pyc
+*.bak
+*.ckpt
+.env
+
+# IDE / OS
 .idea/
 *.iml
 .DS_Store
-.env
-
-# Python
-*.pyc
-__pycache__/

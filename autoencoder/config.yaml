@@ -1,0 +1,37 @@
+# Model Configuration
+model:
+  input_dims: [1, 64, 256, 256]  # Input dimensions [C, D, H, W]
+  latent_dim: 2
+#  latent_dim: 128    # Size of latent vector
+#  base_channels: 4  # Base number of channels in encoder/decoder
+#  levels: 5          # Number of downsampling/upsampling levels
+
+# Data Configuration
+data:
+  manifest_path: "/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v3_data/processed_data/"
+  val_split: 0.1                              # Validation split ratio
+  seed: 1123                                  # Random seed for reproducibility
+  num_workers: 4                              # Number of dataloader workers
+  channel_index: None                            # Specific channel to train on (null for all channels)
+  prefetch_factor: 4
+  n_samples: null                             # Number of samples to use (null for full dataset, useful for debugging)
+
+# Training Configuration
+training:
+  batch_size: 4            # Batch size for training
+  grad_acc_steps: 32       # Number of steps to accumulate gradients (1 = no accumulation)
+  epochs: 100              # Number of training epochs
+  lr: 0.001                # Learning rate
+  min_lr: 0.000001         # Minimum learning rate for cosine annealing
+  weight_decay: 0.0001     # Weight decay for AdamW optimizer
+
+# Logging Configuration
+logging:
+  wandb_project: "mitospace-ae"     # W&B project name
+  run_name: "2024v3_ft_sequence-norm"                    # W&B run name (null for auto-generated)
+  run_dir: "./runs/"                 # Base directory for runs (checkpoints saved in subdirectory named after run)
+  log_interval: 10                  # Log training metrics every N batches
+  save_interval: 5                 # Save periodic checkpoint every N epochs
+  num_images: 3                     # Number of reconstruction images to log (default: 1)
+
+
