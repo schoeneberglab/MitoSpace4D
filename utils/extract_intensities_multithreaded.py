@@ -66,11 +66,6 @@ if __name__ == '__main__':
     df = pd.read_csv(img_pathfile, header=None)
     df.columns = ['morph_path']
 
-    # Keep only entries with paths containing "20240729" (for testing)
-    print(len(df))
-    df = df[df['morph_path'].str.contains("20240729")].reset_index(drop=True)
-    print(len(df))
-
     # Add a new column "tmrm_path" by replacing the morph_path with the tmrm path
     df['tmrm_path'] = df['morph_path'].apply(lambda x: x.replace('-0-1.npy', '-0-0.npy'))
 
