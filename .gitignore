@@ -1,7 +1,9 @@
 archive/
 runs/
 checkpoints/
-data/
+website_data/
+manuscript_v2/
+data_old/
 *.pyc
 *.bak
 *.ckpt
