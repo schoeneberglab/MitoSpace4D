@@ -1,0 +1,9 @@
+# IDE / OS / local secrets
+.idea/
+*.iml
+.DS_Store
+.env
+
+# Python
+*.pyc
+__pycache__/
