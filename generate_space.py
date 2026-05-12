@@ -24,81 +24,84 @@ import einops
 
 from sklearn.decomposition import PCA
 
-from utils.vis import make_mitospace
 # from utils.colormaps import create_colormap # TODO: set up color map generation
 from data_aug.dataset_utils import get_mitospace_data_loaders
 from train_simclr import SimCLRRunner
 import torch.nn.functional as F
 from utils.utils import normalize, load_config, get_fpaths
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
-from simclr.models_simple import Lightweight3DResNet # newly trained model (some dict changes)
+from simclr.models_simple import Lightweight3DResNet  # newly trained model (some dict changes)
+# from simclr.models_simple_3d import Lightweight3DResNet # 3D resnet model
 # from simclr.models_simple_original import Lightweight3DResNet
 
-# from simclr.models import MitoSpace4DConvLSTM
-# from simclr.models_simple_attn import Lightweight3DResNet
 from utils.tvn import *
 import joblib
+
+import os.path as osp
+import numpy as np
+import pandas as pd
+from skimage.filters import threshold_otsu
 
 np.random.seed(0)
 random.seed(0)
 
 parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 
-parser.add_argument('--checkpoint_path', help='Checkpoint path', 
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt"
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=145-step=25988-val_loss=0.00.ckpt",
-                    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115_epoch=161-step=28836-val_loss=0.00.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_decoupled-tmrm_r20251115_epoch=256-step=41120-val_loss=0.00.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_ablated-tmrm_r20251115_epoch=291-step=46720-val_loss=0.00.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps-ckpt_kinetics_ablated-tmrm_r20260105.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps_ft-kinetics60_ablated-tmrm_r20260110_epoch=178-step=28819_best.ckpt"
+parser.add_argument('--checkpoint_path', help='Checkpoint path',
+                    # default="/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/checkpoints/ms4d_2024v3_epoch=300-step=32099.ckpt" # MS4D 2024v3
+                    default="/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/checkpoints/ms4d_2024v3_epoch=252-step=27071_best.ckpt" # MS4D 2024v3 best val loss
+                    # default = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/checkpoints/ms4d_supcon_epoch=210-step=45154_best.ckpt" # MS4D 2024v3 supervised best val loss
+                    # default = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/checkpoints/ms4d_2024v3_supcon_epoch=190-step=20437_best.ckpt"
                     )
 
-parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str, help='Config path.')
+parser.add_argument('--config', default='/home/earkfeld/Projects/MitoSpace4D/simclr/config.yaml', type=str,
+                    help='Config path.')
+
 parser.add_argument('--data_path', help='Data to predict',
-                    # default="/home/earkfeld/Projects/MitoSpace4D/data/2024v2_encoded_data",
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_summer_new/", # 2024v2 Dataset
-                    # default="/mnt/DATA_02/2024_data_encoded", # 2024v2 Dataset Encoded
-                    default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data", # Kinetics Dataset
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_data_encoded/", # Kinetics Dataset Encoded
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data"
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_3b"
-                    # default="/run/user/1002/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/leukemia_drug_resistance_data")
-                    #     default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_4",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data"
+                    default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v3_data/processed_data",
+                    # default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/reproducibility/processed_data",
                     )
 
-parser.add_argument('--decoder_ckpt', help='Path to decoder checkpoint',
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
-                    default=None,
-                    )
-
+parser.add_argument('--decoder_ckpt', help='Path to decoder checkpoint', default=None, )
 parser.add_argument('--embeddings_dir', help='Directory to save/load embeddings', default=None)
 
 parser.add_argument('--visualize', default=False, action='store_true', help="Visualize UMAP'd MitoSpace embeddings")
-parser.add_argument('--save_embeddings', default=False, action='store_true', help='Save embeddings')
+parser.add_argument('--save_embeddings', default=True, action='store_true', help='Save embeddings')
 parser.add_argument('--save_pcd', default=None, help='Path to save the point cloud')
 
-parser.add_argument('--single_frames', default=False, action='store_true', help='Generates frame embeddings independently.')
+parser.add_argument('--single_frames', default=False, action='store_true',
+                    help='Generates frame embeddings independently.')
 parser.add_argument('--labels', default=None, type=int, nargs='+', help='Labels to pick. Default is all labels.')
 parser.add_argument('--datasets', default=None, type=str, nargs='+', help='Datasets to use. Default is all datasets.')
-parser.add_argument('--cmap', default='label', help='Color map to use.', choices=['label', 'temporal', 'region', 'dataset', 'tmrm'])
-parser.add_argument('--to_load', default='all', type=str, choices=["all", "train", "val"], help='Which splits to load. Default is "all".')
+parser.add_argument('--cmap', default='label', help='Color map to use.',
+                    choices=['label', 'temporal', 'region', 'dataset', 'tmrm'])
+parser.add_argument('--to_load', default='all', type=str, choices=["all", "train", "val"],
+                    help='Which splits to load. Default is "all".')
 # parser.add_argument('--channels', default=[0, 1], type=int, nargs='+', help='Channels to use. Default is [0, 1].')
 
 parser.add_argument('--reproject', default=False, action='store_true', help='Reproject embeddings')
-parser.add_argument('--load_transform', default=False, action='store_true', help='Load UMAP transform from disk instead of fitting new one.')
+parser.add_argument('--load_transform', default=False, action='store_true',
+                    help='Load UMAP transform from disk instead of fitting new one.')
 parser.add_argument('--batch_size', type=int, default=1, help='Batch size for dataloaders')
-parser.add_argument('--use_pca', default=False, action='store_true', help='Use PCA for dimensionality reduction before UMAP. Default is False.')
-parser.add_argument('--densmap', default=False, action='store_true', help='Use densMAP instead of UMAP. Default is False.')
-parser.add_argument('--tvn', default=False, action='store_true', help='Apply Typical Variation Normalization (TVN) using controls before UMAP.')  # <-- added flag
-parser.add_argument('--control_label', default='control', type=str, help='Label name for the control samples for performing typical variation normalization (TVN). Default is "control".')
+parser.add_argument('--use_pca', default=False, action='store_true',
+                    help='Use PCA for dimensionality reduction before UMAP. Default is False.')
+parser.add_argument('--densmap', default=False, action='store_true',
+                    help='Use densMAP instead of UMAP. Default is False.')
+parser.add_argument('--tvn', default=False, action='store_true',
+                    help='Apply Typical Variation Normalization (TVN) using controls before UMAP.')  # <-- added flag
+parser.add_argument('--control_label', default='control', type=str,
+                    help='Label name for the control samples for performing typical variation normalization (TVN). Default is "control".')
+parser.add_argument('--random_init', default=False, action='store_true',
+                    help='Use a randomly initialized model instead of loading from a checkpoint.')
+parser.add_argument('--vary_intensity', default=0.0, type=float,
+                    help='Randomly vary image intensity by +/- this normalized fraction per sample (e.g. 0.1 for +/-10%%).')
+parser.add_argument('--binarize', default=False, help='Binarize the images by thresholding at 0 using otsu thresholding', action='store_true')
+parser.add_argument('--visualize_weights', default=False, help="Visualize model weights", action='store_true')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 def get_label_colormap(proj_dir):
     colors = {}
@@ -115,21 +118,25 @@ def get_label_colormap(proj_dir):
                 print("Invalid line format:", line)
     return colors
 
+
 def get_temporal_colormap(embeddings_dir):
     print("Loading temporal colormap")
     # colors = np.load(f"{embeddings_dir}/temporal_colormap.npy")
     colors = np.load(f"{embeddings_dir}/cmap_temporal.npy")
     return colors
 
+
 def get_region_colormap(embeddings_dir):
     print("Loading region colormap")
     colors = np.load(f"{embeddings_dir}/cmap_region.npy")
     return colors
 
+
 def get_dataset_colormap(embeddings_dir):
     print("Loading dataset colormap")
     colors = np.load(f"{embeddings_dir}/cmap_dataset.npy")
     return colors
+
 
 def get_tmrm_colormap(embeddings_dir):
     print("Loading TMRM colormap")
@@ -139,6 +146,7 @@ def get_tmrm_colormap(embeddings_dir):
     cmap = plt.get_cmap('viridis')
     colors = cmap(colors)[:, :3]  # get RGB values only, 0-1 range
     return colors
+
 
 def perform_tvn(embeddings, labels, img_names, label_names, control_label='wt_cal27', scope="global", eps=1e-6):
     assert scope in ['global', 'batch'], "Scope must be 'global' or 'batch'"
@@ -157,18 +165,149 @@ def perform_tvn(embeddings, labels, img_names, label_names, control_label='wt_ca
     if scope == "global":
         print(f"Performing global TVN using {control_mask_arr.sum()} control samples ({control_label})...")
         normalized_embeddings = tvn_global(X=embeddings,
-                                          controls_mask=control_mask_arr,
-                                          eps=eps,
-                                          ledoit_wolf=True)
+                                           controls_mask=control_mask_arr,
+                                           eps=eps,
+                                           ledoit_wolf=True)
     else:  # per-batch
         print(f"Performing per-batch TVN using {control_mask_arr.sum()} control samples ({control_label})...")
         normalized_embeddings = tvn_per_batch(X=embeddings,
-                                            meta=df_data,
-                                            batch_col='plate',
-                                            controls_mask=control_mask_arr,
-                                            eps=eps,
-                                            ledoit_wolf=True)
+                                              meta=df_data,
+                                              batch_col='plate',
+                                              controls_mask=control_mask_arr,
+                                              eps=eps,
+                                              ledoit_wolf=True)
     return normalized_embeddings
+
+
+def get_tmrm_intensity(img):
+    # (B, T, C, Z, Y, Z)
+    # img = img.cpu().numpy()
+    raw_mean_intensities = np.zeros(img.shape[1])
+    otsu_mean_intensities = np.zeros(img.shape[1])
+
+    for t in range(img.shape[1]):
+        # Otsu threshold the morphology channel get a mask
+        thr = threshold_otsu(img[0, t, 1, ...])
+        mask = img[0, t, 1, ...] > thr
+
+        # Raw mean intensity of the tmrm channel
+        raw_mean_intensities[t] = img[0, t, 0, ...].mean()
+
+        # Masked mean intensity of the tmrm channel
+        img[0, t, 0, ...] = img[0, t, 0, ...] * mask
+        otsu_mean_intensities[t] = img[0, t, 0, ...].mean()
+
+    return raw_mean_intensities, otsu_mean_intensities
+
+
+def normalize(x):
+    """Normalize array or tensor to [0, 1] range."""
+    return (x - x.min()) / (x.max() - x.min() + 1e-9)
+
+
+def visualize_model_weights(model, out_dir, tag="weights"):
+    """Save ResNet and LSTM weight visualizations (histograms + heatmaps) to out_dir."""
+    os.makedirs(out_dir, exist_ok=True)
+
+    # --- ResNet conv layers ---
+    resnet_conv_layers = [
+        (name, module.weight.detach().cpu().numpy())
+        for name, module in model.resnet.named_modules()
+        if isinstance(module, torch.nn.Conv3d)
+    ]
+
+    # Grid of weight-value histograms, one subplot per conv layer
+    n = len(resnet_conv_layers)
+    cols = 4
+    rows = (n + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 3 * rows))
+    axes = np.atleast_1d(axes).flatten()
+    for ax, (name, w) in zip(axes, resnet_conv_layers):
+        ax.hist(w.flatten(), bins=60, color='steelblue', alpha=0.85)
+        ax.set_title(f"{name}\nshape={tuple(w.shape)}  std={w.std():.3g}", fontsize=8)
+        ax.set_yscale('log')
+    for ax in axes[n:]:
+        ax.axis('off')
+    fig.suptitle(f"ResNet Conv3d weight distributions ({tag})")
+    fig.tight_layout()
+    fig.savefig(osp.join(out_dir, f"resnet_conv_hists_{tag}.png"), dpi=120)
+    plt.close(fig)
+
+    # Center-depth slices of the stem kernels (first Conv3d)
+    if len(resnet_conv_layers) > 0:
+        stem_name, stem_w = resnet_conv_layers[0]  # (out_ch, in_ch, D, H, W)
+        mid_d = stem_w.shape[2] // 2
+        n_show = min(16, stem_w.shape[0])
+        grid_side = int(np.ceil(np.sqrt(n_show)))
+        fig, axes = plt.subplots(grid_side, grid_side, figsize=(2 * grid_side, 2 * grid_side))
+        axes = np.atleast_1d(axes).flatten()
+        vmax = np.abs(stem_w).max()
+        for i, ax in enumerate(axes):
+            if i < n_show:
+                k = stem_w[i].sum(axis=0)[mid_d]  # sum across input channels
+                ax.imshow(k, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+                ax.set_title(f"k{i}", fontsize=8)
+            ax.axis('off')
+        fig.suptitle(f"{stem_name}: center-depth kernel slices ({tag})")
+        fig.tight_layout()
+        fig.savefig(osp.join(out_dir, f"resnet_stem_kernels_{tag}.png"), dpi=120)
+        plt.close(fig)
+
+    # Per-layer weight statistics summary
+    fig, ax = plt.subplots(1, 1, figsize=(max(8, 0.5 * n), 4))
+    means = [w.mean() for _, w in resnet_conv_layers]
+    stds = [w.std() for _, w in resnet_conv_layers]
+    names = [n_ for n_, _ in resnet_conv_layers]
+    xs = np.arange(n)
+    ax.errorbar(xs, means, yerr=stds, fmt='o-', color='steelblue', capsize=3)
+    ax.set_xticks(xs)
+    ax.set_xticklabels(names, rotation=75, ha='right', fontsize=7)
+    ax.set_ylabel("weight value (mean ± std)")
+    ax.set_title(f"ResNet Conv3d weight mean/std by layer ({tag})")
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(osp.join(out_dir, f"resnet_layer_stats_{tag}.png"), dpi=120)
+    plt.close(fig)
+
+    # --- LSTM weights ---
+    lstm_weight_params = [
+        (name, param.detach().cpu().numpy())
+        for name, param in model.lstm.named_parameters()
+        if 'weight' in name
+    ]
+
+    # Heatmap per LSTM weight matrix
+    rows = len(lstm_weight_params)
+    if rows > 0:
+        fig, axes = plt.subplots(1, rows, figsize=(5 * rows, 5))
+        axes = np.atleast_1d(axes).flatten()
+        for ax, (name, w) in zip(axes, lstm_weight_params):
+            vmax = np.abs(w).max()
+            im = ax.imshow(w, cmap='RdBu_r', aspect='auto', vmin=-vmax, vmax=vmax)
+            ax.set_title(f"{name}\nshape={tuple(w.shape)}", fontsize=9)
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        fig.suptitle(f"LSTM weight matrices ({tag})")
+        fig.tight_layout()
+        fig.savefig(osp.join(out_dir, f"lstm_weights_{tag}.png"), dpi=120)
+        plt.close(fig)
+
+        # Per-gate histogram split (LSTM concatenates 4 gates along dim 0: i, f, g, o)
+        gate_names = ['input', 'forget', 'cell', 'output']
+        fig, axes = plt.subplots(rows, 4, figsize=(14, 2.5 * rows))
+        axes = np.atleast_2d(axes)
+        for r, (name, w) in enumerate(lstm_weight_params):
+            chunks = np.split(w, 4, axis=0)
+            for c, (chunk, gn) in enumerate(zip(chunks, gate_names)):
+                axes[r, c].hist(chunk.flatten(), bins=60, color='indianred', alpha=0.85)
+                axes[r, c].set_title(f"{name} / {gn}\nstd={chunk.std():.3g}", fontsize=8)
+                axes[r, c].set_yscale('log')
+        fig.suptitle(f"LSTM weight distributions per gate ({tag})")
+        fig.tight_layout()
+        fig.savefig(osp.join(out_dir, f"lstm_gate_hists_{tag}.png"), dpi=120)
+        plt.close(fig)
+
+    print(f"Saved weight visualizations to {out_dir}")
+
 
 if __name__ == '__main__':
     # TODO: Set up to read mostly from config, optionally overwrite w/ args, add specific visualization entries, and copy updated to the embedding dir
@@ -180,64 +319,22 @@ if __name__ == '__main__':
     cfg.update(vars(args))
 
     proj_dir = "/home/earkfeld/Projects/MitoSpace4D/"
-    save_dir = f"{proj_dir}/runs/"
+    # save_dir = f"{proj_dir}/runs/"
+    save_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data"
 
-    decoder=None
-
-    # data_path = cfg['data_params']['data_path']
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_20250828')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_combined_r20250905')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_20250811')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_r20250920')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20250929_10frames')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251002_single_frames') 
-    # embeddings_dir = osp.join(save_dir, 'embeddings_leukemia_r20251014_all_frames')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_ds20251009-20251010_r20251015_all_frames')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251016_10frames')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251016_10frames_mtg-only')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_r20251025_ft-kinetics-37eps_10frames')
-    
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_ft-kinetics-50eps_decoupled-tmrm_r20251028')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_ft-kinetics-50eps_decoupled-tmrm_single-frames_r20251027')
-
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_model2024v2-decoupled-tmrm_r20251104')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_debug_eps149_r20251109')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer_pten_trial3_ft-kinetics-50eps_decoupled-tmrm_r20251112')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_debug_no-geometric-augs_10eps_r20251114')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_debug_all-augs_10eps_r20251114')
-
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_decoupled-tmrm_r20251117')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_ablated-tmrm_r20251117')
-
-    # embeddings_dir = osp.join(save_dir, 'embeddings_2024v2_decoupled-tmrm_eps145_r20251119')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_2024v2-encoded_ablated-tmrm_eps162_r20251120')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics-encoded_ablated-tmrm_eps291_r20251120')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics-encoded_decoupled-tmrm_eps256_r20251120')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics-encoded_2024v2-model_ablated-tmrm_eps162_r20251124')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer-resistance-trial3b_2024v2-model_ablated-tmrm_eps162_r20251204')
-    # embeddings_dir = osp.join(save_dir, 'embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220')
-    # embeddings_dir = osp.join(save_dir, "exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220")
-    # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106')
-    # embeddings_dir = osp.join(save_dir, '/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all')
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_3D-embeddings_Kinetics3D-model"
-    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_4D-embeddings_2024v2-model"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260120_kinetics-60frame-embeddings_2024v2-ft-kinetics-60frame"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260120_kinetics-60frame-embeddings_2024v2-ft-kinetics-60frame"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260127_2024v2-4D-embeddings_2024v2-161eps_tscrambled_ablated-tmrm"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_2024v2-4D-embeddings_2024v2-161eps_ablated-tmrm"
-
-    # embedding_dirs = []
-
-    # if args.embeddings_dir is not None:
-    #     embeddings_dir = osp.join(save_dir, args.embeddings_dir)
-    # else:
-    #     # embeddings_dir = osp.join(save_dir, 'embeddings_kinetics_full_single_frames')
-    #     embeddings_dir = osp.join(save_dir, 'embeddings_kinetics')
-    #     # embeddings_dir = osp.join(save_dir, "embeddings_cancer_umap_testing")
-    
+    embeddings_dir = osp.join(save_dir, 'ms4d_2024v3-binarized_252eps')
     os.makedirs(embeddings_dir, exist_ok=True)
 
+    # save merged config and args to embeddings dir
+    with open(osp.join(embeddings_dir, "config.yaml"), "w") as f:
+        yaml.safe_dump(cfg, f)
+
+    with open(osp.join(embeddings_dir, "args.yaml"), "w") as f:
+        yaml.safe_dump(vars(args), f)
+
     checkpoint_path = args.checkpoint_path
+    print(f"Ckpt Path: {args.checkpoint_path}")
+    print(f"Data Path: {args.data_path}")
     image_paths = None  # define upfront; populated only in visualize pass or left None
 
     drug_labels_dict = {}
@@ -247,9 +344,11 @@ if __name__ == '__main__':
             folder, drug, label = line.split()
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
-    
-    labels = [args.labels] if args.labels else [list(drug_labels_dict.values())]  # Default to all conditions in the drug label dict
-    # labels = [[5]]
+
+    labels = [args.labels] if args.labels else [
+        list(drug_labels_dict.values())]  # Default to all conditions in the drug label dict
+
+    print("labels", labels)
 
     batch_size = args.batch_size
     t_slice = 0
@@ -266,48 +365,39 @@ if __name__ == '__main__':
     else:
         colors = get_label_colormap(proj_dir)  # Default to label colormap
 
-    emb_raw_path = osp.join(embeddings_dir, 'embeddings_raw.npy')   # (N, 2048) float32
-    lbl_path     = osp.join(embeddings_dir, 'labels.npy')           # (N,) int32
-    img_pathfile = osp.join(embeddings_dir, 'image_paths.csv')      # (N,) object
-    img_times    = osp.join(embeddings_dir, 'image_times.npy')      # (N,) int32
+    emb_raw_path = osp.join(embeddings_dir, 'embeddings.npy')  # (N, 2048) float32
+    emb_resnet_path = osp.join(embeddings_dir, 'embeddings_resnet.npy')  # (N, 512) float32
+    lbl_path = osp.join(embeddings_dir, 'labels.npy')  # (N,) int32
+    img_pathfile = osp.join(embeddings_dir, 'image_paths.csv')  # (N,) object
+    # tmrm_pathfile = osp.join(embeddings_dir, 'tmrm_paths.csv')  # (N,) object
+    # img_times = osp.join(embeddings_dir, 'image_times.npy')  # (N,) int32
+    # tmrm_intensity_path = osp.join(embeddings_dir, 'tmrm_intensities.npy')  # (N, T) float32
     umap_transform_path = osp.join(embeddings_dir, 'umap_reducer.pkl')
 
     # Build and load model
     model = Lightweight3DResNet(embedding_size=2048,
-                                cfg=cfg, 
-                                apply_aug=False, 
+                                cfg=cfg,
+                                apply_aug=False,
                                 decoder_checkpoint_path=args.decoder_ckpt,
                                 )
-    
-    # if args.decoder_ckpt is not None:
-    #     decoder=model.decoder
-    # else:
-    #     decoder=None
 
-    model = SimCLRRunner.load_from_checkpoint(checkpoint_path, model=model, cfg=cfg, strict=False).model
+    if args.random_init:
+        print("Using randomly initialized model (no checkpoint loaded).")
+    else:
+        model = SimCLRRunner.load_from_checkpoint(checkpoint_path, model=model, cfg=cfg, strict=False).model
     model.eval().to(device)
+
+    # decoder = model.decoder
 
     for param in model.parameters():
         param.requires_grad = False
 
+    # Visualize ResNet + LSTM weights and dump figures to embeddings_dir
+    if args.visualize_weights:
+        weight_vis_dir = osp.join(embeddings_dir, "weight_visualizations")
+        visualize_model_weights(model, weight_vis_dir, tag="weight_visualizations")
+
     if args.save_embeddings:
-
-        # # Build and load model
-        # model = Lightweight3DResNet(embedding_size=2048, 
-        #                             # cfg_aug=cfg['data_params']['transforms'],
-        #                             cfg=cfg, 
-        #                             apply_aug=False, 
-        #                             decoder_checkpoint_path=args.decoder_ckpt,
-        #                             # decoder_checkpoint_path=None,
-        #                             )
-        # if args.decoder_ckpt is not None:
-        #     decoder=model.decoder
-
-        # model = SimCLRRunner.load_from_checkpoint(checkpoint_path, model=model, cfg=cfg, strict=False).model
-        # model.eval().to(device)
-
-        # for param in model.parameters():
-        #     param.requires_grad = False
 
         data_paths = [args.data_path]
         loaders = []
@@ -326,9 +416,12 @@ if __name__ == '__main__':
 
         # ---- Accumulate into Python lists; save once at the end ----
         embeddings_list = []
+        resnet_embeddings_list = []
         labels_list = []
         image_times_list = [] if args.single_frames else None
         img_pth_list = []
+        tmrm_pth_list = []
+        tmrm_intensities_list = []
 
         n_frames = None
         n_datasets = sum(len(ld.dataset) for ld in loaders)
@@ -341,91 +434,92 @@ if __name__ == '__main__':
                 else:
                     im, lbl, img_pth = batch["images"], batch["classes"], batch["image_paths"]
 
-                # -- [EXPERIMENT] Keep only the first 10 timesteps for the images
-                # im = im[:, :, :10, :, :, :]  # (B, C, T, D, H, W)
-
-                # -- [EXPERIMENT] Copy mitotracker channel over the TMRM
-                # im[:, 0, :, :, :, :] = im[:, 1, :, :, :, :]
-
                 B = im.shape[0]
 
+                # tmrm_path = img_pth[0].replace("-0-1.npy", "-0-0.npy")
+                # img_tmrm = np.load(tmrm_path)  # (T, Z, Y, X)
+
+                # Add a channel and batch dimension
+                # img_tmrm = torch.from_numpy(img_tmrm).unsqueeze(0).unsqueeze(2)  # (B=1, T, C=1, Z, Y, X)
+                # img_tmrm = np.expand_dims(img_tmrm, axis=(0, 2)) # (B=1, T, C=1, Z, Y, X)
+
+                # Add channel dimension to the im
+                # im = im.unsqueeze(2)  # (B, T, C=1, Z, Y, X)
+                im = np.expand_dims(im, axis=2)  # (B, T, C=1, Z, Y, X)
+
                 if n_frames is None:
-                    n_frames = im.shape[2]  # Get number of frames
+                    n_frames = im.shape[1]  # Get number of frames
 
                 # im: (B, C, T, D, H, W) -> (B, T, C, D, H, W)
-                if args.decoder_ckpt is None:
-                    im = im.permute(0, 2, 1, 3, 4, 5).contiguous()
+                # if args.decoder_ckpt is None:
+                #     im = im.permute(0, 2, 1, 3, 4, 5).contiguous()
+                #     img_tmrm = img_tmrm.permute(0, 2, 1, 3, 4, 5).contiguous()
 
                 # print the data type of im
                 # print(f"im dtype: {im.dtype}")
 
-                #-- generating per-frame (3D spatial only) embeddings
-                if args.single_frames:
-                    # labels for each frame in the batch
-                    # print(f"Generating single-frame embeddings for batch {i+1}/{len(loader)} of dataset {loader_idx+1}/{n_datasets}...")
-                    frame_labels = np.repeat(
-                        lbl.detach().cpu().numpy().reshape(-1).astype(np.int32),
-                        n_frames
-                    )
+                # combine images along channel dimension with tmrm in channel 0 and morphology in channel 1
+                # _, otsu_intensity = get_tmrm_intensity(np.concatenate([img_tmrm, im], axis=2))
+                # tmrm_intensities_list.append(otsu_intensity)
 
-                    with torch.no_grad():
-                        for t in range(n_frames):
-                            img_pth_list.extend(img_pth)
+                img_pth_list.extend(img_pth)
+                # tmrm_pth_list.extend([tmrm_path])
 
-                            # Select the t-th frame: (B, 1, C, D, H, W)
-                            frame = im[:, t:t+1, :, :, :, :]
+                im = normalize(im)
 
-                            # Forward pass -> (B, 2048) after selecting last step
-                            features, _ = model(frame.to(device))
-                            features = F.normalize(features, dim=-1)   # (B, 2048) or (B, T, 2048)
-                            features = features[:, -1, :]              # ensure (B, 2048)
-                            feats_np = features.detach().cpu().numpy().astype(np.float32)
+                if args.vary_intensity > 0:
+                    scale = 1.0 + np.random.uniform(-args.vary_intensity, args.vary_intensity)
+                    im = np.clip(im * scale, 0.0, 1.0)
 
-                            embeddings_list.extend(feats_np)  # add B rows
-                            labels_list.extend(lbl.detach().cpu().numpy().reshape(-1).astype(np.int32))
-                            image_times_list.extend([t] * B)
+                if args.binarize:
+                    thr = threshold_otsu(im)
+                    im = (im > thr).astype(np.float32)
 
-                # ---- Generate spatiotemporal (sequence) embeddings ----
-                else:
-                    img_pth_list.extend(img_pth)
+                # scramble the time dimension
+                # print("Scrambling time!")
+                # im = im[:, np.random.permutation(im.shape[1]), ...]
 
-                    with torch.no_grad():
-                        # model expects (B, T, C, D, H, W)
-                        features, _ = model(im.to(device))
-                        # print(features.size())
-                        features = F.normalize(features, dim=-1)  # (B, 2048) or (B, T, 2048)
+                with torch.no_grad():
+                    # model expects (B, T, C, D, H, W)
+                    features, resnet_features, _ = model(torch.from_numpy(im).to(device), get_resnet_feats=True)
+                    # print(features.size())
+                    features = F.normalize(features, dim=-1)  # (B, 2048) or (B, T, 2048)
+                    resnet_features = F.normalize(resnet_features, dim=-1)  # (B, T, 512)
 
-                    embeddings_list.extend(features.detach().cpu().numpy().astype(np.float32))
-                    labels_list.extend(lbl.detach().cpu().numpy().reshape(-1).astype(np.int32))
-
+                embeddings_list.extend(features.detach().cpu().numpy().astype(np.float32))
+                resnet_embeddings_list.extend(resnet_features.detach().cpu().numpy().astype(np.float32))
+                labels_list.extend(lbl.detach().cpu().numpy().reshape(-1).astype(np.int32))
                 pbar.update(1)
             pbar.close()
-        
+
         # Convert lists to arrays and save once
         embeddings_arr = np.asarray(embeddings_list, dtype=np.float32)
+        resnet_embeddings_arr = np.asarray(resnet_embeddings_list, dtype=np.float32)
+
         labels_arr = np.asarray(labels_list, dtype=np.int32)
         np.save(emb_raw_path, embeddings_arr)
+        np.save(emb_resnet_path, resnet_embeddings_arr)
         np.save(lbl_path, labels_arr)
-        if args.single_frames and image_times_list is not None:
-            image_times_arr = np.asarray(image_times_list, dtype=np.int32)
-            np.save(img_times, image_times_arr)
+        # np.save(tmrm_intensity_path, np.asarray(tmrm_intensities_list, dtype=np.float32))
+        # if args.single_frames and image_times_list is not None:
+        #     image_times_arr = np.asarray(image_times_list, dtype=np.int32)
+        #     np.save(img_times, image_times_arr)
 
         # Saving image paths (text file with one path per line)
         with open(img_pathfile, 'w') as f:
             for pth in img_pth_list:
                 f.write(f"{pth}\n")
 
+        # with open(tmrm_pathfile, 'w') as f:
+        #     for pth in tmrm_pth_list:
+        #         f.write(f"{pth}\n")
+
         np.save(osp.join(embeddings_dir, 'label_names.npy'), np.array(list(drug_labels_dict.keys())))
 
-        # TODO: integrate colormaps
-        # cell_region_map = osp.join(args.data_path, "cell_to_region_new.csv")
-        # create_colormap(img_pathfile, cell_region_map, embedding_dir=embeddings_dir)
-
     if args.reproject or args.save_embeddings:
-        # ---- UMAP: fit on subsample, transform all at once; no memmap, no blocks ----
         feats = np.load(emb_raw_path)  # (N, T, D) fully loaded
         print(f"Features shape: {feats.shape}, dtype: {feats.dtype}")
-        
+
         if not args.single_frames:
             if len(feats.shape) == 3:
                 # Get last frame only
@@ -445,15 +539,15 @@ if __name__ == '__main__':
                                 np.loadtxt(img_pathfile, dtype=str).tolist(),
                                 np.array(list(drug_labels_dict.keys())),
                                 scope="global",
-                                control_label=args.control_label,)
+                                control_label=args.control_label, )
             # try:
-                # labels_all = np.load(lbl_path)  # (N,)
-                # ctrl_mask = np.array([label_drug_dict.get(int(l)) == 'control' for l in labels_all], dtype=bool)
-                # if ctrl_mask.sum() > 0:
-                #     feats = tvn_global(feats, ctrl_mask, eps=1e-6, ledoit_wolf=False).astype(np.float32)
-                #     print(f"Applied TVN using {ctrl_mask.sum()} control samples (control).")
-                # else:
-                #     print("Warning: --tvn set but no control samples found in labels; skipping TVN.")
+            # labels_all = np.load(lbl_path)  # (N,)
+            # ctrl_mask = np.array([label_drug_dict.get(int(l)) == 'control' for l in labels_all], dtype=bool)
+            # if ctrl_mask.sum() > 0:
+            #     feats = tvn_global(feats, ctrl_mask, eps=1e-6, ledoit_wolf=False).astype(np.float32)
+            #     print(f"Applied TVN using {ctrl_mask.sum()} control samples (control).")
+            # else:
+            #     print("Warning: --tvn set but no control samples found in labels; skipping TVN.")
             # except Exception as e:
             #     print(f"Warning: TVN failed with error: {e}. Proceeding without TVN.")
 
@@ -483,6 +577,7 @@ if __name__ == '__main__':
             emb3d = reducer.transform(feats_red).astype(np.float32)
         else:
 
+            # -- original umap
             # reducer = UMAP(
             #     verbose=True,
             #     n_components=3,
@@ -491,7 +586,6 @@ if __name__ == '__main__':
             #     metric='cosine',
             # )
 
-            # 3D Visualization
             reducer = UMAP(
                 verbose=True,
                 n_components=3,
@@ -500,25 +594,25 @@ if __name__ == '__main__':
                 metric='cosine',
             )
 
-        # #-- Kinetics CuML umap (3D embeddings) - settings for large N
-        # reducer = UMAP(
-        #     n_components=3,
-        #     n_neighbors=25,
-        #     min_dist=0.1,
-        #     # spread=1.5,
-        #     negative_sample_rate=2,
-        #     local_connectivity=3,
-        #     metric='cosine',
-        #     n_epochs=1000,
-        #     learning_rate=0.5,
-        #     repulsion_strength=1.5,
-        #     # init='pca',
-        # )
+            # #-- Kinetics CuML umap (3D embeddings) - settings for large N
+            # reducer = UMAP(
+            #     n_components=3,
+            #     n_neighbors=25,
+            #     min_dist=0.1,
+            #     # spread=1.5,
+            #     negative_sample_rate=2,
+            #     local_connectivity=3,
+            #     metric='cosine',
+            #     n_epochs=1000,
+            #     learning_rate=0.5,
+            #     repulsion_strength=1.5,
+            #     # init='pca',
+            # )
 
             emb3d = reducer.fit_transform(feats_red).astype(np.float32)
             # Save the transform for future use
             joblib.dump(reducer, umap_transform_path)
-        
+
         # trust_score = trustworthiness(feats_red, emb3d)
         # print(f"UMAP trustworthiness score: {trust_score}")
         emb_umap_path = osp.join(embeddings_dir, 'embeddings_umap.npy')
@@ -527,7 +621,8 @@ if __name__ == '__main__':
 
     if args.visualize:
         if not osp.exists(osp.join(embeddings_dir, "embeddings_umap.npy")):
-            print("Embeddings are not saved. Please run the script again without --visualize flag (or with --save_embeddings).")
+            print(
+                "Embeddings are not saved. Please run the script again without --visualize flag (or with --save_embeddings).")
             exit()
 
         # image_paths = np.loadtxt(osp.join(embeddings_dir, 'image_paths.csv'), dtype=str).tolist()
@@ -536,13 +631,13 @@ if __name__ == '__main__':
         #     image_paths = get_single_frame_img_paths(image_paths)
 
         make_mitospace(embedding_dir=embeddings_dir,
-                    pick_labels=labels,
-                    color_palette=colors,
-                    image_paths=image_paths,
-                    single_frames=args.single_frames,
-                    save_pcd=args.save_pcd,
-                    label_drug_dict=label_drug_dict,
-                    datasets=args.datasets,
-                    decoder=decoder,
-                   )
+                       pick_labels=labels,
+                       color_palette=colors,
+                       image_paths=image_paths,
+                       single_frames=args.single_frames,
+                       save_pcd=args.save_pcd,
+                       label_drug_dict=label_drug_dict,
+                       datasets=args.datasets,
+                       decoder=decoder,
+                       )
         exit()

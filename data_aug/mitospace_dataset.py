@@ -13,11 +13,15 @@ import pytorch_lightning as pl
 import time
 import torch
 
-from glob import glob
-
 class MitoSpaceDataModule(pl.LightningDataModule):
-    def __init__(self, train_datasets: List[Dataset], val_datasets: List[Dataset], batch_size: int,
-                 num_workers: int = 8, pin_memory: bool = True, drop_last: bool = True, prefetch_factor: int = 2) -> None:
+    def __init__(self, train_datasets: List[Dataset], 
+                 val_datasets: List[Dataset], 
+                 batch_size: int,
+                 num_workers: int = 0, 
+                 pin_memory: bool = True, 
+                 drop_last: bool = True,
+                 prefetch_factor: int = 2) -> None:
+        
         super().__init__()
         self.batch_size = batch_size
         self.train_datasets = train_datasets
@@ -41,21 +45,23 @@ class MitoSpaceDataset(Dataset):
     def __init__(self, 
                  root_dir: str, 
                  flag: str = 'train',
-                 seed: int = None, 
+                 seed: int = None,
                  pick_labels: List = None, 
                  samples_per_drug: int = None,
                  timesteps=None, 
-                 zstacks=None) -> None:
+                 zstacks=None,
+                 ) -> None:
         
         self.root_dir = root_dir
         self.timesteps = timesteps
         self.zstacks = zstacks
-
+        
         self.seed = 1123 if seed is None else seed
 
         print(f'Loading {flag} Dataset with split seed = {self.seed} ...')
 
         drug_labels = {}
+        # with open('/u/earkfeld/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
         with open('/home/earkfeld/Projects/MitoSpace4D/extraction_utils/drugs_to_labels.txt', 'r') as f:
             drugs_to_labels = f.readlines()
             for line in drugs_to_labels:
@@ -74,33 +80,28 @@ class MitoSpaceDataset(Dataset):
         #-- Cancer dirs
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1", "20250828-1", "20250828-2", "20250828-3"]
         # drug_folders = ["20250811-1", "20250811-2", "20250812-1"]
-        # drug_folders = ["20250922-1", "20250922-2", "20250922-3", "20250924-1", "20250924-2", "20250924-3", "20250925-1", "20250925-2", "20250925-3"]
 
+        #--Kinetic control dir
+        # drug_folders = ["20250807-1"]
+
+        # #-- Reproducibility Mitobright drug folders
         # drug_folders = [
-        #     "20250922-1", "20250922-2", "20250922-3", # dataset 1 day 1
-        #     "20250924-1", "20250924-2", "20250924-3", # dataset 1 day 2 - outlier vs other days
-        #     "20250925-1", "20250925-2", "20250925-3", # dataset 1 day 3
-        #     "20251009-1", "20251009-2", "20251009-3", # dataset 2 day 1
-        #     "20251010-1", "20251010-2", "20251010-3"  # dataset 2 day 2
-        #     ]
+        #     "20260407-1",
+        #     "20260407-2",
+        #     "20260407-3",
+        #     "20260408-1",
+        #     "20260408-2",
+        #     "20260408-3",
+        #     "20260409-1",
+        #     "20260409-2",
+        #     "20260409-3"
+        # ]
+        # print("WARNING: Using MitoBright reproducibility folders only!!")
 
-        #-- New cancer dir structure
-        # subdirs = [subdir for subdir in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, subdir))]
-        # drug_folders = []
-        # for subdir in subdirs:
-        #     subdir_path = osp.join(self.root_dir, subdir)
-        #     subdir_drug_folders = sorted([file for file in os.listdir(subdir_path) if osp.isdir(osp.join(subdir_path, file))])
-        #     drug_folders.extend([osp.join(subdir, folder) for folder in subdir_drug_folders])
-
-        # print(f"Found drug folders: {drug_folders}")
-        
-        # Get all drug folder paths in the root directory
-        # drug_folders = [folder for folder in os.listdir(self.root_dir) if osp.isdir(osp.join(self.root_dir, folder))]
-   
-        # drug_folders = ["20251009-1", "20251009-2", "20251009-3", "20251010-1", "20251010-2", "20251010-3"]
-
-        #-- Leukemia dirs
-        # drug_folders = ["20251007-1", "20251007-2", "20251008-1", "20251008-2"]
+        if pick_labels is not None:
+            # filter drug_folders to only include those that have labels in pick_labels
+            drug_folders = [folder for folder in drug_folders if drug_labels[folder]['label'] in pick_labels]
+            print(f"Filtered drugs: {[drug_labels[folder]['drug'] for folder in drug_folders]}")
 
         self.all_filenames = []
         self.all_labels = []
@@ -108,8 +109,9 @@ class MitoSpaceDataset(Dataset):
         for drug_folder in drug_folders:
             # filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, 'encoded_data', drug_folder)) if osp.isfile(osp.join(self.root_dir, 'encoded_data', drug_folder, file))])
             # filenames = [osp.join(self.root_dir, 'encoded_data', drug_folder, file) for file in filenames]
-
-            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, drug_folder)) if osp.isfile(osp.join(self.root_dir, drug_folder, file))])
+            # filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, drug_folder)) if osp.isfile(osp.join(self.root_dir, drug_folder, file))])
+            # print("WARNING: Only loading files that end with '-0.npy'. 2024v3 requires '-0-1.npy'!!")
+            filenames = sorted([file for file in os.listdir(osp.join(self.root_dir, drug_folder)) if osp.isfile(osp.join(self.root_dir, drug_folder, file)) and file.endswith("-0-1.npy")])
             filenames = [osp.join(self.root_dir, drug_folder, file) for file in filenames]
 
             if samples_per_drug != 'None' and samples_per_drug is not None:
@@ -117,20 +119,15 @@ class MitoSpaceDataset(Dataset):
                 filenames = filenames[samples_per_drug: samples_per_drug*2]
 
             self.all_filenames.extend(filenames)
-
-            if "/" in drug_folder:
-                folder_name = drug_folder.split("/")[1]
-                self.all_labels.extend([drug_labels[folder_name]['label']] * len(filenames))
-            else:
-                self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
+            self.all_labels.extend([drug_labels[drug_folder]['label']] * len(filenames))
 
         self.data = list(zip(self.all_filenames, self.all_labels))
 
-        random.seed(self.seed)
-        shuffle(self.data)
-
-        self.all_filenames, self.all_labels = zip(*self.data)
-        self.all_filenames, self.all_labels = (list(self.all_filenames), list(self.all_labels))
+        # random.seed(self.seed)
+        # shuffle(self.data)
+        #
+        # self.all_filenames, self.all_labels = zip(*self.data)
+        # self.all_filenames, self.all_labels = (list(self.all_filenames), list(self.all_labels))
 
         self.len_all_data = round(len(self.all_labels) * 1.)
 
@@ -139,23 +136,44 @@ class MitoSpaceDataset(Dataset):
         self.test_split = self.len_all_data - self.train_split - self.val_split
 
         if flag == "all":
+            print("Using all the data without shuffling or splitting.")
             self.filenames = self.all_filenames
             self.labels = self.all_labels
 
-        elif flag == "train":
-            self.filenames = self.all_filenames[:self.train_split]
-            self.labels = self.all_labels[:self.train_split]
-
-        elif flag == "val":
-            self.filenames = self.all_filenames[self.train_split:self.train_split + self.val_split]
-            self.labels = self.all_labels[self.train_split:self.train_split + self.val_split]
-
-        elif flag == "test":
-            self.filenames = self.all_filenames[self.train_split + self.val_split:]
-            self.labels = self.all_labels[self.train_split + self.val_split:]
+        # elif flag == "train":
+        #     self.filenames = self.all_filenames[:self.train_split]
+        #     self.labels = self.all_labels[:self.train_split]
+        #
+        # elif flag == "val":
+        #     self.filenames = self.all_filenames[self.train_split:self.train_split + self.val_split]
+        #     self.labels = self.all_labels[self.train_split:self.train_split + self.val_split]
+        #
+        # elif flag == "test":
+        #     self.filenames = self.all_filenames[self.train_split + self.val_split:]
+        #     self.labels = self.all_labels[self.train_split + self.val_split:]
 
         else:
-            raise ValueError("Invalid flag")
+            # Shuffle the data before splitting
+            random.seed(self.seed)
+            shuffle(self.data)
+
+            self.all_filenames, self.all_labels = zip(*self.data)
+            self.all_filenames, self.all_labels = (list(self.all_filenames), list(self.all_labels))
+
+            if flag == "train":
+                self.filenames = self.all_filenames[:self.train_split]
+                self.labels = self.all_labels[:self.train_split]
+
+            elif flag == "val":
+                self.filenames = self.all_filenames[self.train_split:self.train_split + self.val_split]
+                self.labels = self.all_labels[self.train_split:self.train_split + self.val_split]
+
+            elif flag == "test":
+                self.filenames = self.all_filenames[self.train_split + self.val_split:]
+                self.labels = self.all_labels[self.train_split + self.val_split:]
+            else:
+                raise ValueError(f"Invalid flag: {flag}. Must be one of 'train', 'val', 'test', or 'all'.")
+
 
         if pick_labels is not None:
             # pick only the labels that are in the pick_labels list
@@ -189,35 +207,17 @@ class MitoSpaceDataset(Dataset):
     def __len__(self) -> int:
         return len(self.filenames)
 
-    # def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
-    #     img_name = self.filenames[idx]
-    #     try:
-    #         image = np.load(img_name, mmap_mode='r').astype(np.float32)
-    #     except Exception as e:
-    #         raise Exception(f"Error loading {img_name}: {e}")
-    #
-    #     label = self.labels[idx]
-    #     # print(image.shape)
-    #
-    #     # -- normalize if loading the processed_data (not encoded).
-    #     # don't normalize if loading the encoded data (because then its already normalized)
-    #     # image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
-    #     # image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
-    #
-    #     return {"images": image, "classes": label, "image_paths": img_name}
-
     def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
         img_name = self.filenames[idx]
-        try:
-            image = np.load(img_name, mmap_mode='r').astype(np.float32)
-        except Exception as e:
-            print(f"Error loading {img_name}: {e}")
-            # raise Exception(f"Error loading {img_name}: {e}")
-            image = None
+        image = np.load(img_name, mmap_mode='r').astype(np.float32)
+
+        # normalize if loading the processed_data (not encoded).
+        # don't normalize if loading the encoded data (because then its already normalized)
+        # image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
+        # image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
 
         label = self.labels[idx]
 
-        if image  is None:
-            return {"classes": label, "image_paths": img_name}
-        else:
-            return {"images": image, "classes": label, "image_paths": img_name}
+        return {"images": image, "classes": label, "image_paths": img_name}
+    
+    

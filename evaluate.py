@@ -10,7 +10,7 @@ from sklearn.metrics import davies_bouldin_score, calinski_harabasz_score, confu
 import torch.nn.functional as F
 
 from data_aug.mitospace_dataset import *
-from simclr.models import *
+from simclr.conv3d_lstm import *
 import argparse
 
 from simclr.models_simple import Lightweight3DResNet
@@ -19,10 +19,9 @@ from data_aug.dataset_utils import get_mitospace_data_loaders
 import torch
 from train_simclr import SimCLRRunner
 
-from utils.vis import plot_cm
+from utils.vis_original import plot_cm
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
-
 
 global device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -40,10 +39,8 @@ parser.add_argument('--evaluate_set', default='test',
                     type=str, help='Set on which to run evaluation')
 parser.add_argument('--dist_metric', default='cosine',
                     type=str, help='Metric to use for distance calculation between embeddings')
-parser.add_argument('--labels', nargs='+', type=int, default=None, 
+parser.add_argument('--labels', nargs='+', type=int, default=None,
                     help='List of labels to evaluate on')
-# parser.add_argument('--balance_labels', action='store_true', default=False,
-#                     help='Balance the label counts in the dataset')
 
 
 def nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs,
@@ -158,9 +155,9 @@ def distance_distribution_metric_evaluation(eval_labels, ref_labels,
     ref_label_cluster_centroids = np.array([ref_label_cluster_centroids[lbl] for lbl in np.unique(unique_labels)])
 
     eval_label_cluster_centroids = eval_label_cluster_centroids / np.linalg.norm(eval_label_cluster_centroids, axis=1)[
-                                                                  :, None]
+        :, None]
     ref_label_cluster_centroids = ref_label_cluster_centroids / np.linalg.norm(ref_label_cluster_centroids, axis=1)[:,
-                                                                None]
+    None]
 
     ref_dist_from_ref_centroid = ref_embeddings @ ref_label_cluster_centroids.T
     eval_dist_from_eval_centroid = eval_embeddings @ eval_label_cluster_centroids.T
@@ -237,7 +234,7 @@ def extract_embeddings_from_model(dataloader, model, normalize_embeddings=True, 
         with torch.no_grad():
             # with torch.autocast(device_type="cuda"):
             # with torch.amp.autocast(device_type='cuda'):
-            #im = 2 * im - 1  # zero mean normalization
+            # im = 2 * im - 1  # zero mean normalization
             features, _ = model(im.to('cuda'))
 
         if normalize_embeddings:
@@ -283,6 +280,7 @@ def l2_distance(eval_embeddings, train_embeddings):
     dist_matrix = dist_matrix.argsort(1)
     return dist_matrix
 
+
 def balance_label_counts(embeddings, labels, seed=1123, shuffle=True):
     embeddings = np.asarray(embeddings)
     labels = np.asarray(labels)
@@ -310,6 +308,7 @@ def balance_label_counts(embeddings, labels, seed=1123, shuffle=True):
 
     return embeddings[indices], labels[indices]
 
+
 def filter_by_label(pick_labels, embeddings, labels, drug_labels_dict, label_drug_dict):
     drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in pick_labels}
     label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in pick_labels}
@@ -319,6 +318,7 @@ def filter_by_label(pick_labels, embeddings, labels, drug_labels_dict, label_dru
     embeddings = embeddings[mask]
     labels = labels[mask]
     return embeddings, labels, drug_labels_dict, label_drug_dict
+
 
 def split_dataset(embeddings, labels, split_perc=0.9, balanced=True, seed=1123):
     if balanced:
@@ -334,53 +334,208 @@ def split_dataset(embeddings, labels, split_perc=0.9, balanced=True, seed=1123):
     else:
         # Split the entire dataset at once
         all_indices = np.arange(len(labels))
-        train_indices, val_indices = train_test_split(all_indices, train_size=split_perc, random_state=seed, shuffle=True)
+        train_indices, val_indices = train_test_split(all_indices, train_size=split_perc, random_state=seed,
+                                                      shuffle=True)
 
     train_indices = np.array(train_indices)
     val_indices = np.array(val_indices)
     return embeddings[train_indices], labels[train_indices], embeddings[val_indices], labels[val_indices]
 
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+
+
+# def plot_cm(gt_labels, pred_labels, label_drug_dict,
+#             verbose=True, make_plot=True, show_values=True,
+#             title='Confusion matrix', cmap=None, normalize=True,
+#             vmin=None, vmax=None, save_path=None):
+#     """
+#     Computes and plots a confusion matrix.
+#
+#     Args:
+#         gt_labels: Ground truth labels.
+#         pred_labels: Predicted labels.
+#         label_drug_dict: Dictionary mapping class indices to string labels.
+#         verbose: If True, prints per-class Top-1 accuracy.
+#         make_plot: If True, renders the matplotlib plot.
+#         show_values: If True, prints the cell counts inside the matrix squares.
+#         title: Title of the plot.
+#         cmap: Colormap to use (defaults to 'Blues').
+#         normalize: If True, normalizes the colors of the matrix squares.
+#         vmin, vmax: Min and max values for the colormap scaling.
+#     """
+#     # 1. Compute the confusion matrix
+#     labels_idx = sorted(list(label_drug_dict.keys()))
+#     cm = confusion_matrix(gt_labels, pred_labels, labels=labels_idx)
+#
+#     # 2. Print verbose per-class accuracy
+#     if verbose:
+#         print("per class accuracy Top-1")
+#         for i in range(cm.shape[0]):
+#             row_sum = np.sum(cm[i, :])
+#             acc = cm[i, i] * 100.0 / row_sum if row_sum > 0 else 0.0
+#             label_name = label_drug_dict[labels_idx[i]]
+#             print(f"{label_name}: {acc:.2f}%")
+#
+#     # 3. Generate the plot
+#     if make_plot:
+#         if cmap is None:
+#             cmap = plt.get_cmap('Blues')
+#
+#         plt.figure(figsize=(10, 10), constrained_layout=True)
+#
+#         label_names = [label_drug_dict[idx] for idx in labels_idx]
+#         tickmarks = np.arange(len(label_names))
+#         plt.xticks(tickmarks, label_names, rotation=90)
+#         plt.yticks(tickmarks, label_names)
+#
+#         # Create a copy for plot colors so we don't overwrite the returned cm
+#         if normalize:
+#             # Add a small epsilon or use np.errstate to avoid division by zero
+#             with np.errstate(divide='ignore', invalid='ignore'):
+#                 cm_plot = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+#                 cm_plot = np.nan_to_num(cm_plot)
+#         else:
+#             cm_plot = cm.copy()
+#
+#         im = plt.imshow(cm_plot, cmap=cmap, interpolation='nearest',
+#                         vmin=vmin, vmax=vmax)
+#         plt.title(title)
+#         plt.colorbar(im)
+#
+#         # 4. Optional: Add text values to the matrix squares
+#         if show_values:
+#             thresh = cm_plot.max() / 1.5 if cm_plot.max() > 0 else 0.0
+#             for i in range(cm.shape[0]):
+#                 for j in range(cm.shape[1]):
+#                     plt.text(j, i, cm[i, j],
+#                              horizontalalignment="center",
+#                              color="white" if cm_plot[i, j] > thresh else "black")
+#
+#         plt.ylabel('True label')
+#         plt.xlabel('Predicted label')
+#         if save_path is not None:
+#             plt.savefig(save_path)
+#         else:
+#             plt.show()
+#
+#     return cm
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+
+def plot_cm(gt_labels, pred_labels, label_drug_dict,
+            verbose=True, make_plot=True, show_values=True,
+            title='Confusion matrix', cmap=None, normalize=True,
+            vmin=None, vmax=None, save_path=None):
+    """
+    Computes and plots a confusion matrix.
+
+    Args:
+        gt_labels: Ground truth labels.
+        pred_labels: Predicted labels.
+        label_drug_dict: Dictionary mapping class indices to string labels.
+        verbose: If True, prints per-class Top-1 accuracy.
+        make_plot: If True, renders the matplotlib plot.
+        show_values: If True, prints the cell counts inside the matrix squares.
+        title: Title of the plot.
+        cmap: Colormap to use (defaults to 'Blues').
+        normalize: If True, normalizes the colors of the matrix squares.
+        vmin, vmax: Min and max values for the colormap scaling.
+    """
+    # 1. Compute the confusion matrix
+    labels_idx = sorted(list(label_drug_dict.keys()))
+    cm = confusion_matrix(gt_labels, pred_labels, labels=labels_idx)
+
+    # 2. Print verbose per-class accuracy
+    if verbose:
+        print("per class accuracy Top-1")
+        for i in range(cm.shape[0]):
+            row_sum = np.sum(cm[i, :])
+            acc = cm[i, i] * 100.0 / row_sum if row_sum > 0 else 0.0
+            label_name = label_drug_dict[labels_idx[i]]
+            print(f"{label_name}: {acc:.2f}%")
+
+    # 3. Generate the plot
+    if make_plot:
+        if cmap is None:
+            cmap = plt.get_cmap('Blues')
+
+        fig, ax = plt.subplots(figsize=(12, 10))
+
+        label_names = [label_drug_dict[idx] for idx in labels_idx]
+        tickmarks = np.arange(len(label_names))
+        ax.set_xticks(tickmarks)
+        ax.set_xticklabels(label_names, rotation=90)
+        ax.set_yticks(tickmarks)
+        ax.set_yticklabels(label_names)
+
+        # Create a copy for plot colors so we don't overwrite the returned cm
+        if normalize:
+            # Add a small epsilon or use np.errstate to avoid division by zero
+            with np.errstate(divide='ignore', invalid='ignore'):
+                cm_plot = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+                cm_plot = np.nan_to_num(cm_plot)
+        else:
+            cm_plot = cm.copy()
+
+        im = ax.imshow(cm_plot, cmap=cmap, interpolation='nearest',
+                       vmin=0.0, vmax=1.0)
+        ax.set_title(title)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.1)
+        fig.colorbar(im, cax=cax, ticks=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+
+        # 4. Optional: Add text values to the matrix squares
+        if show_values:
+            thresh = cm_plot.max() / 1.5 if cm_plot.max() > 0 else 0.0
+            for i in range(cm.shape[0]):
+                for j in range(cm.shape[1]):
+                    ax.text(j, i, cm[i, j],
+                            horizontalalignment="center",
+                            color="white" if cm_plot[i, j] > thresh else "black")
+
+        ax.set_ylabel('True label')
+        ax.set_xlabel('Predicted label')
+        fig.tight_layout()
+        if save_path is not None:
+            fig.savefig(save_path, bbox_inches='tight')
+        else:
+            plt.show()
+
+    return cm
+
 if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
     proj_dir = "/home/earkfeld/Projects/MitoSpace4D"
-    
+
     already_have_embeddings = True
     balance_classes = True
     balanced_split = True
-    
-    split_perc = 0.9
-    top_ns = cfg["evaluate"]["top_ns"]
 
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_cancer_r20250929_10frames_modified_labels_for_eval"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics_debug_eps149_r20251109"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps138_r20251118"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps145_r20251119"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2_decoupled-tmrm_eps145_r20251119"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_2024v2-encoded_ablated-tmrm_eps162_r20251120"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_decoupled-tmrm_eps256_r20251120"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_ablated-tmrm_eps291_r20251120"
-    # embeddings_dir = "/mnt/DATA_01/Eric/mitospace4d_data/runs/embeddings_kinetics-encoded_2024v2-model_ablated-tmrm_eps162_r20251124"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp0_modified_embeddings_cancer-pten_trial4_2024v2-model_ablated-tmrm_eps162_r20251220"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/exp1_modified_embeddings_cancer-pten_trial4_2024v2-161eps_ft-kinetics-50eps_ablated-tmrm_r20260106"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260113_2024v2-embeddings_2024v2-model_all"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_3D-embeddings_Kinetics3D-model"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260121_liver-drugs_4D-embeddings_2024v2-model"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260120_kinetics-60frame-embeddings_2024v2-ft-kinetics-60frame"
-    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_kinetics-4D-embeddings_2024v2-161eps_ablated-tmrm"
+    split_perc = 0.8
+    # top_ns = cfg["evaluate"]["top_ns"]
+    top_ns = [1, 3]
 
-    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_2024v2-raw_kinetics-resnet3d_ablated_tmrm_extract_tmrm"
+    # embeddings_dir = '/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms2d_2024v3'
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms3d_2024v3_225eps"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_252eps"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_zero-shot_241eps"
+    # embeddings_dir = '/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_resnet_252eps'
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_tscrambled_284eps"
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_252eps_tscrambled"
 
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260117_2024v2-4D-embeddings_2024v2-161eps_ablated-tmrm"
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/runs/20260127_2024v2-4D-embeddings_2024v2-161eps_tscrambled_ablated-tmrm"
+
+    # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_2024v3_random_init"
+    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms2d_2024v3_2048dim"
 
     drug_labels_dict = {}
     label_drug_dict = {}
@@ -396,19 +551,21 @@ if __name__ == "__main__":
     if already_have_embeddings:
         print("Loading pre-extracted embeddings...")
         embeddings = np.load(
-            f'{embeddings_dir}/embeddings_raw.npy')
-            # f'{embeddings_dir}/embeddings_resnet.npy')
+            f'{embeddings_dir}/embeddings.npy')
+        # f'{embeddings_dir}/embeddings_resnet.npy')
         labels = np.load(
             f'{embeddings_dir}/labels.npy')
-        
+
         # Filter the drug label dicts to only include the labels present in the dataset
         unique_labels_in_dataset = set(labels)
-        drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if label in unique_labels_in_dataset}
-        label_drug_dict = {label: drug for label, drug  in label_drug_dict.items() if label in unique_labels_in_dataset}
+        drug_labels_dict = {drug: label for drug, label in drug_labels_dict.items() if
+                            label in unique_labels_in_dataset}
+        label_drug_dict = {label: drug for label, drug in label_drug_dict.items() if label in unique_labels_in_dataset}
 
         if args.labels:
-            embeddings, labels, drug_labels_dict, label_drug_dict = filter_by_label(args.labels, embeddings, labels, drug_labels_dict, label_drug_dict)
-        
+            embeddings, labels, drug_labels_dict, label_drug_dict = filter_by_label(args.labels, embeddings, labels,
+                                                                                    drug_labels_dict, label_drug_dict)
+
         if balance_classes:
             embeddings, labels = balance_label_counts(embeddings, labels)
             # balance_label_counts(embeddings, labels)
@@ -441,21 +598,22 @@ if __name__ == "__main__":
         # eval_labels = np.load('/home/dhruvagarwal/projects/MitoSpace4D/runs/lightning_logs/resnetbilstm_encoded_normal/embeddings_5/labels.npy')
 
         if len(train_embeddings.shape) > 2:
-            train_embeddings = train_embeddings[:, -1]  # take only the final time step
+            train_embeddings = train_embeddings[:, -1, :]  # take only the final time step
 
         if len(eval_embeddings.shape) > 2:
-            eval_embeddings = eval_embeddings[:, -1]  # take only the final time step
+            eval_embeddings = eval_embeddings[:, -1, :]  # take only the final time step
 
     else:
         print("Generating embeddings...")
-        model = Lightweight3DResNet(embedding_size=2048, 
+        model = Lightweight3DResNet(embedding_size=2048,
                                     cfg=cfg,
                                     # cfg_aug=cfg['data_params']['transforms'],
                                     apply_aug=False)
 
         # checkpoint_path = f"{proj_dir}/runs/lightning_logs/{cfg['experiment_name']}/checkpoints/epoch=21-step=14212-val_loss=0.00.ckpt"
         # checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitoSpace4D_resnetbilstm_encoded_normal_eps287.ckpt"
-        checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=138-step=24742-val_loss=0.00.ckpt"
+        # checkpoint_path = "/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=138-step=24742-val_loss=0.00.ckpt"
+        checkpoint_path = None
         dataset_name = cfg["evaluate"]["dataset"]
 
         # print(f"Running for {dataset_name} for top {top_ns} accuracies and checkpoint path: {checkpoint_path}")
@@ -493,7 +651,8 @@ if __name__ == "__main__":
                                                                                                      visualise_model_layer=False,
                                                                                                      get_fpaths=True)
 
-        eval_embeddings, eval_images, eval_labels, eval_im_paths = extract_embeddings_from_model(eval_loader, model.model,
+        eval_embeddings, eval_images, eval_labels, eval_im_paths = extract_embeddings_from_model(eval_loader,
+                                                                                                 model.model,
                                                                                                  normalize_embeddings=True,
                                                                                                  get_images=False,
                                                                                                  get_labels=True,
@@ -508,15 +667,62 @@ if __name__ == "__main__":
         print("Evaluating full dimensional embeddings using cosine distance")
         dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings, train_embeddings, weighted=False,
                                                         temperature=cfg["training"]["loss"]["temperature"])
-        preds, correct_preds_idxs, incorrect_preds_idxs = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, dist_matrix_idxs=dist_matrix_idxs)
+        preds, correct_preds_idxs, incorrect_preds_idxs = nearest_neighbor_evaluation(eval_labels,
+                                                                                      train_labels,
+                                                                                      top_ns,
+                                                                                      dist_matrix,
+                                                                                      dist_matrix_idxs=dist_matrix_idxs)
 
-        with open(f'{proj_dir}/correct_preds_idxs.pkl', 'wb') as f:
-            pickle.dump(correct_preds_idxs, f)
-        with open(f'{proj_dir}/incorrect_preds_idxs.pkl', 'wb') as f:
-            pickle.dump(incorrect_preds_idxs, f)
+        # with open(f'{proj_dir}/correct_preds_idxs.pkl', 'wb') as f:
+        #     pickle.dump(correct_preds_idxs, f)
+        # with open(f'{proj_dir}/incorrect_preds_idxs.pkl', 'wb') as f:
+        #     pickle.dump(incorrect_preds_idxs, f)
+
+        #
 
         # plot confusion matrix
-        cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
+        # cm = plot_cm(eval_labels, preds[1], label_drug_dict, verbose=False)  # top 1 confusion matrix
+        cm = plot_cm(eval_labels, preds[1], label_drug_dict,
+                     # vmax=1.0,
+                     # vmin=0.,
+                     verbose=False,
+                     show_values=False,
+                     # save_path=f'{embeddings_dir}/knn-top1_confusion-matrix.png'
+                     )  # top 1 confusion matrix
+        # save the confusion_matrix to a .png file in the embeddings_dir
+        # plt.savefig(f'{embeddings_dir}/confusion-matrix_knn-top1.png')
+
+        cm = plot_cm(eval_labels, preds[1], label_drug_dict,
+                     # vmax=1.0,
+                     # vmin=0.,
+                     verbose=False,
+                     show_values=True,
+                     # save_path=f'{embeddings_dir}/knn-top1_confusion-matrix_with_values.png'
+                     )  # top 1 confusion matrix with values
+        # plt.savefig(f'{embeddings_dir}/confusion-matrix_knn-top1_with_values.png')
+
+        for top_n in top_ns:
+            # save csv with columns for drug name, number of correct, number total, and accuracy
+            df = pd.DataFrame(columns=['drug', 'label', 'n_correct', 'n_total', 'accuracy'])
+            # print per class accuracy
+            for lbl in np.unique(train_labels):
+                total = np.sum(eval_labels == lbl)
+                correct = np.sum(eval_labels[correct_preds_idxs[top_n]] == lbl)
+                drug_name = label_drug_dict[lbl]
+                accuracy = correct * 100. / total if total > 0 else 0.
+                df = pd.concat([df, pd.DataFrame(
+                    {'drug': [drug_name], 'label': [lbl], 'n_correct': [correct], 'n_total': [total],
+                     'accuracy': [accuracy]})], ignore_index=True)
+
+            # Save the average across all classes
+            avg_accuracy = df['accuracy'].mean()
+            total_correct = df['n_correct'].sum()
+            total_samples = df['n_total'].sum()
+            df = pd.concat([df, pd.DataFrame(
+                {'drug': ['AVERAGE'], 'label': ['N/A'], 'n_correct': [total_correct], 'n_total': [total_samples],
+                 'accuracy': [avg_accuracy]})], ignore_index=True)
+
+            # df.to_csv(f'{embeddings_dir}/knn-top{top_n}_per_drug_accuracy.csv', index=False)
 
     # Evaluate on L2 Distance
     if args.dist_metric == 'l2':
@@ -546,7 +752,7 @@ if __name__ == "__main__":
                 print("Accuracy(%): ", acc)
 
     # Measure cluster quality in both high and low dimensional space
-    reducer = UMAP(verbose=True, n_components=3, n_neighbors=15, min_dist=0.1, metric='l2')
+    reducer = UMAP(verbose=True, n_components=3, n_neighbors=25, min_dist=0.1, metric='cosine')
     all_embeddings = np.concatenate([train_embeddings, eval_embeddings])
     all_embeddings_reduced = reducer.fit_transform(all_embeddings.reshape(all_embeddings.shape[0], -1))
     all_embeddings_reduced = all_embeddings_reduced / np.linalg.norm(all_embeddings_reduced, axis=1)[:, None]
@@ -554,41 +760,41 @@ if __name__ == "__main__":
     train_embeddings_reduced = all_embeddings_reduced[:len(train_embeddings)]
     eval_embeddings_reduced = all_embeddings_reduced[len(train_embeddings):]
 
-    # Evaluation on cosine similarity
-    if args.dist_metric == 'cosine':
-        print("Evaluating umap projected embeddings using cosine distance")
-        dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings_reduced, train_embeddings_reduced)
-        preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, num_neighbors=[100], dist_matrix_idxs=dist_matrix_idxs)
-
-        # plot confusion matrix
-        # cm = plot_cm(eval_labels, preds[1], label_drug_dict)
-
-    # Evaluate on L2 Distance
-    if args.dist_metric == 'l2':
-        print("Building Tree")
-        tree = KDTree(train_embeddings_reduced)
-        print("Tree Built")
-
-        num_neighbors = [100]
-
-        accs = []
-        for k in num_neighbors:
-            dist, nearest_ind = tree.query(eval_embeddings_reduced, k=k)
-            predicted_labels = []
-
-            for top_n in top_ns:
-                correct = 0
-                for i in tqdm(range(len(eval_embeddings_reduced))):
-                    eval_lbl = eval_labels[i]
-                    k_nearest_nbs = train_labels[nearest_ind[i]]
-                    top_most_freq_lbls = topKfrequent(k_nearest_nbs, top_n)
-                    correct += 1 if eval_lbl in top_most_freq_lbls else 0
-
-                print(f"------------------Top-{top_n} Evaluation for {k} Neighbors------------------------")
-                print(f"Correct: {correct}; Total: {len(eval_embeddings_reduced)}")
-                acc = correct * 100. / len(eval_labels)
-                accs.append(acc)
-                print("Accuracy(%): ", acc)
+    # # Evaluation on cosine similarity
+    # if args.dist_metric == 'cosine':
+    #     print("Evaluating umap projected embeddings using cosine distance")
+    #     dist_matrix, dist_matrix_idxs = cosine_distance(eval_embeddings_reduced, train_embeddings_reduced)
+    #     preds = nearest_neighbor_evaluation(eval_labels, train_labels, top_ns, dist_matrix, num_neighbors=[100], dist_matrix_idxs=dist_matrix_idxs)
+    #
+    #     # plot confusion matrix
+    #     # cm = plot_cm(eval_labels, preds[1], label_drug_dict)
+    #
+    # # Evaluate on L2 Distance
+    # if args.dist_metric == 'l2':
+    #     print("Building Tree")
+    #     tree = KDTree(train_embeddings_reduced)
+    #     print("Tree Built")
+    #
+    #     num_neighbors = [100]
+    #
+    #     accs = []
+    #     for k in num_neighbors:
+    #         dist, nearest_ind = tree.query(eval_embeddings_reduced, k=k)
+    #         predicted_labels = []
+    #
+    #         for top_n in top_ns:
+    #             correct = 0
+    #             for i in tqdm(range(len(eval_embeddings_reduced))):
+    #                 eval_lbl = eval_labels[i]
+    #                 k_nearest_nbs = train_labels[nearest_ind[i]]
+    #                 top_most_freq_lbls = topKfrequent(k_nearest_nbs, top_n)
+    #                 correct += 1 if eval_lbl in top_most_freq_lbls else 0
+    #
+    #             print(f"------------------Top-{top_n} Evaluation for {k} Neighbors------------------------")
+    #             print(f"Correct: {correct}; Total: {len(eval_embeddings_reduced)}")
+    #             acc = correct * 100. / len(eval_labels)
+    #             accs.append(acc)
+    #             print("Accuracy(%): ", acc)
 
     original_distances = pairwise_distances(all_embeddings)
     reduced_distances = pairwise_distances(all_embeddings_reduced)
@@ -607,4 +813,3 @@ if __name__ == "__main__":
     kl_divergence = entropy(original_distances_flat, reduced_distances_flat)
 
     print("KL Divergence:", kl_divergence)
-
