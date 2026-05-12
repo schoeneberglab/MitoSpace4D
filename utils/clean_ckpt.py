@@ -1,14 +1,9 @@
-"""Strip the autoencoder/decoder weights out of a SimCLR checkpoint."""
-
 import argparse
 import os.path as osp
 import sys
 import types
 import torch
 
-# The `autoencoder` package has been removed from this repo, but `simclr.models_simple`
-# still imports from it at module scope. Inject empty stubs so the import succeeds;
-# we never instantiate the decoder during verification (decoder_checkpoint_path=None).
 for _mod_name in ("autoencoder", "autoencoder.autoencoder_runner", "autoencoder.autoencoder_models_resnet"):
     if _mod_name not in sys.modules:
         _stub = types.ModuleType(_mod_name)
@@ -88,7 +83,6 @@ def verify_checkpoint(ckpt_path, config_path, dropped_prefixes=("model.decoder."
 
     keys_ok = not unexpected_real and not missing_real
 
-    # --- Dummy forward pass ---
     print("\n  Running dummy forward pass...")
     runner_model = runner.model.eval().to(device)
     for p in runner_model.parameters():
