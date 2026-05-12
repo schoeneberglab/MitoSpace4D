@@ -1,22 +1,21 @@
-import torch
-import numpy as np
 import os
-import random
-import yaml
-import tqdm
-
 import os.path as osp
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import numpy as np
 import pandas as pd
+import torch
+import tqdm
+import yaml
 from skimage.filters import threshold_otsu
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 np.random.seed(0)
 random.seed(0)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-torch.multiprocessing.set_sharing_strategy('file_system')
+device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.multiprocessing.set_sharing_strategy("file_system")
+
 
 def get_intensities(img, mask_ch=1):
     # Morphology: Ch 1, TMRM: Ch 0; consistent with original channel ordering (tmrm first, morph second)
@@ -54,20 +53,25 @@ def process_image_pair(idx, morph_path, tmrm_path):
 
     return idx, morph_intensities, tmrm_intensities
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
 
     max_threads = 8
-    embeddings_dir = '/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_testing'
+    embeddings_dir = (
+        "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_testing"
+    )
     os.makedirs(embeddings_dir, exist_ok=True)
 
-    img_pathfile = osp.join(embeddings_dir, 'image_paths.csv')
+    img_pathfile = osp.join(embeddings_dir, "image_paths.csv")
 
     # Set up image paths
     df = pd.read_csv(img_pathfile, header=None)
-    df.columns = ['morph_path']
+    df.columns = ["morph_path"]
 
     # Add a new column "tmrm_path" by replacing the morph_path with the tmrm path
-    df['tmrm_path'] = df['morph_path'].apply(lambda x: x.replace('-0-1.npy', '-0-0.npy'))
+    df["tmrm_path"] = df["morph_path"].apply(
+        lambda x: x.replace("-0-1.npy", "-0-0.npy")
+    )
 
     # Pre-allocate lists to maintain the exact order of the DataFrame
     results_morph = [None] * len(df)
@@ -80,30 +84,34 @@ if __name__ == '__main__':
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
         # Submit all tasks to the thread pool
         futures = {
-            executor.submit(process_image_pair, i, row['morph_path'], row['tmrm_path']): i
+            executor.submit(
+                process_image_pair, i, row["morph_path"], row["tmrm_path"]
+            ): i
             for i, row in df.iterrows()
         }
 
         # Process as they complete and update progress bar
-        for future in tqdm.tqdm(as_completed(futures), total=len(df), desc="Extracting Intensities"):
+        for future in tqdm.tqdm(
+            as_completed(futures), total=len(df), desc="Extracting Intensities"
+        ):
             idx, morph_int, tmrm_int = future.result()
             results_morph[idx] = morph_int
             results_tmrm[idx] = tmrm_int
 
     # Assign the correctly ordered results back to the DataFrame
-    df['morph_intensities'] = results_morph
-    df['tmrm_intensities'] = results_tmrm
+    df["morph_intensities"] = results_morph
+    df["tmrm_intensities"] = results_tmrm
 
     # Save the intensities as numpy arrays
-    morph_intensity_path = osp.join(embeddings_dir, 'morph_intensities.npy')
-    tmrm_intensity_path = osp.join(embeddings_dir, 'tmrm_intensities.npy')
+    morph_intensity_path = osp.join(embeddings_dir, "morph_intensities.npy")
+    tmrm_intensity_path = osp.join(embeddings_dir, "tmrm_intensities.npy")
 
-    morph_intensities_array = np.stack(df['morph_intensities'].values)
-    tmrm_intensities_array = np.stack(df['tmrm_intensities'].values)
+    morph_intensities_array = np.stack(df["morph_intensities"].values)
+    tmrm_intensities_array = np.stack(df["tmrm_intensities"].values)
 
     np.save(morph_intensity_path, morph_intensities_array)
     np.save(tmrm_intensity_path, tmrm_intensities_array)
 
     # Save the dataframe with the paths and intensities as a parquet file
-    df.to_parquet(osp.join(embeddings_dir, 'mean_intensities.parquet'))
+    df.to_parquet(osp.join(embeddings_dir, "mean_intensities.parquet"))
     print("Processing complete and saved!")

@@ -1,27 +1,41 @@
+import einops
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import einops
-
-from utils.utils import load_config
-from simclr.augmentations import DataAugmentation
 
 from autoencoder.model import MitoSpace3DAutoencoder, load_model
+from simclr.augmentations import DataAugmentation
+from utils.utils import load_config
 
 
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(Basic3DBlock, self).__init__()
 
-        self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv3d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        )
         self.bn1 = nn.BatchNorm3d(out_channels)
-        self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv3d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.bn2 = nn.BatchNorm3d(out_channels)
 
-        self.downsample = nn.Sequential(
-            nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-            nn.BatchNorm3d(out_channels)
-        ) if stride != 1 or in_channels != out_channels else None
+        self.downsample = (
+            nn.Sequential(
+                nn.Conv3d(
+                    in_channels, out_channels, kernel_size=1, stride=stride, bias=False
+                ),
+                nn.BatchNorm3d(out_channels),
+            )
+            if stride != 1 or in_channels != out_channels
+            else None
+        )
 
     def forward(self, x):
         identity = x
@@ -36,22 +50,25 @@ class Basic3DBlock(nn.Module):
 
 
 class Lightweight3DResNet(nn.Module):
-    def __init__(self,
-                 embedding_size=2048,
-                 cfg=None,
-                 apply_aug=False,
-                 decoder_checkpoint_path=None
-                 ) -> None:
+    def __init__(
+        self,
+        embedding_size=2048,
+        cfg=None,
+        apply_aug=False,
+        decoder_checkpoint_path=None,
+    ) -> None:
         super(Lightweight3DResNet, self).__init__()
 
         self.apply_aug = apply_aug
         # self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
-        self.augment_pipeline = DataAugmentation(cfg['data_params']['transforms'], zero_mean_norm=True)
+        self.augment_pipeline = DataAugmentation(
+            cfg["data_params"]["transforms"], zero_mean_norm=True
+        )
         self._with_decoder = True if decoder_checkpoint_path is not None else False
         # self._n_channels = cfg['model_params']['in_channels']
 
         # Get the channels to use from config and convert to tensor for on-device indexing
-        self._channels = cfg['model_params']['channels']
+        self._channels = cfg["model_params"]["channels"]
         print(f"Using channels: {self._channels} for input.")
 
         in_channels = len(self._channels)
@@ -61,7 +78,9 @@ class Lightweight3DResNet(nn.Module):
         if self._with_decoder:
             dec_checkpoint_path = decoder_checkpoint_path
             ae_model = MitoSpace3DAutoencoder()
-            ae_model = AutoEncoderRunner.load_from_checkpoint(dec_checkpoint_path, model=ae_model)
+            ae_model = AutoEncoderRunner.load_from_checkpoint(
+                dec_checkpoint_path, model=ae_model
+            )
 
             self.decoder = ae_model.model.decoder
             self.decoder.eval()
@@ -72,16 +91,18 @@ class Lightweight3DResNet(nn.Module):
             for param in self.decoder.parameters():
                 param.requires_grad = False
 
-            self.decoder.to('cuda')
+            self.decoder.to("cuda")
             print(f"Loaded decoder from: {dec_checkpoint_path}")
-        self.augment_pipeline.to('cuda')
+        self.augment_pipeline.to("cuda")
 
         # Initial stem layer
         stem = nn.Sequential(
-            nn.Conv3d(in_channels, 16, kernel_size=3, stride=(1, 2, 2), padding=1, bias=False),
+            nn.Conv3d(
+                in_channels, 16, kernel_size=3, stride=(1, 2, 2), padding=1, bias=False
+            ),
             nn.BatchNorm3d(16),
             nn.ReLU(inplace=True),
-            nn.MaxPool3d(kernel_size=3, stride=(1, 2, 2), padding=1)
+            nn.MaxPool3d(kernel_size=3, stride=(1, 2, 2), padding=1),
         )
 
         # 3D ResNet
@@ -91,7 +112,7 @@ class Lightweight3DResNet(nn.Module):
             self._make_layer(32, 64, num_blocks=2, stride=2),
             self._make_layer(64, 128, num_blocks=2, stride=2),
             self._make_layer(128, 512, num_blocks=2, stride=2),
-            nn.AdaptiveAvgPool3d((1, 1, 1))
+            nn.AdaptiveAvgPool3d((1, 1, 1)),
         )
 
         # BiLSTM for temporal encoding
@@ -106,7 +127,7 @@ class Lightweight3DResNet(nn.Module):
             nn.Linear(2048, 512, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
-            nn.Linear(512, 512, bias=True)
+            nn.Linear(512, 512, bias=True),
         )
 
     def _make_layer(self, in_channels, out_channels, num_blocks, stride):
@@ -130,7 +151,7 @@ class Lightweight3DResNet(nn.Module):
 
                 decoded_chunks = []
                 for i in range(0, b, micro_bs):
-                    chunk = x[i:i + micro_bs]  # (micro_bs, t, c, d, h, w)
+                    chunk = x[i : i + micro_bs]  # (micro_bs, t, c, d, h, w)
                     out = self.decoder(chunk)  # same shape, (micro_bs, t, c, d, h, w)
                     decoded_chunks.append(out)
 
@@ -176,15 +197,19 @@ class Lightweight3DResNet(nn.Module):
         return x, out
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")
     # Initialize model and print the output shape
-    model = Lightweight3DResNet(embedding_size=2048,
-                                # cfg_aug=cfg['data_params']['transforms'],
-                                apply_aug=True).cuda()
+    model = Lightweight3DResNet(
+        embedding_size=2048,
+        # cfg_aug=cfg['data_params']['transforms'],
+        apply_aug=True,
+    ).cuda()
 
     # print number of parameters
-    print(f"Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    print(
+        f"Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
+    )
     sample_input = torch.randn(1, 20, 2, 30, 256, 256).cuda()  # Example input
     output = model(sample_input)
     print(output.shape)  # Should be (batch_size, embedding_size)

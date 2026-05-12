@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 try:
     from pytorch_msssim import MS_SSIM
+
     _HAS_MSSSIM = True
 except Exception:
     _HAS_MSSSIM = False
@@ -34,26 +35,27 @@ class ReconstructionLoss(nn.Module):
 
     Defaults emphasize structural fidelity and edge preservation for high SNR data.
     """
+
     def __init__(
         self,
         n_channels: int = 1,
         w_ssim: float = 0.5,
-        w_l1: float   = 0.25,
-        w_mse: float  = 0.25,
+        w_l1: float = 0.25,
+        w_mse: float = 0.25,
         w_grad: float = 0.0,
-        w_tv: float   = 0.0,
+        w_tv: float = 0.0,
         use_mask: bool = False,
         mask_thresh: float = 0.05,
         mask_softness: float = 40.0,
         win_size_ssim: int = 7,
-        data_range: float = 1.0
+        data_range: float = 1.0,
     ):
         super().__init__()
         self.w_ssim = w_ssim
-        self.w_l1   = w_l1
-        self.w_mse  = w_mse
+        self.w_l1 = w_l1
+        self.w_mse = w_mse
         self.w_grad = w_grad
-        self.w_tv   = w_tv
+        self.w_tv = w_tv
         self.use_mask = use_mask
         self.mask_thresh = mask_thresh
         self.mask_softness = mask_softness
@@ -65,11 +67,10 @@ class ReconstructionLoss(nn.Module):
                 size_average=True,
                 win_size=win_size_ssim,
                 channel=n_channels,
-                spatial_dims=3
+                spatial_dims=3,
             )
         else:
             self.ms_ssim = None
-
 
     @staticmethod
     def _soft_mask(x: torch.Tensor, thresh: float, softness: float):
@@ -93,7 +94,9 @@ class ReconstructionLoss(nn.Module):
 
         mask_bcdhw = None
         if self.use_mask:
-            mask_bcdhw = self._soft_mask(target, self.mask_thresh, self.mask_softness).detach()
+            mask_bcdhw = self._soft_mask(
+                target, self.mask_thresh, self.mask_softness
+            ).detach()
 
         if self.ms_ssim is not None and self.w_ssim > 0:
             ssim_val = self.ms_ssim(pred, target)
@@ -105,7 +108,7 @@ class ReconstructionLoss(nn.Module):
         l1_map = diff.abs()
         l2_map = diff.square()
 
-        loss_l1  = self._masked_mean(l1_map, mask_bcdhw)
+        loss_l1 = self._masked_mean(l1_map, mask_bcdhw)
         loss_mse = self._masked_mean(l2_map, mask_bcdhw)
 
         if self.w_grad > 0:
@@ -123,11 +126,11 @@ class ReconstructionLoss(nn.Module):
             tv = torch.tensor(0.0, device=device, dtype=pred.dtype)
 
         loss = (
-            self.w_ssim * loss_ssim +
-            self.w_l1   * loss_l1   +
-            self.w_mse  * loss_mse  +
-            self.w_grad * loss_grad +
-            self.w_tv   * tv
+            self.w_ssim * loss_ssim
+            + self.w_l1 * loss_l1
+            + self.w_mse * loss_mse
+            + self.w_grad * loss_grad
+            + self.w_tv * tv
         )
 
         metrics = {

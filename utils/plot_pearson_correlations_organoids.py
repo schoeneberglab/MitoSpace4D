@@ -1,12 +1,14 @@
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
+from sklearn.decomposition import PCA
 
 # Cal27
 # FEATURES = {
@@ -30,14 +32,17 @@ from scipy.stats import pearsonr
 
 # organoid
 FEATURES = {
-    'mean_branch_length': 'Segment\nLength',
-    'mean_fragment_length': 'Fragment\nLength',
-    'mean_fragment_diffusivity': 'Fragment\nDiffusivity',
-    'cytoplasm_volume': "Cell\nVolume",
-    'mean_dist_mito_cell': "Mito-Membrane\nDistance",
+    "mean_branch_length": "Segment\nLength",
+    "mean_fragment_length": "Fragment\nLength",
+    "mean_fragment_diffusivity": "Fragment\nDiffusivity",
+    "cytoplasm_volume": "Cell\nVolume",
+    "mean_dist_mito_cell": "Mito-Membrane\nDistance",
 }
 
-def compute_pca_feature_correlations(parquet_path, features, n_pca_fit=10, n_heatmap_pcs=3):
+
+def compute_pca_feature_correlations(
+    parquet_path, features, n_pca_fit=10, n_heatmap_pcs=3
+):
     """
     Fit PCA with up to n_pca_fit components (for explained variance on console).
     Heatmap uses Pearson r between first n_heatmap_pcs PCs and MitoTNT features.
@@ -46,10 +51,10 @@ def compute_pca_feature_correlations(parquet_path, features, n_pca_fit=10, n_hea
 
     keep_list = ["SC", "Lde", "L15", "L60", "L130"]
     # Filter the dataframe
-    print(f'WARNING: Applying organoid filtering!!!')
-    df = df[df['cell_type'].isin(keep_list)].reset_index(drop=True)
+    print(f"WARNING: Applying organoid filtering!!!")
+    df = df[df["cell_type"].isin(keep_list)].reset_index(drop=True)
 
-    embeddings = np.stack(df['embeddings'].values).astype(np.float64)
+    embeddings = np.stack(df["embeddings"].values).astype(np.float64)
     if embeddings.ndim == 3:
         embeddings = embeddings[:, -1, :]
 
@@ -60,12 +65,14 @@ def compute_pca_feature_correlations(parquet_path, features, n_pca_fit=10, n_hea
     pcs = pca.fit_transform(embeddings)
     evr = pca.explained_variance_ratio_
 
-    print('\n--- PCA explained variance (first 10 PCs, fraction of total variance) ---')
+    print("\n--- PCA explained variance (first 10 PCs, fraction of total variance) ---")
     for i in range(min(10, len(evr))):
         cum = evr[: i + 1].sum()
-        print(f'  PC{i + 1}: {evr[i]:.6f}  (cumulative PC1..PC{i + 1}: {cum:.6f})')
+        print(f"  PC{i + 1}: {evr[i]:.6f}  (cumulative PC1..PC{i + 1}: {cum:.6f})")
     if len(evr) < 10:
-        print(f'  (Only {len(evr)} PC(s) available: n_samples or dim limits components.)')
+        print(
+            f"  (Only {len(evr)} PC(s) available: n_samples or dim limits components.)"
+        )
 
     feat_cols = list(features.keys())
     feat_labels = list(features.values())
@@ -74,7 +81,7 @@ def compute_pca_feature_correlations(parquet_path, features, n_pca_fit=10, n_hea
     valid_mask = ~np.isnan(feat_data).any(axis=1)
     pcs = pcs[valid_mask]
     feat_data = feat_data[valid_mask]
-    print(f'Valid samples: {valid_mask.sum()} / {len(valid_mask)}')
+    print(f"Valid samples: {valid_mask.sum()} / {len(valid_mask)}")
 
     n_h = min(n_heatmap_pcs, pcs.shape[1])
     corr_matrix = np.zeros((n_h, len(feat_cols)))
@@ -88,7 +95,9 @@ def compute_pca_feature_correlations(parquet_path, features, n_pca_fit=10, n_hea
 
 def plot_heatmap(corr_matrix, feat_labels, explained_var, out_path, desc=None):
     n_components = corr_matrix.shape[0]
-    pc_labels = [f'PC-{i + 1}\n({explained_var[i] * 100:.1f}%)' for i in range(n_components)]
+    pc_labels = [
+        f"PC-{i + 1}\n({explained_var[i] * 100:.1f}%)" for i in range(n_components)
+    ]
 
     cell_size = 1.2
     fig_w = n_components * cell_size + 2.5
@@ -98,40 +107,49 @@ def plot_heatmap(corr_matrix, feat_labels, explained_var, out_path, desc=None):
         square=True,
         data=corr_matrix.T,
         annot=True,
-        fmt='.2f',
-        cmap='RdBu_r',
+        fmt=".2f",
+        cmap="RdBu_r",
         center=0,
         vmin=-0.75,
         vmax=0.75,
         xticklabels=pc_labels,
         yticklabels=feat_labels,
         linewidths=0.5,
-        linecolor='gray',
-        cbar_kws={'label': 'Pearson r',
-                  # 'shrink': 0,
-                  # 'fontsize': 18
-                  },
+        linecolor="gray",
+        cbar_kws={
+            "label": "Pearson r",
+            # 'shrink': 0,
+            # 'fontsize': 18
+        },
         ax=ax,
         annot_kws={
-            'fontsize': 18,
+            "fontsize": 18,
             # 'fontweight': 'bold'
         },
     )
 
     ax.set_xticklabels(ax.get_xticklabels(), rotation=0, fontsize=18)
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=18)
-    ax.tick_params(axis='both', length=0)
+    ax.tick_params(axis="both", length=0)
 
     if desc:
-        plt.title(f'Pearson Correlation of PCA Components vs MitoTNT Features ({desc})', fontsize=12, pad=12)
+        plt.title(
+            f"Pearson Correlation of PCA Components vs MitoTNT Features ({desc})",
+            fontsize=12,
+            pad=12,
+        )
     else:
-        plt.title(f'Pearson Correlation of PCA Components vs MitoTNT Features', fontsize=12, pad=12)
-    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+        plt.title(
+            f"Pearson Correlation of PCA Components vs MitoTNT Features",
+            fontsize=12,
+            pad=12,
+        )
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
-    print(f'Saved heatmap to {out_path}')
+    print(f"Saved heatmap to {out_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     data_root = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data"
     # parquet_infile = "embeddings+metadata_vis_joined.parquet"
@@ -160,5 +178,9 @@ if __name__ == '__main__':
         parquet_path, FEATURES, n_pca_fit=10, n_heatmap_pcs=3
     )
 
-    heatmap_path = os.path.join(data_root, embeddings_dir, 'pca_correlation_heatmap.png')
-    plot_heatmap(corr_matrix, feat_labels, explained_var, heatmap_path, desc=embeddings_dir)
+    heatmap_path = os.path.join(
+        data_root, embeddings_dir, "pca_correlation_heatmap.png"
+    )
+    plot_heatmap(
+        corr_matrix, feat_labels, explained_var, heatmap_path, desc=embeddings_dir
+    )

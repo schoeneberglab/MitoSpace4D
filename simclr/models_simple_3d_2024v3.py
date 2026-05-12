@@ -1,27 +1,44 @@
+import einops
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import einops
 
-from utils.utils import load_config
-from simclr.augmentations import DataAugmentation
 from autoencoder.autoencoder_runner import AutoEncoderRunner
+
 # from autoencoder.autoencoder_models_resnet import MitoSpace3DAutoencoder
 from autoencoder.utils import load_model
+from simclr.augmentations import DataAugmentation
+from utils.utils import load_config
+
 
 class Basic3DBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(Basic3DBlock, self).__init__()
 
-        self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv3d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        )
         self.bn1 = nn.BatchNorm3d(out_channels)
-        self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv3d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.bn2 = nn.BatchNorm3d(out_channels)
 
-        self.downsample = nn.Sequential(
-            nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-            nn.BatchNorm3d(out_channels)
-        ) if stride != 1 or in_channels != out_channels else None
+        self.downsample = (
+            nn.Sequential(
+                nn.Conv3d(
+                    in_channels, out_channels, kernel_size=1, stride=stride, bias=False
+                ),
+                nn.BatchNorm3d(out_channels),
+            )
+            if stride != 1 or in_channels != out_channels
+            else None
+        )
 
     def forward(self, x):
         identity = x
@@ -34,33 +51,37 @@ class Basic3DBlock(nn.Module):
         out += identity
         return F.relu(out)
 
+
 class Lightweight3DResNet(nn.Module):
-    def __init__(self, 
-                 embedding_size=2048,
-                 cfg=None, 
-                 apply_aug=False,
-                 decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/mitospace_autoencoder/2024v3_autoencoder.pt",
-                 device='cuda'
-                #  decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
-                 ) -> None:
-        
+    def __init__(
+        self,
+        embedding_size=2048,
+        cfg=None,
+        apply_aug=False,
+        decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/mitospace_autoencoder/2024v3_autoencoder.pt",
+        device="cuda",
+        #  decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
+    ) -> None:
+
         super(Lightweight3DResNet, self).__init__()
 
         print(f"Training 3D only!")
 
         self.apply_aug = apply_aug
         # self.augment_pipeline = DataAugmentation(cfg_aug, zero_mean_norm=True)
-        self.augment_pipeline = DataAugmentation(cfg['data_params']['transforms'], zero_mean_norm=True)
+        self.augment_pipeline = DataAugmentation(
+            cfg["data_params"]["transforms"], zero_mean_norm=True
+        )
         self._with_decoder = True if decoder_checkpoint_path is not None else False
         # self._n_channels = cfg['model_params']['in_channels']
 
         # Get the channels to use from config and convert to tensor for on-device indexing
-        self._channels = cfg['model_params']['channels']
+        self._channels = cfg["model_params"]["channels"]
         print(f"Using channels: {self._channels} for input.")
-        
+
         in_channels = len(self._channels)
         self._channels = torch.tensor(self._channels).to(torch.int32)
-        
+
         if self._with_decoder:
             dec_checkpoint_path = decoder_checkpoint_path
             # ae_model = MitoSpace3DAutoencoder()
@@ -71,7 +92,7 @@ class Lightweight3DResNet(nn.Module):
             self.decoder = ae_model.decoder
             self.decoder.eval()
 
-            del ae_model # Delete the full model to free up memory
+            del ae_model  # Delete the full model to free up memory
 
             # Freeze decoder parameters
             for param in self.decoder.parameters():
@@ -83,10 +104,12 @@ class Lightweight3DResNet(nn.Module):
 
         # Initial stem layer
         stem = nn.Sequential(
-            nn.Conv3d(in_channels, 16, kernel_size=3, stride=(1, 2, 2), padding=1, bias=False),
+            nn.Conv3d(
+                in_channels, 16, kernel_size=3, stride=(1, 2, 2), padding=1, bias=False
+            ),
             nn.BatchNorm3d(16),
             nn.ReLU(inplace=True),
-            nn.MaxPool3d(kernel_size=3, stride=(1, 2, 2), padding=1)
+            nn.MaxPool3d(kernel_size=3, stride=(1, 2, 2), padding=1),
         )
 
         # 3D ResNet
@@ -96,7 +119,7 @@ class Lightweight3DResNet(nn.Module):
             self._make_layer(32, 64, num_blocks=2, stride=2),
             self._make_layer(64, 128, num_blocks=2, stride=2),
             self._make_layer(128, 512, num_blocks=2, stride=2),
-            nn.AdaptiveAvgPool3d((1, 1, 1))
+            nn.AdaptiveAvgPool3d((1, 1, 1)),
         )
 
         # Fully connected layer for embeddings
@@ -104,10 +127,10 @@ class Lightweight3DResNet(nn.Module):
 
         # Projection head for SimCLR
         self.proj = nn.Sequential(
-            nn.Linear(2048, 512, bias=False), 
+            nn.Linear(2048, 512, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
-            nn.Linear(512, 512, bias=True)
+            nn.Linear(512, 512, bias=True),
         )
 
     def _make_layer(self, in_channels, out_channels, num_blocks, stride):
@@ -176,7 +199,7 @@ class Lightweight3DResNet(nn.Module):
 
                 # # reassemble batch
                 # x = torch.cat(decoded_movies, dim=0)  # (B, 60, C, D, H, W)
-                
+
                 # ===== 20-frames 2024v3 scheme =====
                 # x: (b, t, c, d, h, w)
                 # print("Decoder")
@@ -202,9 +225,9 @@ class Lightweight3DResNet(nn.Module):
                 x = x[:, :, :, :60, ...]  # (b, t, c, 60, h, w)
 
                 x = self.augment_pipeline(x) if self.apply_aug else (2 * x - 1)
-        
+
         # Keep only the selected channels
-        x = x[:, :, self._channels, ...] # (b, t, c, d, h, w)
+        x = x[:, :, self._channels, ...]  # (b, t, c, d, h, w)
 
         batch_size, time_steps, channels, depth, height, width = x.size()
 
@@ -229,23 +252,29 @@ class Lightweight3DResNet(nn.Module):
         out = self.proj(x)
 
         return x, out
-    
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config.yaml")
     cfg = load_config("/u/earkfeld/MitoSpace4D/simclr/config_2024v3_3d.yaml")
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Initialize model and print the output shape
-    model = Lightweight3DResNet(embedding_size=2048, 
-                                cfg=cfg,
-                                decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/mitospace_autoencoder/2024v3_autoencoder_sequence-norm.pt",
-                                apply_aug=False,
-                                device=device).to(device)
-    
+    model = Lightweight3DResNet(
+        embedding_size=2048,
+        cfg=cfg,
+        decoder_checkpoint_path="/u/earkfeld/MitoSpace4D/mitospace_autoencoder/2024v3_autoencoder_sequence-norm.pt",
+        apply_aug=False,
+        device=device,
+    ).to(device)
+
     # print number of parameters
-    print(f"Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    sample_input = torch.randn(2, 2, 2, 16, 64, 64).to(device) # B, T, C, D, H, W
+    print(
+        f"Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
+    )
+    sample_input = torch.randn(2, 2, 2, 16, 64, 64).to(device)  # B, T, C, D, H, W
     # sample_input = torch.randn(1, 20, 2, 30, 256, 256).to(device)  # Example input
     output = model(sample_input)
-    print(f"embedding size: {output[0].shape}")  # Should be (batch_size, embedding_size)
+    print(
+        f"embedding size: {output[0].shape}"
+    )  # Should be (batch_size, embedding_size)
     print(f"projection size: {output[1].shape}")  # Should be (batch_size, 512)

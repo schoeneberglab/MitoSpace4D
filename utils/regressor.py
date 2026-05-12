@@ -1,19 +1,21 @@
+import os
+import os.path as osp
+
+import joblib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from torch.utils.data import DataLoader, TensorDataset
+from sklearn.linear_model import Ridge
+from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import r2_score
-from sklearn.linear_model import Ridge
-import joblib
+from torch.utils.data import DataLoader, TensorDataset
 from tqdm import trange
-import os
-import os.path as osp
+
 
 def get_label_colormap():
     colors = {}
@@ -23,12 +25,17 @@ def get_label_colormap():
             if len(parts) == 6:
                 date, label, index, r, g, b = parts
                 if float(r) >= 1 or float(g) >= 1 or float(b) >= 1:
-                    colors[int(index)] = [float(r) / 255, float(g) / 255, float(b) / 255]
+                    colors[int(index)] = [
+                        float(r) / 255,
+                        float(g) / 255,
+                        float(b) / 255,
+                    ]
                 else:
                     colors[int(index)] = [float(r), float(g), float(b)]
             else:
                 print("Invalid line format:", line)
     return colors
+
 
 class NonlinearRegressor(nn.Module):
     def __init__(self, input_dim, hidden_dim=256, dropout_prob=0.3):
@@ -39,7 +46,7 @@ class NonlinearRegressor(nn.Module):
             # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout_prob),
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(hidden_dim, 1),
         )
 
     def forward(self, x):
@@ -54,11 +61,13 @@ class LinearRegressor(nn.Module):
     def forward(self, x):
         return self.regressor(x)
 
+
 class RidgeRegressor(nn.Module):
     """Closed-form L2-penalised linear regression. Fits via sklearn's Ridge and
     copies the learned (coef, intercept) into a wrapped nn.Linear so the rest of
     the pipeline (forward pass, eval, state_dict, parameters) sees a normal
     PyTorch model. Skip the gradient training loop for this one in `train_model`."""
+
     def __init__(self, input_dim, alpha=1.0):
         super(RidgeRegressor, self).__init__()
         self.regressor = nn.Linear(input_dim, 1)
@@ -81,11 +90,15 @@ class RidgeRegressor(nn.Module):
             )
 
 
-def build_regressor(regressor_type, input_dim, hidden_dim=256, dropout_prob=0.3, ridge_alpha=1.0):
+def build_regressor(
+    regressor_type, input_dim, hidden_dim=256, dropout_prob=0.3, ridge_alpha=1.0
+):
     if regressor_type == "linear":
         return LinearRegressor(input_dim=input_dim)
     elif regressor_type == "nonlinear":
-        return NonlinearRegressor(input_dim=input_dim, hidden_dim=hidden_dim, dropout_prob=dropout_prob)
+        return NonlinearRegressor(
+            input_dim=input_dim, hidden_dim=hidden_dim, dropout_prob=dropout_prob
+        )
     elif regressor_type == "ridge":
         return RidgeRegressor(input_dim=input_dim, alpha=ridge_alpha)
     else:
@@ -101,11 +114,13 @@ def stack_input_features(df, feature_columns, frame_index):
     parts = []
     for col in feature_columns:
         first = df[col].iloc[0]
-        if hasattr(first, 'ndim') and first.ndim > 0:
+        if hasattr(first, "ndim") and first.ndim > 0:
             arr = np.stack(df[col].values)
-            if arr.ndim == 3:                       # (N, T, D)
+            if arr.ndim == 3:  # (N, T, D)
                 arr = arr[:, frame_index, :]
-            elif arr.ndim == 2 and isinstance(df[col].iloc[0][frame_index], (list, np.ndarray)):
+            elif arr.ndim == 2 and isinstance(
+                df[col].iloc[0][frame_index], (list, np.ndarray)
+            ):
                 # (N, T) object dtype with per-row 1D vectors → take the frame
                 arr = np.stack([v[frame_index] for v in df[col].values])
             elif arr.ndim == 1:
@@ -122,22 +137,37 @@ def stack_input_features(df, feature_columns, frame_index):
     return X
 
 
-def train_model(embeddings, targets, save_dir, regression_target="target", desc=None, conditions=None, labels=None,
-                regressor_type="nonlinear",
-                epochs=100,
-                batch_size=32,
-                lr=1e-3,
-                hidden_dim=256,
-                dropout_rate=0.3,
-                test_split=0.2,
-                ridge_alpha=1.0, ):
+def train_model(
+    embeddings,
+    targets,
+    save_dir,
+    regression_target="target",
+    desc=None,
+    conditions=None,
+    labels=None,
+    regressor_type="nonlinear",
+    epochs=100,
+    batch_size=32,
+    lr=1e-3,
+    hidden_dim=256,
+    dropout_rate=0.3,
+    test_split=0.2,
+    ridge_alpha=1.0,
+):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training on: {device}")
 
     # Pass conditions and labels through the split if provided so we can evaluate per-condition later
     if conditions is not None and labels is not None:
-        X_train, X_val, y_train, y_val, cond_train, cond_val, lab_train, lab_val = train_test_split(
-            embeddings, targets, conditions, labels, test_size=test_split, random_state=42
+        X_train, X_val, y_train, y_val, cond_train, cond_val, lab_train, lab_val = (
+            train_test_split(
+                embeddings,
+                targets,
+                conditions,
+                labels,
+                test_size=test_split,
+                random_state=42,
+            )
         )
     elif conditions is not None:
         X_train, X_val, y_train, y_val, cond_train, cond_val = train_test_split(
@@ -159,10 +189,14 @@ def train_model(embeddings, targets, save_dir, regression_target="target", desc=
     y_train_scaled = target_scaler.fit_transform(y_train.reshape(-1, 1))
     y_val_scaled = target_scaler.transform(y_val.reshape(-1, 1))
 
-    train_ds = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train_scaled))
+    train_ds = TensorDataset(
+        torch.FloatTensor(X_train), torch.FloatTensor(y_train_scaled)
+    )
     val_ds = TensorDataset(torch.FloatTensor(X_val), torch.FloatTensor(y_val_scaled))
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, drop_last=True
+    )
     val_loader = DataLoader(val_ds, batch_size=batch_size)
 
     model = build_regressor(
@@ -176,9 +210,9 @@ def train_model(embeddings, targets, save_dir, regression_target="target", desc=
 
     criterion = nn.MSELoss()
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.5)
 
-    best_val_loss = float('inf')
+    best_val_loss = float("inf")
     best_epoch = 0
 
     # Shared output directory for all regression targets — per-target files get
@@ -194,9 +228,17 @@ def train_model(embeddings, targets, save_dir, regression_target="target", desc=
     if regressor_type == "ridge":
         model.fit_closed_form(X_train, y_train_scaled.ravel())
         torch.save(model.state_dict(), ckpt_path)
-        joblib.dump(target_scaler, osp.join(output_dir, f"target_scaler-{regression_target}.pkl"))
-        joblib.dump(feature_scaler, osp.join(output_dir, f"feature_scaler-{regression_target}.pkl"))
-        print(f"Closed-form ridge fit (alpha={ridge_alpha}). Saved weights to {ckpt_path}")
+        joblib.dump(
+            target_scaler,
+            osp.join(output_dir, f"target_scaler-{regression_target}.pkl"),
+        )
+        joblib.dump(
+            feature_scaler,
+            osp.join(output_dir, f"feature_scaler-{regression_target}.pkl"),
+        )
+        print(
+            f"Closed-form ridge fit (alpha={ridge_alpha}). Saved weights to {ckpt_path}"
+        )
         return model, target_scaler, X_val, y_val, cond_val, lab_val, 0
 
     for epoch in trange(epochs):
@@ -224,7 +266,9 @@ def train_model(embeddings, targets, save_dir, regression_target="target", desc=
         scheduler.step(avg_val_loss)
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(f"Epoch {epoch + 1:03d} | Train: {avg_train_loss:.5f} | Val: {avg_val_loss:.5f}")
+            print(
+                f"Epoch {epoch + 1:03d} | Train: {avg_train_loss:.5f} | Val: {avg_val_loss:.5f}"
+            )
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
@@ -232,13 +276,32 @@ def train_model(embeddings, targets, save_dir, regression_target="target", desc=
             torch.save(model.state_dict(), ckpt_path)
 
     model.load_state_dict(torch.load(ckpt_path))
-    joblib.dump(target_scaler, osp.join(output_dir, f"target_scaler-{regression_target}.pkl"))
-    joblib.dump(feature_scaler, osp.join(output_dir, f"feature_scaler-{regression_target}.pkl"))
+    joblib.dump(
+        target_scaler, osp.join(output_dir, f"target_scaler-{regression_target}.pkl")
+    )
+    joblib.dump(
+        feature_scaler, osp.join(output_dir, f"feature_scaler-{regression_target}.pkl")
+    )
     return model, target_scaler, X_val, y_val, cond_val, lab_val, best_epoch
 
-def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_scaler, title=None, save_path=None,
-                      save_boxplot_path=None, save_csv_path=None, generate_plot=True, show_plot=True,
-                      feature_name="feature", y_min=None, y_max=None):
+
+def evaluate_and_plot(
+    model,
+    X_val,
+    y_val,
+    val_conditions,
+    val_labels,
+    target_scaler,
+    title=None,
+    save_path=None,
+    save_boxplot_path=None,
+    save_csv_path=None,
+    generate_plot=True,
+    show_plot=True,
+    feature_name="feature",
+    y_min=None,
+    y_max=None,
+):
     model.eval()
     device = next(model.parameters()).device
 
@@ -284,7 +347,7 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
         raw_error_data = []
 
         for cond in unique_conditions:
-            mask = (val_conditions == cond)
+            mask = val_conditions == cond
             y_val_cond = y_val[mask]
             preds_cond = preds_orig[mask]
 
@@ -313,33 +376,41 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
 
             # Boxplot uses per-sample NAPE (%); samples with |y| ≤ eps are
             # excluded since percent error is undefined there.
-            raw_error_data.append(pd.DataFrame({
-                'Condition': cond,
-                'Label': cond_label,
-                'NAPE (%)': pct_cond,
-            }))
+            raw_error_data.append(
+                pd.DataFrame(
+                    {
+                        "Condition": cond,
+                        "Label": cond_label,
+                        "NAPE (%)": pct_cond,
+                    }
+                )
+            )
 
-            condition_results.append({
-                'condition': cond,
-                'label': cond_label,
-                'n_samples': len(y_val_cond),
-                'r2_score': r2_cond,
-                'mae': mae_cond,
-                'mae_std': mae_std_cond,
-                'nape': nape_cond,
-                'nape_std': nape_std_cond,
-            })
+            condition_results.append(
+                {
+                    "condition": cond,
+                    "label": cond_label,
+                    "n_samples": len(y_val_cond),
+                    "r2_score": r2_cond,
+                    "mae": mae_cond,
+                    "mae_std": mae_std_cond,
+                    "nape": nape_cond,
+                    "nape_std": nape_std_cond,
+                }
+            )
 
-        condition_results.append({
-            'condition': 'global',
-            'label': -1,
-            'n_samples': len(y_val),
-            'r2_score': r2,
-            'mae': mae,
-            'mae_std': mae_std,
-            'nape': nape,
-            'nape_std': nape_std,
-        })
+        condition_results.append(
+            {
+                "condition": "global",
+                "label": -1,
+                "n_samples": len(y_val),
+                "r2_score": r2,
+                "mae": mae,
+                "mae_std": mae_std,
+                "nape": nape,
+                "nape_std": nape_std,
+            }
+        )
 
         results_df = pd.DataFrame(condition_results)
 
@@ -354,19 +425,19 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
         # the normalized [0, 1] space set up in main(), so we plot them directly
         # with axes locked to [0, 1] and y=x as the diagonal.
         plt.figure(figsize=(8, 6), dpi=300)
-        sns.regplot(x=y_val,
-                    y=preds_orig,
-                    scatter_kws={'alpha': 0.3},
-                    line_kws={'color': 'red', 'alpha': 0.5},
-                    ci=None,
-                    )
-        plt.ylabel(f'Predicted {feature_name} (min-max normalized)')
-        plt.xlabel(f'Actual {feature_name} (min-max normalized)')
-        plt.grid(True, linestyle='--', alpha=0.6)
+        sns.regplot(
+            x=y_val,
+            y=preds_orig,
+            scatter_kws={"alpha": 0.3},
+            line_kws={"color": "red", "alpha": 0.5},
+            ci=None,
+        )
+        plt.ylabel(f"Predicted {feature_name} (min-max normalized)")
+        plt.xlabel(f"Actual {feature_name} (min-max normalized)")
+        plt.grid(True, linestyle="--", alpha=0.6)
 
         plt.xlim(0.0, 1.0)
         plt.ylim(0.0, 1.0)
-
 
         if save_path:
             plt.savefig(save_path)
@@ -381,38 +452,46 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
         if val_conditions is not None and len(raw_error_data) > 0:
 
             plot_df = pd.concat(raw_error_data, ignore_index=True)
-            plot_df = plot_df.sort_values('Label')
-            plot_df['x_tick'] = plot_df['Condition'].astype(str)
+            plot_df = plot_df.sort_values("Label")
+            plot_df["x_tick"] = plot_df["Condition"].astype(str)
 
             plt.figure(figsize=(16, 4), dpi=300)
 
-            label_colors = get_label_colormap()  # Assuming this is defined elsewhere in your code
-            unique_mapping = plot_df[['x_tick', 'Label']].drop_duplicates()
-            palette = {row['x_tick']: label_colors.get(int(row['Label']), [0.5, 0.5, 0.5]) for _, row in
-                       unique_mapping.iterrows()}
+            label_colors = (
+                get_label_colormap()
+            )  # Assuming this is defined elsewhere in your code
+            unique_mapping = plot_df[["x_tick", "Label"]].drop_duplicates()
+            palette = {
+                row["x_tick"]: label_colors.get(int(row["Label"]), [0.5, 0.5, 0.5])
+                for _, row in unique_mapping.iterrows()
+            }
 
             # Sort the dataframe according to NAPE so the boxplot is ordered by error magnitude
-            median_order = plot_df.groupby('x_tick')['NAPE (%)'].median().sort_values().index
-            plot_df['x_tick'] = pd.Categorical(plot_df['x_tick'], categories=median_order, ordered=True)
-            plot_df = plot_df.sort_values('x_tick')
+            median_order = (
+                plot_df.groupby("x_tick")["NAPE (%)"].median().sort_values().index
+            )
+            plot_df["x_tick"] = pd.Categorical(
+                plot_df["x_tick"], categories=median_order, ordered=True
+            )
+            plot_df = plot_df.sort_values("x_tick")
 
             sns.boxplot(
                 data=plot_df,
-                x='x_tick',
-                y='NAPE (%)',
+                x="x_tick",
+                y="NAPE (%)",
                 color="#87CEEB",
                 saturation=1.0,
                 dodge=False,
                 legend=False,
                 showfliers=False,
                 linewidth=1.0,
-                medianprops={'color': 'red'},
+                medianprops={"color": "red"},
             )
-            plt.grid(True, axis='y', linestyle='--', alpha=0.6)
+            plt.grid(True, axis="y", linestyle="--", alpha=0.6)
 
-            plt.xticks(rotation=45, ha='right')
-            plt.xlabel('Condition / Label', fontweight='bold', fontsize=14)
-            plt.ylabel(f'NAPE (%) — {feature_name}', fontweight='bold', fontsize=14)
+            plt.xticks(rotation=45, ha="right")
+            plt.xlabel("Condition / Label", fontweight="bold", fontsize=14)
+            plt.ylabel(f"NAPE (%) — {feature_name}", fontweight="bold", fontsize=14)
             plt.tight_layout()
 
             if save_boxplot_path:
@@ -427,18 +506,20 @@ def evaluate_and_plot(model, X_val, y_val, val_conditions, val_labels, target_sc
     return r2, mae, nape, results_df, abs_pct_errors
 
 
-def main(local_df,
-         embeddings_dir,
-         training_cfg,
-         regression_targets=("tmrm_intensities",),
-         feature_columns=("embeddings",),
-         desc=None,
-         pick_labels=None,
-         exclude_labels=None,
-         generate_plot=True,
-         show_plot=True,
-         frame_index=-1,
-         seed=1123):
+def main(
+    local_df,
+    embeddings_dir,
+    training_cfg,
+    regression_targets=("tmrm_intensities",),
+    feature_columns=("embeddings",),
+    desc=None,
+    pick_labels=None,
+    exclude_labels=None,
+    generate_plot=True,
+    show_plot=True,
+    frame_index=-1,
+    seed=1123,
+):
 
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -449,10 +530,10 @@ def main(local_df,
 
     if exclude_labels:
         print(f"Excluding labels: {exclude_labels}")
-        local_df = local_df[~local_df['labels'].isin(exclude_labels)]
+        local_df = local_df[~local_df["labels"].isin(exclude_labels)]
 
     if pick_labels:
-        local_df = local_df[local_df['labels'].isin(pick_labels)]
+        local_df = local_df[local_df["labels"].isin(pick_labels)]
 
     # Single shared output directory for all regression targets.
     if desc is not None:
@@ -478,12 +559,16 @@ def main(local_df,
         if n_dropped > 0:
             print(f"Dropped {n_dropped} rows with NaN in {required_cols}.")
 
-        min_class_size = target_df['labels'].value_counts().min()
+        min_class_size = target_df["labels"].value_counts().min()
         print(f"Balancing dataset: sampling {min_class_size} samples per class.")
-        target_df = target_df.groupby('labels').sample(n=min_class_size, random_state=seed).reset_index(drop=True)
+        target_df = (
+            target_df.groupby("labels")
+            .sample(n=min_class_size, random_state=seed)
+            .reset_index(drop=True)
+        )
 
-        labels = target_df['labels'].to_numpy()
-        label_names = target_df['label_names'].to_numpy(dtype=str)
+        labels = target_df["labels"].to_numpy()
+        label_names = target_df["label_names"].to_numpy(dtype=str)
 
         # Stack the configured feature columns into a single (N, D_total) input matrix.
         if feature_columns != ("embeddings",):
@@ -494,7 +579,9 @@ def main(local_df,
         # Check if the target is a numpy array list or sequence
         if target_df[regression_target][0].ndim > 0:
             # Get the last value only
-            target_vals = np.array([val[frame_index] for val in target_df[regression_target].values])
+            target_vals = np.array(
+                [val[frame_index] for val in target_df[regression_target].values]
+            )
         else:
             target_vals = target_df[regression_target].to_numpy().astype(np.float32)
 
@@ -525,28 +612,40 @@ def main(local_df,
         y_range_raw = y_max_raw - y_min_raw
         if y_range_raw > 0:
             target_vals = ((target_vals - y_min_raw) / y_range_raw).astype(np.float32)
-            print(f"Normalized {regression_target} to [0, 1] using raw range "
-                  f"[{y_min_raw:.4g}, {y_max_raw:.4g}].")
+            print(
+                f"Normalized {regression_target} to [0, 1] using raw range "
+                f"[{y_min_raw:.4g}, {y_max_raw:.4g}]."
+            )
         y_min_global = 0.0
         y_max_global = 1.0
 
-        model, scaler, X_val, y_val, val_conditions, val_labels, best_epoch = train_model(
-            inputs,
-            target_vals,
-            save_dir=embeddings_dir,
-            regression_target=regression_target,
-            desc=desc,
-            conditions=label_names,
-            labels=labels,
-            **training_cfg
+        model, scaler, X_val, y_val, val_conditions, val_labels, best_epoch = (
+            train_model(
+                inputs,
+                target_vals,
+                save_dir=embeddings_dir,
+                regression_target=regression_target,
+                desc=desc,
+                conditions=label_names,
+                labels=labels,
+                **training_cfg,
+            )
         )
 
         if desc is not None:
-            plot_out_path = osp.join(output_dir, f"regression_plot-{regression_target}-{desc}.png")
-            boxplot_out_path = osp.join(output_dir, f"error_boxplot-{regression_target}-{desc}.png")
+            plot_out_path = osp.join(
+                output_dir, f"regression_plot-{regression_target}-{desc}.png"
+            )
+            boxplot_out_path = osp.join(
+                output_dir, f"error_boxplot-{regression_target}-{desc}.png"
+            )
         else:
-            plot_out_path = osp.join(output_dir, f"regression_plot-{regression_target}.png")
-            boxplot_out_path = osp.join(output_dir, f"error_boxplot-{regression_target}.png")
+            plot_out_path = osp.join(
+                output_dir, f"regression_plot-{regression_target}.png"
+            )
+            boxplot_out_path = osp.join(
+                output_dir, f"error_boxplot-{regression_target}.png"
+            )
 
         print(f"\nEvaluating best model from checkpoint at epoch {best_epoch}...")
 
@@ -568,14 +667,16 @@ def main(local_df,
         )
 
         if results_df is not None:
-            results_df.insert(0, 'feature', regression_target)
+            results_df.insert(0, "feature", regression_target)
             all_results.append(results_df)
 
         if nape_per_sample is not None and len(nape_per_sample) > 0:
-            all_nape_per_sample.append({
-                'feature': regression_target,
-                'nape': np.asarray(nape_per_sample),
-            })
+            all_nape_per_sample.append(
+                {
+                    "feature": regression_target,
+                    "nape": np.asarray(nape_per_sample),
+                }
+            )
 
     if all_results:
         combined = pd.concat(all_results, ignore_index=True)
@@ -590,7 +691,7 @@ def main(local_df,
     # produced inside `evaluate_and_plot` are unchanged.
     if generate_plot and all_nape_per_sample:
         nape_dfs = [
-            pd.DataFrame({'feature': entry['feature'], 'NAPE (%)': entry['nape']})
+            pd.DataFrame({"feature": entry["feature"], "NAPE (%)": entry["nape"]})
             for entry in all_nape_per_sample
         ]
         cross_feature_df = pd.concat(nape_dfs, ignore_index=True)
@@ -598,25 +699,26 @@ def main(local_df,
         # Order boxes by the original `regression_targets` ordering so the x-axis
         # matches the order the user listed the targets in (rather than e.g.
         # sorting by median NAPE).
-        feature_order = [t for t in regression_targets
-                         if t in set(cross_feature_df['feature'])]
-        cross_feature_df['feature'] = pd.Categorical(
-            cross_feature_df['feature'], categories=feature_order, ordered=True
+        feature_order = [
+            t for t in regression_targets if t in set(cross_feature_df["feature"])
+        ]
+        cross_feature_df["feature"] = pd.Categorical(
+            cross_feature_df["feature"], categories=feature_order, ordered=True
         )
-        cross_feature_df = cross_feature_df.sort_values('feature')
+        cross_feature_df = cross_feature_df.sort_values("feature")
 
         fig, ax = plt.subplots(figsize=(12, 5), dpi=300)
         sns.boxplot(
             data=cross_feature_df,
-            x='feature',
-            y='NAPE (%)',
+            x="feature",
+            y="NAPE (%)",
             color="#87CEEB",
             saturation=1.0,
             dodge=False,
             legend=False,
             showfliers=False,
             linewidth=1.0,
-            medianprops={'color': 'red'},
+            medianprops={"color": "red"},
             ax=ax,
         )
 
@@ -624,18 +726,20 @@ def main(local_df,
         # — independent of figsize / tick label sizes — so the figure always
         # renders with the same plot proportions.
         ax.set_box_aspect(5 / 12)
-        ax.grid(True, axis='y', linestyle='--', alpha=0.6)
+        ax.grid(True, axis="y", linestyle="--", alpha=0.6)
         # Replace feature-name x-tick labels with 1-based indices matching the
         # `regression_targets` order (so the legend / accompanying CSV is the
         # source of truth for which index is which feature).
         ax.set_xticks(range(len(feature_order)))
         ax.set_xticklabels([str(i + 1) for i in range(len(feature_order))], rotation=0)
-        ax.set_xlabel('Regression target index', fontweight='bold', fontsize=14)
-        ax.set_ylabel('NAPE (%)', fontweight='bold', fontsize=14)
+        ax.set_xlabel("Regression target index", fontweight="bold", fontsize=14)
+        ax.set_ylabel("NAPE (%)", fontweight="bold", fontsize=14)
         fig.tight_layout()
 
         if desc is not None:
-            cross_feature_path = osp.join(output_dir, f"nape_boxplot-all_features-{desc}.png")
+            cross_feature_path = osp.join(
+                output_dir, f"nape_boxplot-all_features-{desc}.png"
+            )
         else:
             cross_feature_path = osp.join(output_dir, "nape_boxplot-all_features.png")
         plt.savefig(cross_feature_path)
@@ -662,7 +766,9 @@ if __name__ == "__main__":
 
     # embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/mitotnt_2024v3"
 
-    embeddings_dir = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_testing"
+    embeddings_dir = (
+        "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/ms4d_testing"
+    )
 
     # Columns must already exist in embeddings+metadata.parquet and be scalar per-cell values.
     # regression_targets = ["segment_length_mean", "fragment_diffusivity_mean"]
@@ -715,13 +821,13 @@ if __name__ == "__main__":
     # }
 
     training_cfg = {
-        "regressor_type": "nonlinear",   # "linear" | "nonlinear"
+        "regressor_type": "nonlinear",  # "linear" | "nonlinear"
         "epochs": 500,
         "batch_size": 2048,
         "lr": 1e-3,
         "hidden_dim": 1024,
         "dropout_rate": 0.2,
-        "test_split": 0.2
+        "test_split": 0.2,
     }
 
     data_infile = osp.join(embeddings_dir, "embeddings+metadata_vis_joined.parquet")
@@ -736,19 +842,23 @@ if __name__ == "__main__":
         embeddings = np.load(osp.join(embeddings_dir, "embeddings.npy"))
         labels = np.load(osp.join(embeddings_dir, "labels.npy"))
         label_names = np.load(osp.join(embeddings_dir, "label_names.npy"))
-        image_paths = np.loadtxt(osp.join(embeddings_dir, 'image_paths.csv'), dtype=str).tolist()
+        image_paths = np.loadtxt(
+            osp.join(embeddings_dir, "image_paths.csv"), dtype=str
+        ).tolist()
 
         df = pd.read_parquet(intensities_infile)
-        df = df.rename(columns={'morph_path': 'image_paths'})
+        df = df.rename(columns={"morph_path": "image_paths"})
 
-        df_embeddings = pd.DataFrame({
-            'image_paths': image_paths,
-            'labels': labels,
-            'embeddings': embeddings.tolist(),
-            'label_names': [label_names[lbl] for lbl in labels],
-        })
+        df_embeddings = pd.DataFrame(
+            {
+                "image_paths": image_paths,
+                "labels": labels,
+                "embeddings": embeddings.tolist(),
+                "label_names": [label_names[lbl] for lbl in labels],
+            }
+        )
 
-        df = df.merge(df_embeddings, on='image_paths', how='inner')
+        df = df.merge(df_embeddings, on="image_paths", how="inner")
         combined_outfile = osp.join(embeddings_dir, "embeddings+metadata.parquet")
         df.to_parquet(combined_outfile, index=False)
 
@@ -760,7 +870,7 @@ if __name__ == "__main__":
 
     df_exclude = pd.read_parquet(filter_infile)
     print(len(df))
-    df = df[~df['image_paths'].isin(df_exclude['image_paths'])]
+    df = df[~df["image_paths"].isin(df_exclude["image_paths"])]
     print(len(df))
 
     main(
@@ -775,5 +885,5 @@ if __name__ == "__main__":
         generate_plot=generate_plot,
         show_plot=show_plot,
         frame_index=frame_index,
-        seed=1123
+        seed=1123,
     )

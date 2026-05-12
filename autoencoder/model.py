@@ -1,19 +1,28 @@
 import torch
 import torch.nn as nn
 
+
 def conv3x3(in_c, out_c, stride=1, padding=1, padding_mode="reflect", bias=False):
-    return nn.Conv3d(in_c, out_c, kernel_size=3, stride=stride,
-                     padding=padding, padding_mode=padding_mode, bias=bias)
+    return nn.Conv3d(
+        in_c,
+        out_c,
+        kernel_size=3,
+        stride=stride,
+        padding=padding,
+        padding_mode=padding_mode,
+        bias=bias,
+    )
 
 
 def conv1x1(in_c, out_c, stride=1, bias=False):
     return nn.Conv3d(in_c, out_c, kernel_size=1, stride=stride, padding=0, bias=bias)
 
+
 def load_model(checkpoint_path: str, device: torch.device):
     model = MitoSpace3DAutoencoder(input_dim=1, latent_dim=2, output_dim=1)
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
     model.eval()
 
@@ -22,20 +31,31 @@ def load_model(checkpoint_path: str, device: torch.device):
 
 
 class ResDown3D(nn.Module):
-    def __init__(self, in_c, out_c, stride=1, padding_mode="reflect", norm=nn.BatchNorm3d, negative_slope=0.1):
+    def __init__(
+        self,
+        in_c,
+        out_c,
+        stride=1,
+        padding_mode="reflect",
+        norm=nn.BatchNorm3d,
+        negative_slope=0.1,
+    ):
         super().__init__()
         self.stride = stride
         self.act = nn.LeakyReLU(negative_slope, inplace=True)
 
-        self.conv1 = conv3x3(in_c, out_c, stride=stride, padding=1, padding_mode=padding_mode, bias=False)
+        self.conv1 = conv3x3(
+            in_c, out_c, stride=stride, padding=1, padding_mode=padding_mode, bias=False
+        )
         self.bn1 = norm(out_c)
-        self.conv2 = conv3x3(out_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False)
+        self.conv2 = conv3x3(
+            out_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False
+        )
         self.bn2 = norm(out_c)
 
         if stride != 1 or in_c != out_c:
             self.proj = nn.Sequential(
-                conv1x1(in_c, out_c, stride=stride, bias=False),
-                norm(out_c)
+                conv1x1(in_c, out_c, stride=stride, bias=False), norm(out_c)
             )
         else:
             self.proj = nn.Identity()
@@ -58,22 +78,40 @@ class ResDown3D(nn.Module):
 
 
 class ResUp3D(nn.Module):
-    def __init__(self, in_c, out_c, scale_factor=1, padding_mode="reflect", norm=nn.BatchNorm3d, negative_slope=0.1):
+    def __init__(
+        self,
+        in_c,
+        out_c,
+        scale_factor=1,
+        padding_mode="reflect",
+        norm=nn.BatchNorm3d,
+        negative_slope=0.1,
+    ):
         super().__init__()
         self.scale = scale_factor
         self.act = nn.LeakyReLU(negative_slope, inplace=True)
         self.ups = None
         if self.scale != 1:
-            self.ups = nn.Upsample(scale_factor=self.scale, mode='trilinear', align_corners=False)
+            self.ups = nn.Upsample(
+                scale_factor=self.scale, mode="trilinear", align_corners=False
+            )
 
-        self.conv1 = conv3x3(in_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False)
+        self.conv1 = conv3x3(
+            in_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False
+        )
         self.bn1 = norm(out_c)
-        self.conv2 = conv3x3(out_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False)
+        self.conv2 = conv3x3(
+            out_c, out_c, stride=1, padding=1, padding_mode=padding_mode, bias=False
+        )
         self.bn2 = norm(out_c)
 
         proj = []
         if self.scale != 1:
-            proj.append(nn.Upsample(scale_factor=self.scale, mode='trilinear', align_corners=False))
+            proj.append(
+                nn.Upsample(
+                    scale_factor=self.scale, mode="trilinear", align_corners=False
+                )
+            )
         if in_c != out_c:
             proj.append(conv1x1(in_c, out_c, stride=1, bias=False))
             proj.append(norm(out_c))
@@ -95,6 +133,7 @@ class ResUp3D(nn.Module):
         out = out + identity
         out = self.act(out)
         return out
+
 
 class MitoSpace3DEncoder(nn.Module):
     def __init__(self, input_dim=1, latent_dim=4):
@@ -139,8 +178,10 @@ class MitoSpace3DDecoder(nn.Module):
 
         self.up8 = ResUp3D(4, 4, scale_factor=2)
         self.head = nn.Sequential(
-            conv3x3(4, output_dim, stride=1, padding=1, padding_mode="reflect", bias=True),
-            nn.Sigmoid()
+            conv3x3(
+                4, output_dim, stride=1, padding=1, padding_mode="reflect", bias=True
+            ),
+            nn.Sigmoid(),
         )
 
     def forward(self, x):
@@ -169,7 +210,7 @@ class MitoSpace3DAutoencoder(nn.Module):
         return y
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     batch_size = 1
     encoder = MitoSpace3DEncoder(latent_dim=2).cuda()
     decoder = MitoSpace3DDecoder(latent_dim=2, output_dim=1).cuda()
@@ -181,17 +222,27 @@ if __name__ == '__main__':
     print(z.dtype)
     y = decoder(z)
 
-    print(f'Input shape: {x.shape}, size: {x.element_size() * x.nelement() / (1024 ** 2):.2f} MB')
-    print(f'Latent shape: {z.shape}, size: {z.element_size() * z.nelement() / (1024 ** 2):.2f} MB')
-    print(f'Output shape: {y.shape}, size: {y.element_size() * y.nelement() / (1024 ** 2):.2f} MB')
-    print(f'Compression Factor: {x.element_size() * x.nelement() / (z.element_size() * z.nelement()):.2f}x')
+    print(
+        f"Input shape: {x.shape}, size: {x.element_size() * x.nelement() / (1024 ** 2):.2f} MB"
+    )
+    print(
+        f"Latent shape: {z.shape}, size: {z.element_size() * z.nelement() / (1024 ** 2):.2f} MB"
+    )
+    print(
+        f"Output shape: {y.shape}, size: {y.element_size() * y.nelement() / (1024 ** 2):.2f} MB"
+    )
+    print(
+        f"Compression Factor: {x.element_size() * x.nelement() / (z.element_size() * z.nelement()):.2f}x"
+    )
 
     # Print the size of the full autoencoder model
     autoencoder = MitoSpace3DAutoencoder(input_dim=1, latent_dim=2, output_dim=1).cuda()
     # Note: torchsummary has issues with reflect padding, so we use a direct forward pass instead
     print("\n=== Model Summary ===")
     total_params = sum(p.numel() for p in autoencoder.parameters())
-    trainable_params = sum(p.numel() for p in autoencoder.parameters() if p.requires_grad)
+    trainable_params = sum(
+        p.numel() for p in autoencoder.parameters() if p.requires_grad
+    )
     print(f"Total parameters: {total_params:,}")
     print(f"Trainable parameters: {trainable_params:,}")
     print(f"Model size: {total_params * 4 / (1024**2):.2f} MB (float32)")

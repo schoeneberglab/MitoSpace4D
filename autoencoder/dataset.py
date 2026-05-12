@@ -1,10 +1,11 @@
-import torch
+from glob import glob
+
 import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader
+import torch
 from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset
 
-from glob import glob
 
 class AutoencoderDataset(Dataset):
     """
@@ -25,7 +26,7 @@ class AutoencoderDataset(Dataset):
         return (tensor - tensor.min()) / (tensor.max() - tensor.min() + 1e-9)
 
     def __getitem__(self, idx):
-        path = self.meta.iloc[idx]['sample_path']
+        path = self.meta.iloc[idx]["sample_path"]
 
         try:
             data = np.load(path)
@@ -47,7 +48,7 @@ class AutoencoderDataset(Dataset):
         if data.shape[1] < 64:
             # pad the depth dimension starting from the end to keep the original data at the front
             pad_width = ((0, 0), (0, 64 - data.shape[1]), (0, 0), (0, 0))
-            data = np.pad(data, pad_width, mode='constant', constant_values=0)
+            data = np.pad(data, pad_width, mode="constant", constant_values=0)
 
         # Convert to tensor
         data = torch.from_numpy(data).float()
@@ -59,16 +60,18 @@ class AutoencoderDataset(Dataset):
         return data
 
 
-def get_dataloaders(data_root,
-                    batch_size=1,
-                    val_split=0.1,
-                    seed=1123,
-                    num_samples=None,
-                    num_workers=4,
-                    train_transform=None,
-                    val_transform=None,
-                    channel_index=None,
-                    **kwargs):
+def get_dataloaders(
+    data_root,
+    batch_size=1,
+    val_split=0.1,
+    seed=1123,
+    num_samples=None,
+    num_workers=4,
+    train_transform=None,
+    val_transform=None,
+    channel_index=None,
+    **kwargs,
+):
     """
     Creates train and validation dataloaders from a parquet manifest or image paths array.
 
@@ -81,17 +84,17 @@ def get_dataloaders(data_root,
     # Check if manifest_path is actually an array of paths (backward compatibility)
     # if isinstance(manifest_path, (list, np.ndarray)):
     #     Legacy mode: array of file paths
-        # df = pd.DataFrame({'sample_path': manifest_path})
+    # df = pd.DataFrame({'sample_path': manifest_path})
     # else:
-        # New mode: Load from parquet manifest
-        # df = pd.read_parquet(manifest_path)
+    # New mode: Load from parquet manifest
+    # df = pd.read_parquet(manifest_path)
 
     # 3. Optional Subsampling (for debugging)
     # if num_samples is not None and num_samples < len(df):
     #     df = df.sample(n=num_samples, random_state=seed)
 
-    files = glob(data_root + '2024*/*-0-1.npy')
-    df = pd.DataFrame({'sample_path': files})
+    files = glob(data_root + "2024*/*-0-1.npy")
+    df = pd.DataFrame({"sample_path": files})
 
     # 2. Split (Train / Val)
     # This ensures no data leakage between train and val
@@ -100,8 +103,12 @@ def get_dataloaders(data_root,
     print(f"Dataset Split: {len(df_train)} Training, {len(df_val)} Validation")
 
     # 4. Create Datasets with specific transforms and channel selection
-    train_ds = AutoencoderDataset(df_train, transform=train_transform, normalize=True, channel_index=channel_index)
-    val_ds = AutoencoderDataset(df_val, transform=val_transform, normalize=True, channel_index=channel_index)
+    train_ds = AutoencoderDataset(
+        df_train, transform=train_transform, normalize=True, channel_index=channel_index
+    )
+    val_ds = AutoencoderDataset(
+        df_val, transform=val_transform, normalize=True, channel_index=channel_index
+    )
 
     # 5. Create Loaders
     train_loader = DataLoader(
@@ -111,7 +118,7 @@ def get_dataloaders(data_root,
         num_workers=num_workers,
         pin_memory=True,
         persistent_workers=(num_workers > 0),
-        **kwargs
+        **kwargs,
     )
 
     val_loader = DataLoader(
@@ -121,15 +128,19 @@ def get_dataloaders(data_root,
         num_workers=num_workers,
         pin_memory=True,
         persistent_workers=(num_workers > 0),
-        **kwargs
+        **kwargs,
     )
 
     return train_loader, val_loader
 
 
 if __name__ == "__main__":
-    data_root = "/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v3_data/processed_data/"
-    train_loader, val_loader = get_dataloaders(data_root, batch_size=2, num_workers=0, channel_index=0)
+    data_root = (
+        "/mnt/aquila/ssd_processing/Others/MitoSpace4D/2024v3_data/processed_data/"
+    )
+    train_loader, val_loader = get_dataloaders(
+        data_root, batch_size=2, num_workers=0, channel_index=0
+    )
     for inputs, targets in train_loader:
         print(f"Input shape: {inputs.shape}, Target shape: {targets.shape}")
         break  # Just one batch for demo

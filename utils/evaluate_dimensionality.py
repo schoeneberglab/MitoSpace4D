@@ -20,15 +20,20 @@ Adjust `ROOT_DIR`, `PROJ_DIR`, and `EMBEDDING_DIRS` below to match your setup.
 
 import os
 import os.path as osp
+
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from scipy.cluster.hierarchy import linkage, dendrogram
+from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.spatial.distance import squareform
 from sklearn.metrics import (
-    confusion_matrix, f1_score, silhouette_score, calinski_harabasz_score
+    calinski_harabasz_score,
+    confusion_matrix,
+    f1_score,
+    silhouette_score,
 )
 from sklearn.model_selection import train_test_split
 
@@ -55,7 +60,7 @@ COLORS = {"4D": "#2166ac", "3D": "#66c2a5", "2D": "#fc8d62"}
 def load_drug_label_dicts(proj_dir):
     drug_labels_dict = {}
     label_drug_dict = {}
-    with open(f"{proj_dir}/extraction_utils/drugs_to_labels.txt", 'r') as f:
+    with open(f"{proj_dir}/extraction_utils/drugs_to_labels.txt", "r") as f:
         for line in f:
             folder, drug, label = line.split()
             drug_labels_dict[drug] = int(label)
@@ -81,12 +86,18 @@ def split_dataset(embeddings, labels, split_perc=0.8, balanced=True, seed=1123):
     train_idx, val_idx = [], []
     for lbl in unique_labels:
         lbl_idx = np.where(labels == lbl)[0]
-        tr, va = train_test_split(lbl_idx, train_size=split_perc, random_state=seed, shuffle=True)
+        tr, va = train_test_split(
+            lbl_idx, train_size=split_perc, random_state=seed, shuffle=True
+        )
         train_idx.extend(tr)
         val_idx.extend(va)
     train_idx, val_idx = np.array(train_idx), np.array(val_idx)
-    return (embeddings[train_idx], labels[train_idx],
-            embeddings[val_idx], labels[val_idx])
+    return (
+        embeddings[train_idx],
+        labels[train_idx],
+        embeddings[val_idx],
+        labels[val_idx],
+    )
 
 
 def topKfrequent(neighbors, distances, k, weighted=True):
@@ -135,7 +146,7 @@ def neighborhood_label_purity(embeddings, labels, k_values):
     sim = embeddings @ embeddings.T
     purities = {}
     for k in k_values:
-        idxs = (-sim).argsort(1)[:, 1:k + 1]  # exclude self
+        idxs = (-sim).argsort(1)[:, 1 : k + 1]  # exclude self
         nn_labels = labels[idxs]
         match = (nn_labels == labels[:, None]).mean(axis=1)
         purities[k] = match
@@ -146,6 +157,7 @@ def get_entry_id(path):
     """Extract entry_id as 'parent_folder/filename' from a full path."""
     parts = path.split("/")
     return parts[-2] + "/" + parts[-1]
+
 
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -164,7 +176,9 @@ def main():
 
         df["entry_id"] = df["image_paths"].apply(get_entry_id)
 
-        exclude_paths = pd.read_parquet(osp.join(ROOT_DIR, "2024v3_exclude_paths.parquet"))
+        exclude_paths = pd.read_parquet(
+            osp.join(ROOT_DIR, "2024v3_exclude_paths.parquet")
+        )
         print(exclude_paths.columns)
         exclude_paths = exclude_paths["image_paths"].tolist()
 
@@ -184,7 +198,11 @@ def main():
             embeddings, labels = balance_label_counts(embeddings, labels, seed=SEED)
 
         train_emb, train_lbl, eval_emb, eval_lbl = split_dataset(
-            embeddings, labels, split_perc=SPLIT_PERC, balanced=BALANCED_SPLIT, seed=SEED
+            embeddings,
+            labels,
+            split_perc=SPLIT_PERC,
+            balanced=BALANCED_SPLIT,
+            seed=SEED,
         )
 
         # Handle >2D embeddings (take last timestep)
@@ -203,7 +221,7 @@ def main():
 
         # Aggregate metrics
         top1_acc = (preds == eval_lbl).sum() / len(eval_lbl) * 100.0
-        macro_f1 = f1_score(eval_lbl, preds, average='macro', zero_division=0) * 100.0
+        macro_f1 = f1_score(eval_lbl, preds, average="macro", zero_division=0) * 100.0
 
         # Clustering metrics on ALL embeddings (train + eval combined)
         all_emb = np.concatenate([train_emb, eval_emb])
@@ -213,17 +231,23 @@ def main():
         n_sil = min(5000, len(all_emb))
         rng = np.random.default_rng(SEED)
         sil_idx = rng.choice(len(all_emb), n_sil, replace=False)
-        sil_score = silhouette_score(all_emb[sil_idx], all_lbl[sil_idx], metric='cosine')
+        sil_score = silhouette_score(
+            all_emb[sil_idx], all_lbl[sil_idx], metric="cosine"
+        )
 
         ch_score = calinski_harabasz_score(all_emb, all_lbl)
 
         # Neighborhood purity
         n_pur = min(5000, len(all_emb))
         pur_idx = rng.choice(len(all_emb), n_pur, replace=False)
-        purities = neighborhood_label_purity(all_emb[pur_idx], all_lbl[pur_idx], PURITY_K_VALUES)
+        purities = neighborhood_label_purity(
+            all_emb[pur_idx], all_lbl[pur_idx], PURITY_K_VALUES
+        )
 
         # Inter-class centroid distance matrix
-        centroids = np.array([all_emb[all_lbl == lbl].mean(axis=0) for lbl in unique_labels])
+        centroids = np.array(
+            [all_emb[all_lbl == lbl].mean(axis=0) for lbl in unique_labels]
+        )
         centroids_normed = centroids / np.linalg.norm(centroids, axis=1, keepdims=True)
         interclass_cos_sim = centroids_normed @ centroids_normed.T
         interclass_cos_dist = 1 - interclass_cos_sim
@@ -273,16 +297,40 @@ def main():
     bar_w = 0.25
 
     fig, ax = plt.subplots(figsize=(14, 5))
-    ax.bar(x - bar_w, sorted_4d, bar_w, label='4D', color=COLORS["4D"], edgecolor='white', linewidth=0.5)
-    ax.bar(x,         sorted_3d, bar_w, label='3D', color=COLORS["3D"], edgecolor='white', linewidth=0.5)
-    ax.bar(x + bar_w, sorted_2d, bar_w, label='2D', color=COLORS["2D"], edgecolor='white', linewidth=0.5)
+    ax.bar(
+        x - bar_w,
+        sorted_4d,
+        bar_w,
+        label="4D",
+        color=COLORS["4D"],
+        edgecolor="white",
+        linewidth=0.5,
+    )
+    ax.bar(
+        x,
+        sorted_3d,
+        bar_w,
+        label="3D",
+        color=COLORS["3D"],
+        edgecolor="white",
+        linewidth=0.5,
+    )
+    ax.bar(
+        x + bar_w,
+        sorted_2d,
+        bar_w,
+        label="2D",
+        color=COLORS["2D"],
+        edgecolor="white",
+        linewidth=0.5,
+    )
     ax.set_xticks(x)
-    ax.set_xticklabels(sorted_names, rotation=60, ha='right', fontsize=8)
-    ax.set_ylabel('Top-1 KNN Accuracy (%)')
+    ax.set_xticklabels(sorted_names, rotation=60, ha="right", fontsize=8)
+    ax.set_ylabel("Top-1 KNN Accuracy (%)")
     ax.set_ylim(0, 105)
     ax.legend(frameon=False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
     fig.tight_layout()
     fig.savefig(osp.join(OUTPUT_DIR, "grouped_per_class_accuracy.pdf"), dpi=300)
     fig.savefig(osp.join(OUTPUT_DIR, "grouped_per_class_accuracy.png"), dpi=300)
@@ -299,29 +347,40 @@ def main():
 
     # Sort by 4D−2D delta (largest gain first)
     sort_idx_delta = np.argsort(delta_4d_2d)[::-1]
-    delta_matrix = np.stack([
-        delta_4d_3d[sort_idx_delta],
-        delta_4d_2d[sort_idx_delta],
-    ], axis=1)
+    delta_matrix = np.stack(
+        [
+            delta_4d_3d[sort_idx_delta],
+            delta_4d_2d[sort_idx_delta],
+        ],
+        axis=1,
+    )
     delta_names = [drug_names[i] for i in sort_idx_delta]
 
     vabs = max(abs(delta_matrix.min()), abs(delta_matrix.max()))
 
     fig, ax = plt.subplots(figsize=(4, 8))
-    im = ax.imshow(delta_matrix, cmap='RdBu_r', aspect='auto',
-                   vmin=-vabs, vmax=vabs, interpolation='nearest')
+    im = ax.imshow(
+        delta_matrix,
+        cmap="RdBu_r",
+        aspect="auto",
+        vmin=-vabs,
+        vmax=vabs,
+        interpolation="nearest",
+    )
     ax.set_yticks(range(len(delta_names)))
     ax.set_yticklabels(delta_names, fontsize=8)
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(['4D − 3D', '4D − 2D'], fontsize=9)
+    ax.set_xticklabels(["4D − 3D", "4D − 2D"], fontsize=9)
     for i in range(delta_matrix.shape[0]):
         for j in range(delta_matrix.shape[1]):
             val = delta_matrix[i, j]
-            color = 'white' if abs(val) > vabs * 0.6 else 'black'
-            ax.text(j, i, f"{val:+.1f}", ha='center', va='center', fontsize=7, color=color)
+            color = "white" if abs(val) > vabs * 0.6 else "black"
+            ax.text(
+                j, i, f"{val:+.1f}", ha="center", va="center", fontsize=7, color=color
+            )
     cbar = fig.colorbar(im, ax=ax, shrink=0.5, pad=0.02)
-    cbar.set_label('Δ Accuracy (pp)', fontsize=9)
-    ax.set_title('Accuracy gain of 4D over lower dims', fontsize=10)
+    cbar.set_label("Δ Accuracy (pp)", fontsize=9)
+    ax.set_title("Accuracy gain of 4D over lower dims", fontsize=10)
     fig.tight_layout()
     fig.savefig(osp.join(OUTPUT_DIR, "delta_accuracy_heatmap.pdf"), dpi=300)
     fig.savefig(osp.join(OUTPUT_DIR, "delta_accuracy_heatmap.png"), dpi=300)
@@ -333,27 +392,35 @@ def main():
     # ──────────────────────────────────────────
     print("Generating aggregate metrics table...")
 
-    metrics_df = pd.DataFrame({
-        "Dimensionality": ["4D", "3D", "2D"],
-        "Top-1 Acc (%)": [results[d]["top1_acc"] for d in ["4D", "3D", "2D"]],
-        "Macro F1 (%)":  [results[d]["macro_f1"] for d in ["4D", "3D", "2D"]],
-        "Silhouette":    [results[d]["silhouette"] for d in ["4D", "3D", "2D"]],
-        "Calinski-Harabasz": [results[d]["calinski_harabasz"] for d in ["4D", "3D", "2D"]],
-    })
+    metrics_df = pd.DataFrame(
+        {
+            "Dimensionality": ["4D", "3D", "2D"],
+            "Top-1 Acc (%)": [results[d]["top1_acc"] for d in ["4D", "3D", "2D"]],
+            "Macro F1 (%)": [results[d]["macro_f1"] for d in ["4D", "3D", "2D"]],
+            "Silhouette": [results[d]["silhouette"] for d in ["4D", "3D", "2D"]],
+            "Calinski-Harabasz": [
+                results[d]["calinski_harabasz"] for d in ["4D", "3D", "2D"]
+            ],
+        }
+    )
     metrics_df.to_csv(osp.join(OUTPUT_DIR, "aggregate_metrics.csv"), index=False)
 
     fig, ax = plt.subplots(figsize=(8, 1.8))
-    ax.axis('off')
+    ax.axis("off")
     table = ax.table(
-        cellText=[[row["Dimensionality"],
-                   f'{row["Top-1 Acc (%)"]:.1f}',
-                   f'{row["Macro F1 (%)"]:.1f}',
-                   f'{row["Silhouette"]:.3f}',
-                   f'{row["Calinski-Harabasz"]:.0f}']
-                  for _, row in metrics_df.iterrows()],
+        cellText=[
+            [
+                row["Dimensionality"],
+                f'{row["Top-1 Acc (%)"]:.1f}',
+                f'{row["Macro F1 (%)"]:.1f}',
+                f'{row["Silhouette"]:.3f}',
+                f'{row["Calinski-Harabasz"]:.0f}',
+            ]
+            for _, row in metrics_df.iterrows()
+        ],
         colLabels=metrics_df.columns.tolist(),
-        cellLoc='center',
-        loc='center',
+        cellLoc="center",
+        loc="center",
     )
     table.auto_set_font_size(False)
     table.set_fontsize(10)
@@ -361,15 +428,23 @@ def main():
 
     for (row, col), cell in table.get_celld().items():
         if row == 0:
-            cell.set_facecolor('#e0e0e0')
-            cell.set_text_props(weight='bold')
+            cell.set_facecolor("#e0e0e0")
+            cell.set_text_props(weight="bold")
         else:
-            cell.set_facecolor('white')
-        cell.set_edgecolor('#cccccc')
+            cell.set_facecolor("white")
+        cell.set_edgecolor("#cccccc")
 
     fig.tight_layout()
-    fig.savefig(osp.join(OUTPUT_DIR, "aggregate_metrics_table.pdf"), dpi=300, bbox_inches='tight')
-    fig.savefig(osp.join(OUTPUT_DIR, "aggregate_metrics_table.png"), dpi=300, bbox_inches='tight')
+    fig.savefig(
+        osp.join(OUTPUT_DIR, "aggregate_metrics_table.pdf"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    fig.savefig(
+        osp.join(OUTPUT_DIR, "aggregate_metrics_table.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close(fig)
     print(f"  -> Saved aggregate_metrics_table.pdf/png + aggregate_metrics.csv")
 
@@ -378,7 +453,9 @@ def main():
     # ──────────────────────────────────────────
     print("Generating neighborhood purity boxplots...")
 
-    fig, axes = plt.subplots(1, len(BOXPLOT_K_VALUES), figsize=(3 * len(BOXPLOT_K_VALUES), 4), sharey=True)
+    fig, axes = plt.subplots(
+        1, len(BOXPLOT_K_VALUES), figsize=(3 * len(BOXPLOT_K_VALUES), 4), sharey=True
+    )
     if len(BOXPLOT_K_VALUES) == 1:
         axes = [axes]
 
@@ -389,23 +466,31 @@ def main():
             data_to_plot.append(results[dim]["purities"][k])
             labels_to_plot.append(dim)
 
-        bp = axes[ax_i].boxplot(data_to_plot, patch_artist=True, widths=0.6,
-                                medianprops=dict(color='black', linewidth=1.5),
-                                flierprops=dict(marker='.', markersize=2, alpha=0.3))
-        for patch, dim in zip(bp['boxes'], ["4D", "3D", "2D"]):
+        bp = axes[ax_i].boxplot(
+            data_to_plot,
+            patch_artist=True,
+            widths=0.6,
+            medianprops=dict(color="black", linewidth=1.5),
+            flierprops=dict(marker=".", markersize=2, alpha=0.3),
+        )
+        for patch, dim in zip(bp["boxes"], ["4D", "3D", "2D"]):
             patch.set_facecolor(COLORS[dim])
             patch.set_alpha(0.7)
         axes[ax_i].set_xticklabels(labels_to_plot)
-        axes[ax_i].set_title(f'k = {k}', fontsize=10)
+        axes[ax_i].set_title(f"k = {k}", fontsize=10)
         if ax_i == 0:
-            axes[ax_i].set_ylabel('Neighbour label purity')
-        axes[ax_i].spines['top'].set_visible(False)
-        axes[ax_i].spines['right'].set_visible(False)
+            axes[ax_i].set_ylabel("Neighbour label purity")
+        axes[ax_i].spines["top"].set_visible(False)
+        axes[ax_i].spines["right"].set_visible(False)
 
-    fig.suptitle('Fraction of k-NN sharing same treatment label', fontsize=11, y=1.02)
+    fig.suptitle("Fraction of k-NN sharing same treatment label", fontsize=11, y=1.02)
     fig.tight_layout()
-    fig.savefig(osp.join(OUTPUT_DIR, "neighborhood_purity.pdf"), dpi=300, bbox_inches='tight')
-    fig.savefig(osp.join(OUTPUT_DIR, "neighborhood_purity.png"), dpi=300, bbox_inches='tight')
+    fig.savefig(
+        osp.join(OUTPUT_DIR, "neighborhood_purity.pdf"), dpi=300, bbox_inches="tight"
+    )
+    fig.savefig(
+        osp.join(OUTPUT_DIR, "neighborhood_purity.png"), dpi=300, bbox_inches="tight"
+    )
     plt.close(fig)
     print(f"  -> Saved neighborhood_purity.pdf/png")
 
@@ -425,18 +510,32 @@ def main():
         np.fill_diagonal(dist_mat, 0)
         dist_mat = np.clip(dist_mat, 0, None)
         condensed = squareform(dist_mat)
-        Z = linkage(condensed, method='average')
-        dendrogram(Z, labels=dim_drug_names, ax=axes[ax_i], leaf_rotation=90, leaf_font_size=7,
-                   color_threshold=0)
-        axes[ax_i].set_title(f'{dim}', fontsize=12, fontweight='bold')
-        axes[ax_i].set_ylabel('Cosine distance')
-        axes[ax_i].spines['top'].set_visible(False)
-        axes[ax_i].spines['right'].set_visible(False)
+        Z = linkage(condensed, method="average")
+        dendrogram(
+            Z,
+            labels=dim_drug_names,
+            ax=axes[ax_i],
+            leaf_rotation=90,
+            leaf_font_size=7,
+            color_threshold=0,
+        )
+        axes[ax_i].set_title(f"{dim}", fontsize=12, fontweight="bold")
+        axes[ax_i].set_ylabel("Cosine distance")
+        axes[ax_i].spines["top"].set_visible(False)
+        axes[ax_i].spines["right"].set_visible(False)
 
-    fig.suptitle('Hierarchical clustering of treatment centroids', fontsize=13, y=1.01)
+    fig.suptitle("Hierarchical clustering of treatment centroids", fontsize=13, y=1.01)
     fig.tight_layout()
-    fig.savefig(osp.join(OUTPUT_DIR, "interclass_distance_dendrograms.pdf"), dpi=300, bbox_inches='tight')
-    fig.savefig(osp.join(OUTPUT_DIR, "interclass_distance_dendrograms.png"), dpi=300, bbox_inches='tight')
+    fig.savefig(
+        osp.join(OUTPUT_DIR, "interclass_distance_dendrograms.pdf"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    fig.savefig(
+        osp.join(OUTPUT_DIR, "interclass_distance_dendrograms.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close(fig)
     print(f"  -> Saved interclass_distance_dendrograms.pdf/png")
 
@@ -460,14 +559,16 @@ def main():
         valid = [(kv, pv) for kv, pv in zip(k_range, prec_at_k) if not np.isnan(pv)]
         if valid:
             ks, ps = zip(*valid)
-            ax.plot(ks, ps, 'o-', color=COLORS[dim], label=dim, linewidth=2, markersize=5)
+            ax.plot(
+                ks, ps, "o-", color=COLORS[dim], label=dim, linewidth=2, markersize=5
+            )
 
-    ax.set_xlabel('k (number of neighbours)')
-    ax.set_ylabel('Mean precision @ k (%)')
-    ax.set_title('Retrieval precision at k')
+    ax.set_xlabel("k (number of neighbours)")
+    ax.set_ylabel("Mean precision @ k (%)")
+    ax.set_title("Retrieval precision at k")
     ax.legend(frameon=False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
     fig.tight_layout()
     fig.savefig(osp.join(OUTPUT_DIR, "retrieval_precision_at_k.pdf"), dpi=300)
     fig.savefig(osp.join(OUTPUT_DIR, "retrieval_precision_at_k.png"), dpi=300)

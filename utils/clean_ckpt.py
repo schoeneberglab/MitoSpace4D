@@ -2,9 +2,14 @@ import argparse
 import os.path as osp
 import sys
 import types
+
 import torch
 
-for _mod_name in ("autoencoder", "autoencoder.autoencoder_runner", "autoencoder.autoencoder_models_resnet"):
+for _mod_name in (
+    "autoencoder",
+    "autoencoder.autoencoder_runner",
+    "autoencoder.autoencoder_models_resnet",
+):
     if _mod_name not in sys.modules:
         _stub = types.ModuleType(_mod_name)
         if _mod_name == "autoencoder.autoencoder_runner":
@@ -64,13 +69,21 @@ def verify_checkpoint(ckpt_path, config_path, dropped_prefixes=("model.decoder."
     missing = sorted(runner_keys - ckpt_keys)
     unexpected = sorted(ckpt_keys - runner_keys)
 
-    unexpected_real = [k for k in unexpected if not any(k.startswith(p) for p in dropped_prefixes)]
-    missing_real = [k for k in missing if not any(k.startswith(p) for p in dropped_prefixes)]
+    unexpected_real = [
+        k for k in unexpected if not any(k.startswith(p) for p in dropped_prefixes)
+    ]
+    missing_real = [
+        k for k in missing if not any(k.startswith(p) for p in dropped_prefixes)
+    ]
 
     print(f"  Checkpoint keys:        {len(ckpt_keys)}")
     print(f"  Runner state_dict keys: {len(runner_keys)}")
-    print(f"  Unexpected keys: {len(unexpected)} (excluding dropped prefixes: {len(unexpected_real)})")
-    print(f"  Missing keys:    {len(missing)} (excluding dropped prefixes: {len(missing_real)})")
+    print(
+        f"  Unexpected keys: {len(unexpected)} (excluding dropped prefixes: {len(unexpected_real)})"
+    )
+    print(
+        f"  Missing keys:    {len(missing)} (excluding dropped prefixes: {len(missing_real)})"
+    )
 
     if unexpected_real:
         print("  !! Unexpected keys not accounted for by dropped prefixes:")
@@ -99,7 +112,9 @@ def verify_checkpoint(ckpt_path, config_path, dropped_prefixes=("model.decoder."
         with torch.no_grad():
             features, resnet_feats, proj = runner_model(dummy, get_resnet_feats=True)
         print(f"    features shape: {tuple(features.shape)}  (expected (B, T, 2048))")
-        print(f"    resnet  shape:  {tuple(resnet_feats.shape)}  (expected (B, T, 512))")
+        print(
+            f"    resnet  shape:  {tuple(resnet_feats.shape)}  (expected (B, T, 512))"
+        )
         print(f"    proj    shape:  {tuple(proj.shape)}  (expected (B*T, 512))")
 
         finite = (
@@ -127,7 +142,9 @@ def verify_checkpoint(ckpt_path, config_path, dropped_prefixes=("model.decoder."
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Remove autoencoder weights from a checkpoint.")
+    parser = argparse.ArgumentParser(
+        description="Remove autoencoder weights from a checkpoint."
+    )
     parser.add_argument(
         "--checkpoint_path",
         default="/home/earkfeld/Projects/MitoSpace4D/ms4d+ae.ckpt",
@@ -156,7 +173,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    out_path = args.output_path or osp.join(osp.dirname(args.checkpoint_path), "ms4d_cleaned.ckpt")
+    out_path = args.output_path or osp.join(
+        osp.dirname(args.checkpoint_path), "ms4d_cleaned.ckpt"
+    )
     prefixes = tuple(args.prefix) if args.prefix else ("model.decoder.",)
 
     clean_checkpoint(args.checkpoint_path, out_path, prefixes=prefixes)

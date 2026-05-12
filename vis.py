@@ -6,111 +6,171 @@ To-Do's
 - Move image path and time handling to make_mitospace?
 """
 
-import torch
-import numpy as np
-import os
-import random
-import yaml
-import tqdm
-
-import open3d as o3d
-import napari
-
-from umap import UMAP
-# from cuml.manifold import UMAP
-# from cuml.metrics import trustworthiness
-
 import argparse
+import os
 import os.path as osp
+import random
 import time
+
 import einops
-
+import joblib
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import napari
+import numpy as np
+import open3d as o3d
+import pandas as pd
+import torch
+import torch.nn.functional as F
+import tqdm
+import yaml
 from sklearn.decomposition import PCA
+from umap import UMAP
 
-from utils.vis_original import make_mitospace
 # from utils.colormaps import create_colormap # TODO: set up color map generation
 from data_aug.dataset_utils import get_mitospace_data_loaders
-from train_simclr import SimCLRRunner
-import torch.nn.functional as F
-from utils.utils import normalize, load_config, get_fpaths
-
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-
 from simclr.model import Lightweight3DResNet  # newly trained model (some dict changes)
-# from simclr.models_simple_original import Lightweight3DResNet
+from train_simclr import SimCLRRunner
 
 # from simclr.models import MitoSpace4DConvLSTM
 # from simclr.models_simple_attn import Lightweight3DResNet
 from utils.tvn import *
-import joblib
-import pandas as pd
+from utils.utils import get_fpaths, load_config, normalize
+from utils.vis_original import make_mitospace
+
+# from cuml.manifold import UMAP
+# from cuml.metrics import trustworthiness
+
+
+# from simclr.models_simple_original import Lightweight3DResNet
+
 
 np.random.seed(0)
 random.seed(0)
 
-parser = argparse.ArgumentParser(description='PyTorch SimCLR')
+parser = argparse.ArgumentParser(description="PyTorch SimCLR")
 
-parser.add_argument('--checkpoint_path', help='Checkpoint path',
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt"
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=145-step=25988-val_loss=0.00.ckpt",
-                    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115_epoch=161-step=28836-val_loss=0.00.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_decoupled-tmrm_r20251115_epoch=256-step=41120-val_loss=0.00.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_ablated-tmrm_r20251115_epoch=291-step=46720-val_loss=0.00.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps-ckpt_kinetics_ablated-tmrm_r20260105.ckpt",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps_ft-kinetics60_ablated-tmrm_r20260110_epoch=178-step=28819_best.ckpt"
-                    )
+parser.add_argument(
+    "--checkpoint_path",
+    help="Checkpoint path",
+    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/MitospaceResnetBiLSTM_Summer2024.ckpt"
+    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_decoupled-tmrm_r20251115_epoch=145-step=25988-val_loss=0.00.ckpt",
+    default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_2024v2_ablated-tmrm_r20251115_epoch=161-step=28836-val_loss=0.00.ckpt",
+    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_decoupled-tmrm_r20251115_epoch=256-step=41120-val_loss=0.00.ckpt",
+    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/models_r202511/resnetbilstm_encoded_kinetics_ablated-tmrm_r20251115_epoch=291-step=46720-val_loss=0.00.ckpt",
+    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps-ckpt_kinetics_ablated-tmrm_r20260105.ckpt",
+    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/resnetbilstm_encoded_2024v2-161eps_ft-kinetics60_ablated-tmrm_r20260110_epoch=178-step=28819_best.ckpt"
+)
 
-parser.add_argument('--config', default='./simclr/config.yaml', type=str,
-                    help='Config path.')
-parser.add_argument('--data_path', help='Data to predict',
-                    # default="/home/earkfeld/Projects/MitoSpace4D/data/2024v2_encoded_data",
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_summer_new/", # 2024v2 Dataset
-                    # default="/mnt/DATA_02/2024_data_encoded", # 2024v2 Dataset Encoded
-                    default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data",
-                    # Kinetics Dataset
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_data_encoded/", # Kinetics Dataset Encoded
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data"
-                    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_3b"
-                    # default="/run/user/1002/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/leukemia_drug_resistance_data")
-                    #     default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_4",
-                    # default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data"
-                    )
+parser.add_argument(
+    "--config", default="./simclr/config.yaml", type=str, help="Config path."
+)
+parser.add_argument(
+    "--data_path",
+    help="Data to predict",
+    # default="/home/earkfeld/Projects/MitoSpace4D/data/2024v2_encoded_data",
+    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2024_summer_new/", # 2024v2 Dataset
+    # default="/mnt/DATA_02/2024_data_encoded", # 2024v2 Dataset Encoded
+    default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/2025_kinetics_data/processed_data",
+    # Kinetics Dataset
+    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/2025_data_encoded/", # Kinetics Dataset Encoded
+    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data"
+    # default="/mnt/aquila/SSD_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_3b"
+    # default="/run/user/1002/gvfs/smb-share:server=jslab-server1.local,share=ssd_processing/Others/MitoSpace4D/leukemia_drug_resistance_data")
+    #     default="/mnt/aquila/ssd_processing/Others/MitoSpace4D/cancer_drug_resistance_data/Trial_4",
+    # default="/home/earkfeld/Projects/MitoSpace4D/data/2025_kinetics_encoded_data"
+)
 
-parser.add_argument('--decoder_ckpt', help='Path to decoder checkpoint',
-                    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
-                    default=None,
-                    )
+parser.add_argument(
+    "--decoder_ckpt",
+    help="Path to decoder checkpoint",
+    # default="/home/earkfeld/Projects/MitoSpace4D/checkpoints/mitospace_resnet_autoencoder_20251018.ckpt"
+    default=None,
+)
 
-parser.add_argument('--embeddings_dir', help='Directory to save/load embeddings', default=None)
+parser.add_argument(
+    "--embeddings_dir", help="Directory to save/load embeddings", default=None
+)
 
-parser.add_argument('--visualize', default=True, action='store_true', help="Visualize UMAP'd MitoSpace embeddings")
-parser.add_argument('--save_embeddings', default=False, action='store_true', help='Save embeddings')
-parser.add_argument('--reproject', default=False, action='store_true', help='Reproject embeddings')
-parser.add_argument('--save_pcd', default=None, help='Path to save the point cloud')
+parser.add_argument(
+    "--visualize",
+    default=True,
+    action="store_true",
+    help="Visualize UMAP'd MitoSpace embeddings",
+)
+parser.add_argument(
+    "--save_embeddings", default=False, action="store_true", help="Save embeddings"
+)
+parser.add_argument(
+    "--reproject", default=False, action="store_true", help="Reproject embeddings"
+)
+parser.add_argument("--save_pcd", default=None, help="Path to save the point cloud")
 
-parser.add_argument('--single_frames', default=False, action='store_true',
-                    help='Generates frame embeddings independently.')
-parser.add_argument('--labels', default=None, type=int, nargs='+', help='Labels to pick. Default is all labels.')
-parser.add_argument('--datasets', default=None, type=str, nargs='+', help='Datasets to use. Default is all datasets.')
-parser.add_argument('--cmap', default='label', help='Color map to use.')
-parser.add_argument('--to_load', default='all', type=str, choices=["all", "train", "val"],
-                    help='Which splits to load. Default is "all".')
+parser.add_argument(
+    "--single_frames",
+    default=False,
+    action="store_true",
+    help="Generates frame embeddings independently.",
+)
+parser.add_argument(
+    "--labels",
+    default=None,
+    type=int,
+    nargs="+",
+    help="Labels to pick. Default is all labels.",
+)
+parser.add_argument(
+    "--datasets",
+    default=None,
+    type=str,
+    nargs="+",
+    help="Datasets to use. Default is all datasets.",
+)
+parser.add_argument("--cmap", default="label", help="Color map to use.")
+parser.add_argument(
+    "--to_load",
+    default="all",
+    type=str,
+    choices=["all", "train", "val"],
+    help='Which splits to load. Default is "all".',
+)
 
-parser.add_argument('--load_transform', default=False, action='store_true',
-                    help='Load UMAP transform from disk instead of fitting new one.')
-parser.add_argument('--batch_size', type=int, default=1, help='Batch size for dataloaders')
-parser.add_argument('--use_pca', default=False, action='store_true',
-                    help='Use PCA for dimensionality reduction before UMAP. Default is False.')
-parser.add_argument('--densmap', default=False, action='store_true',
-                    help='Use densMAP instead of UMAP. Default is False.')
-parser.add_argument('--tvn', default=False, action='store_true',
-                    help='Apply Typical Variation Normalization (TVN) using controls before UMAP.')  # <-- added flag
-parser.add_argument('--control_label', default='control', type=str,
-                    help='Label name for the control samples for performing typical variation normalization (TVN). Default is "control".')
+parser.add_argument(
+    "--load_transform",
+    default=False,
+    action="store_true",
+    help="Load UMAP transform from disk instead of fitting new one.",
+)
+parser.add_argument(
+    "--batch_size", type=int, default=1, help="Batch size for dataloaders"
+)
+parser.add_argument(
+    "--use_pca",
+    default=False,
+    action="store_true",
+    help="Use PCA for dimensionality reduction before UMAP. Default is False.",
+)
+parser.add_argument(
+    "--densmap",
+    default=False,
+    action="store_true",
+    help="Use densMAP instead of UMAP. Default is False.",
+)
+parser.add_argument(
+    "--tvn",
+    default=False,
+    action="store_true",
+    help="Apply Typical Variation Normalization (TVN) using controls before UMAP.",
+)  # <-- added flag
+parser.add_argument(
+    "--control_label",
+    default="control",
+    type=str,
+    help='Label name for the control samples for performing typical variation normalization (TVN). Default is "control".',
+)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-torch.multiprocessing.set_sharing_strategy('file_system')
+device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.multiprocessing.set_sharing_strategy("file_system")
 
 
 def get_label_colormap(proj_dir):
@@ -121,7 +181,11 @@ def get_label_colormap(proj_dir):
             if len(parts) == 6:
                 date, label, index, r, g, b = parts
                 if float(r) >= 1 or float(g) >= 1 or float(b) >= 1:
-                    colors[int(index)] = [float(r) / 255, float(g) / 255, float(b) / 255]
+                    colors[int(index)] = [
+                        float(r) / 255,
+                        float(g) / 255,
+                        float(b) / 255,
+                    ]
                 else:
                     colors[int(index)] = [float(r), float(g), float(b)]
             else:
@@ -153,39 +217,52 @@ def get_tmrm_colormap(embeddings_dir):
     colors = np.load(f"{embeddings_dir}/cmap_tmrm.npy")
 
     # set up a viridis colormap for visualization from the normalized intensities
-    cmap = plt.get_cmap('viridis')
+    cmap = plt.get_cmap("viridis")
     colors = cmap(colors)[:, :3]  # get RGB values only, 0-1 range
     return colors
 
 
-def perform_tvn(embeddings, labels, img_names, label_names, control_label='wt_cal27', scope="global", eps=1e-6):
-    assert scope in ['global', 'batch'], "Scope must be 'global' or 'batch'"
+def perform_tvn(
+    embeddings,
+    labels,
+    img_names,
+    label_names,
+    control_label="wt_cal27",
+    scope="global",
+    eps=1e-6,
+):
+    assert scope in ["global", "batch"], "Scope must be 'global' or 'batch'"
     # Setting up dataframe for metadata
-    plates = [x.split('/')[-2].split('-')[0] for x in img_names]
+    plates = [x.split("/")[-2].split("-")[0] for x in img_names]
     print("Unique plates:", np.unique(plates))
     df_data = pd.DataFrame()
-    df_data['img_name'] = img_names
-    df_data['plate'] = plates
-    df_data['label'] = labels
-    df_data['condition'] = [label_names[int(x)] for x in labels]
+    df_data["img_name"] = img_names
+    df_data["plate"] = plates
+    df_data["label"] = labels
+    df_data["condition"] = [label_names[int(x)] for x in labels]
 
-    control_mask_arr = np.array(df_data['condition'] == control_label)
+    control_mask_arr = np.array(df_data["condition"] == control_label)
 
     # Run TVN
     if scope == "global":
-        print(f"Performing global TVN using {control_mask_arr.sum()} control samples ({control_label})...")
-        normalized_embeddings = tvn_global(X=embeddings,
-                                           controls_mask=control_mask_arr,
-                                           eps=eps,
-                                           ledoit_wolf=True)
+        print(
+            f"Performing global TVN using {control_mask_arr.sum()} control samples ({control_label})..."
+        )
+        normalized_embeddings = tvn_global(
+            X=embeddings, controls_mask=control_mask_arr, eps=eps, ledoit_wolf=True
+        )
     else:  # per-batch
-        print(f"Performing per-batch TVN using {control_mask_arr.sum()} control samples ({control_label})...")
-        normalized_embeddings = tvn_per_batch(X=embeddings,
-                                              meta=df_data,
-                                              batch_col='plate',
-                                              controls_mask=control_mask_arr,
-                                              eps=eps,
-                                              ledoit_wolf=True)
+        print(
+            f"Performing per-batch TVN using {control_mask_arr.sum()} control samples ({control_label})..."
+        )
+        normalized_embeddings = tvn_per_batch(
+            X=embeddings,
+            meta=df_data,
+            batch_col="plate",
+            controls_mask=control_mask_arr,
+            eps=eps,
+            ledoit_wolf=True,
+        )
     return normalized_embeddings
 
 
@@ -200,10 +277,10 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
 
         if cmap == "label":
             legend_colors = []
-            unique_label_vals = np.unique(df['labels'])
+            unique_label_vals = np.unique(df["labels"])
             for i, l in enumerate(unique_label_vals):
-                label_name = df['label_names'][df['labels'] == l].iloc[0]
-                color = df[f'cmap_{cmap}'][df['labels'] == l].iloc[0]
+                label_name = df["label_names"][df["labels"] == l].iloc[0]
+                color = df[f"cmap_{cmap}"][df["labels"] == l].iloc[0]
                 legend_colors.append((label_name, l, color))
 
             # Setup legend for pcd colors
@@ -238,10 +315,10 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
             pcd_colors = df["cmap_label"].values
         elif cmap == "moa":
             legend_colors = []
-            unique_label_vals = np.unique(df['labels_moa'])
+            unique_label_vals = np.unique(df["labels_moa"])
             for i, l in enumerate(unique_label_vals):
-                label_name = df['labels_moa'][df['labels_moa'] == l].iloc[0]
-                color = df[f'cmap_moa'][df['labels_moa'] == l].iloc[0]
+                label_name = df["labels_moa"][df["labels_moa"] == l].iloc[0]
+                color = df[f"cmap_moa"][df["labels_moa"] == l].iloc[0]
                 legend_colors.append((label_name, l, color))
 
             # Setup legend for pcd colors
@@ -278,7 +355,9 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
         elif cmap == "random":
             # create a discrete colormap and create legend entries
             random_values = np.random.uniform(low=0.0, high=1.0, size=len(df))
-            pcd_colors = plt.get_cmap('plasma')(random_values)[:, :3]  # get RGB values only, 0-1 range
+            pcd_colors = plt.get_cmap("plasma")(random_values)[
+                :, :3
+            ]  # get RGB values only, 0-1 range
 
         else:
             # Create a colormap from the values in the specified column
@@ -288,12 +367,14 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
             if col_values.dtype == object:
                 # keep the last value in each array in col_values
                 col_values = np.array([val[-1] for val in col_values])
-            if len(np.unique(col_values)) < 1000 and (isinstance(col_values[0], str) or isinstance(col_values[0], int)):  # arbitrary threshold for categorical vs continuous
+            if len(np.unique(col_values)) < 1000 and (
+                isinstance(col_values[0], str) or isinstance(col_values[0], int)
+            ):  # arbitrary threshold for categorical vs continuous
                 # create a discrete colormap and create legend entries
                 unique_vals = np.unique(col_values)
                 legend_colors = []
                 for i, val in enumerate(unique_vals):
-                    color = plt.get_cmap('tab10')(i % 10)  # cycle through tab10 colors
+                    color = plt.get_cmap("tab10")(i % 10)  # cycle through tab10 colors
                     legend_colors.append((val, color))
 
                 # Setup legend for pcd colors
@@ -358,7 +439,10 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
                     print(f"vmin: {vmin_val}, vmax: {vmax_val}")
                     col_values = np.clip(col_values, vmin_val, vmax_val)
 
-                if cmap == "fragment_diffusivity_mean" or cmap == "segment_diffusivity_mean":
+                if (
+                    cmap == "fragment_diffusivity_mean"
+                    or cmap == "segment_diffusivity_mean"
+                ):
                     vmax_val = np.percentile(col_values, 99)
                     vmin_val = np.percentile(col_values, 1)
                     col_values = np.clip(col_values, vmin_val, vmax_val)
@@ -370,19 +454,21 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
                     vmin_val = np.percentile(col_values, 1)
                     col_values = np.clip(col_values, vmin_val, vmax_val)
 
-                col_values = (col_values - col_values.min()) / (col_values.max() - col_values.min() + 1.e-9)
-
+                col_values = (col_values - col_values.min()) / (
+                    col_values.max() - col_values.min() + 1.0e-9
+                )
 
                 # col_values = np.log10(col_values)
-                pcd_colors = plt.get_cmap('plasma')(col_values)[:, :3]
-
+                pcd_colors = plt.get_cmap("plasma")(col_values)[:, :3]
 
         # Set up the point cloud
         pcd = o3d.geometry.PointCloud()
 
-        emb_col = f'embeddings_{reducer}'
+        emb_col = f"embeddings_{reducer}"
         if emb_col not in df.columns:
-            raise ValueError(f"Embedding column '{emb_col}' not found in dataframe. Available columns: {df.columns}")
+            raise ValueError(
+                f"Embedding column '{emb_col}' not found in dataframe. Available columns: {df.columns}"
+            )
 
         pcd.points = o3d.utility.Vector3dVector(np.stack(df[emb_col].values, axis=0))
         # pcd.colors = o3d.utility.Vector3dVector(df[f'cmap_{cmap}'].values)
@@ -413,23 +499,42 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
 
         # Primary View:
         view_settings = {
-            "class_name" : "ViewTrajectory",
-            "interval" : 29,
-            "is_loop" : False,
-            "trajectory" :
-            [
+            "class_name": "ViewTrajectory",
+            "interval": 29,
+            "is_loop": False,
+            "trajectory": [
                 {
-                    "boundingbox_max" : [ 13.517541885375977, 14.242159843444824, 11.07502555847168 ],
-                    "boundingbox_min" : [ -1.9380201101303101, -0.025698546320199966, -0.80660021305084229 ],
-                    "field_of_view" : 60.0,
-                    "front" : [ 0.7444397985260699, -0.45955620314434353, -0.48437328840680238 ],
-                    "lookat" : [ 6.1598237907218474, 8.8594884777273268, 5.3204565994598756 ],
-                    "up" : [ -0.49595742200525028, 0.10510396429809259, -0.86196252369040471 ],
-                    "zoom" : 0.60399999999999987
+                    "boundingbox_max": [
+                        13.517541885375977,
+                        14.242159843444824,
+                        11.07502555847168,
+                    ],
+                    "boundingbox_min": [
+                        -1.9380201101303101,
+                        -0.025698546320199966,
+                        -0.80660021305084229,
+                    ],
+                    "field_of_view": 60.0,
+                    "front": [
+                        0.7444397985260699,
+                        -0.45955620314434353,
+                        -0.48437328840680238,
+                    ],
+                    "lookat": [
+                        6.1598237907218474,
+                        8.8594884777273268,
+                        5.3204565994598756,
+                    ],
+                    "up": [
+                        -0.49595742200525028,
+                        0.10510396429809259,
+                        -0.86196252369040471,
+                    ],
+                    "zoom": 0.60399999999999987,
                 }
             ],
-            "version_major" : 1,
-            "version_minor" : 0
+            "version_major": 1,
+            "version_minor": 0,
         }
         # view_settings = {
         #     "class_name": "ViewTrajectory",
@@ -450,7 +555,6 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
         #     "version_major": 1,
         #     "version_minor": 0
         # }
-
 
         # ORIGINAL
         # vis.create_window()
@@ -491,37 +595,37 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
         if len(idxs) == 0:
             print("No points picked, closing the visualizer.")
             vis.destroy_window()
-            plt.close('all')
+            plt.close("all")
             exit(0)
 
         print(idxs)
-        drug_names = df['label_names'].iloc[idxs]
-        picked_image_paths = df['image_paths'].iloc[idxs]
+        drug_names = df["label_names"].iloc[idxs]
+        picked_image_paths = df["image_paths"].iloc[idxs]
         print(drug_names)
         print(picked_image_paths)
 
         for idx in idxs:
             print(idx)
-            print(df['labels'][idx])
-            print(label_drug_dict[df['labels'][idx]])
-            print(df['image_paths'][idx])
+            print(df["labels"][idx])
+            print(label_drug_dict[df["labels"][idx]])
+            print(df["image_paths"][idx])
             print("")
 
         picked_points = vis.get_picked_points()
         vis.destroy_window()
-        plt.close('all')
+        plt.close("all")
 
         viewer = napari.Viewer(ndisplay=3)
         added_any = False
         for i, idx in enumerate(idxs):
-            path = df['image_paths'].iloc[idx]
+            path = df["image_paths"].iloc[idx]
             try:
                 img = np.load(path)
             except Exception as e:
                 print(f"Failed to load {path}: {e}")
                 continue
 
-            drug = label_drug_dict[df['labels'].iloc[idx]]
+            drug = label_drug_dict[df["labels"].iloc[idx]]
             name = f"{i}: {drug} — {osp.basename(path)}"
             print(f"Picked {i}: shape={img.shape}, dtype={img.dtype}, path={path}")
 
@@ -538,9 +642,9 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
                 viewer.add_image(
                     img,
                     name=name,
-                    colormap='green',
+                    colormap="green",
                     contrast_limits=(lo, hi),
-                    rendering='mip',
+                    rendering="mip",
                     translate=(0, 0, 0, offset),
                 )
                 added_any = True
@@ -551,9 +655,9 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
                 viewer.add_image(
                     img2d,
                     name=name,
-                    colormap='green',
+                    colormap="green",
                     contrast_limits=(lo, hi),
-                    rendering='mip',
+                    rendering="mip",
                     translate=(0, offset),
                 )
                 added_any = True
@@ -584,55 +688,91 @@ def add_moa_cmap(df):
         6: {"color": (0.298, 0.447, 0.690), "moa": "Antioxidant"},
         7: {"color": (0.298, 0.447, 0.690), "moa": "Antioxidant"},
         8: {"color": (0.298, 0.447, 0.690), "moa": "Complex II Inhibitor"},
-        9: {"color": (0.882, 0.506, 0.173), "moa": "Complex V Inhibitor / Secondary ROS Inducer"},
-        10: {"color": (0.298, 0.447, 0.690), "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer"},
-        11: {"color": (0.298, 0.447, 0.690), "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer"},
-        12: {"color": (0.298, 0.447, 0.690), "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer"},
-        13: {"color": (0.882, 0.506, 0.173), "moa": "DNA Crosslinker / Secondary ROS Inducer"},
+        9: {
+            "color": (0.882, 0.506, 0.173),
+            "moa": "Complex V Inhibitor / Secondary ROS Inducer",
+        },
+        10: {
+            "color": (0.298, 0.447, 0.690),
+            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
+        },
+        11: {
+            "color": (0.298, 0.447, 0.690),
+            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
+        },
+        12: {
+            "color": (0.298, 0.447, 0.690),
+            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
+        },
+        13: {
+            "color": (0.882, 0.506, 0.173),
+            "moa": "DNA Crosslinker / Secondary ROS Inducer",
+        },
         14: {"color": (0.298, 0.447, 0.690), "moa": "Actin Depolarizer"},
         15: {"color": (0.298, 0.447, 0.690), "moa": "Actin Depolarizer"},
         16: {"color": (0.298, 0.447, 0.690), "moa": "Mitochondrial Fission Inhibitor"},
         17: {"color": (0.298, 0.447, 0.690), "moa": "Microtubule Depolarizer"},
         18: {"color": (0.298, 0.447, 0.690), "moa": "Microtubule Depolarizer"},
-        19: {"color": (0.882, 0.506, 0.173), "moa": "Complex III Inhibitor / Secondary ROS Inducer"},
+        19: {
+            "color": (0.882, 0.506, 0.173),
+            "moa": "Complex III Inhibitor / Secondary ROS Inducer",
+        },
         20: {"color": (0.298, 0.447, 0.690), "moa": "Antioxidant"},
-        21: {"color": (0.882, 0.506, 0.173), "moa": "DNA Crosslinker / Secondary ROS Inducer"},
-        22: {"color": (0.298, 0.447, 0.690), "moa": "Complex I Inhibitor / Microtubule Depolarizer"},
-        23: {"color": (0.298, 0.447, 0.690), "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer"},
-        24: {"color": (0.882, 0.506, 0.173), "moa": "Complex IV Inhibitor / Secondary ROS Inducer"},
+        21: {
+            "color": (0.882, 0.506, 0.173),
+            "moa": "DNA Crosslinker / Secondary ROS Inducer",
+        },
+        22: {
+            "color": (0.298, 0.447, 0.690),
+            "moa": "Complex I Inhibitor / Microtubule Depolarizer",
+        },
+        23: {
+            "color": (0.298, 0.447, 0.690),
+            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
+        },
+        24: {
+            "color": (0.882, 0.506, 0.173),
+            "moa": "Complex IV Inhibitor / Secondary ROS Inducer",
+        },
         25: {"color": (0.769, 0.306, 0.322), "moa": "Direct ROS Inducer"},
     }
 
-    df['labels_moa'] = df['labels'].map(lambda x: cmap_dict_open3d[x]['moa'])
-    df['cmap_moa'] = df['labels'].map(lambda x: cmap_dict_open3d[x]['color'])
+    df["labels_moa"] = df["labels"].map(lambda x: cmap_dict_open3d[x]["moa"])
+    df["cmap_moa"] = df["labels"].map(lambda x: cmap_dict_open3d[x]["color"])
     return df
+
 
 def create_datafile(embeddings_dir, outfile="embeddings+metadata_vis.parquet"):
     intensities_infile = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/2024v3_channel_intensities.parquet"
     embeddings = np.load(osp.join(embeddings_dir, "embeddings.npy"))
     labels = np.load(osp.join(embeddings_dir, "labels.npy"))
     label_names = np.load(osp.join(embeddings_dir, "label_names.npy"))
-    image_paths = np.loadtxt(osp.join(embeddings_dir, 'image_paths.csv'), dtype=str).tolist()
+    image_paths = np.loadtxt(
+        osp.join(embeddings_dir, "image_paths.csv"), dtype=str
+    ).tolist()
 
     # Get last frame embeddings only
     embeddings = embeddings[:, -1, :]
 
     df = pd.read_parquet(intensities_infile)
-    df = df.rename(columns={'morph_path': 'image_paths'})
+    df = df.rename(columns={"morph_path": "image_paths"})
 
-    df_embeddings = pd.DataFrame({
-        'image_paths': image_paths,
-        'labels': labels,
-        'embeddings': embeddings.tolist(),
-        'label_names': [label_names[lbl] for lbl in labels],
-    })
+    df_embeddings = pd.DataFrame(
+        {
+            "image_paths": image_paths,
+            "labels": labels,
+            "embeddings": embeddings.tolist(),
+            "label_names": [label_names[lbl] for lbl in labels],
+        }
+    )
 
-    df = df.merge(df_embeddings, on='image_paths', how='inner')
+    df = df.merge(df_embeddings, on="image_paths", how="inner")
     df.to_parquet(osp.join(embeddings_dir, outfile), index=False)
     print("saved to", outfile)
     return df
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
 
@@ -671,13 +811,15 @@ if __name__ == '__main__':
 
     drug_labels_dict = {}
     label_drug_dict = {}
-    with open(osp.join(proj_dir, "extraction_utils/drugs_to_labels.txt"), 'r') as f:
+    with open(osp.join(proj_dir, "extraction_utils/drugs_to_labels.txt"), "r") as f:
         for line in f:
             folder, drug, label = line.split()
             drug_labels_dict[drug] = int(label)
             label_drug_dict[int(label)] = drug
 
-    labels = [args.labels] if args.labels else [list(drug_labels_dict.values())]  # Default to all conditions in the drug label dict
+    labels = (
+        [args.labels] if args.labels else [list(drug_labels_dict.values())]
+    )  # Default to all conditions in the drug label dict
 
     batch_size = args.batch_size
     colors = get_label_colormap(proj_dir)  # Default to label colormap
@@ -686,11 +828,13 @@ if __name__ == '__main__':
 
         df = create_datafile(embeddings_dir)
 
-        print("Visualization parquet file not found, creating from full parquet file...")
+        print(
+            "Visualization parquet file not found, creating from full parquet file..."
+        )
 
         df = pd.read_parquet(osp.join(embeddings_dir, "embeddings+metadata.parquet"))
 
-        embeddings = np.stack(df['embeddings'].values)
+        embeddings = np.stack(df["embeddings"].values)
         if embeddings.ndim == 3:
             embeddings = embeddings[:, -1, :]
             # target_vals = target_vals[:, -1]
@@ -699,7 +843,7 @@ if __name__ == '__main__':
             # target_vals = np.array([tgt[-1] for tgt in target_vals])
 
         # convert to list for easier handling in the dataframe
-        df['embeddings'] = list(embeddings)
+        df["embeddings"] = list(embeddings)
 
         # save to embeddings+metadata_vis.parquet
         # df.to_parquet(osp.join(embeddings_dir, datafile))
@@ -712,13 +856,15 @@ if __name__ == '__main__':
     df = df.reset_index(drop=True)
 
     # Add color maps
-    df['cmap_label'] = df['labels'].map(get_label_colormap(proj_dir))
+    df["cmap_label"] = df["labels"].map(get_label_colormap(proj_dir))
     df = add_moa_cmap(df)
 
     # Filter marked entries
     df_filter = pd.read_parquet(filter_infile)
     n_init = len(df)
-    df_data = df[~df['image_paths'].isin(df_filter['image_paths'])].reset_index(drop=True)
+    df_data = df[~df["image_paths"].isin(df_filter["image_paths"])].reset_index(
+        drop=True
+    )
     print(f"Filtered out {n_init - len(df_data)} samples based on the filter file.")
 
     if args.reproject:
@@ -731,10 +877,10 @@ if __name__ == '__main__':
                 n_components=3,
                 n_neighbors=25,
                 min_dist=0.01,
-                metric='cosine',
+                metric="cosine",
             )
 
-        embeddings = np.stack(df_data['embeddings'].values)
+        embeddings = np.stack(df_data["embeddings"].values)
 
         print("Original embedding shape:", embeddings.shape)
 
@@ -746,7 +892,7 @@ if __name__ == '__main__':
         reducer.random_state = 42
 
         X_reduced = reducer.fit_transform(embeddings)
-        df_data['embeddings_umap'] = list(X_reduced)
+        df_data["embeddings_umap"] = list(X_reduced)
 
         # Save the data with UMAP embeddings to the parquet file for faster loading next time
         df_data.to_parquet(osp.join(embeddings_dir, datafile))
@@ -754,7 +900,7 @@ if __name__ == '__main__':
     if args.labels:
         # Filter the data to only include the specified labels
         print(f"Filtering embeddings to only include labels: {args.labels}")
-        df_data = df_data[df_data['labels'].isin(args.labels)].reset_index(drop=True)
+        df_data = df_data[df_data["labels"].isin(args.labels)].reset_index(drop=True)
 
     df_data = df_data.dropna(subset=args.cmap)
 
