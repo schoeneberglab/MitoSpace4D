@@ -22,7 +22,7 @@ flowchart TB
     B(["① Train 3D autoencoder<br/><code>autoencoder/train.py</code><br/><code>autoencoder/config.yaml</code>"])
     C(["② Encode to latents<br/><code>autoencoder/encode_data.py</code>"])
     D(["③ SimCLR — MitoSpace4D<br/><code>train_simclr.py</code> · <code>simclr/</code><br/><code>simclr/config.yaml</code>"])
-    E(["2048-d embeddings<br/>per timestep"])
+    E(["2048-d embeddings"])
     F(["④ Evaluate · visualize<br/><code>evaluate.py</code> · <code>vis.py</code><br/>mitospace.ai"])
 
     A --> B --> C --> D --> E --> F
