@@ -1,6 +1,6 @@
 
 # MitoSpace4D: Training Pipeline
-[project webpage](https://mitospace.ai)
+[mitospace.ai](https://mitospace.ai)
 
 This repository contains the training pipeline for **MitoSpace4D**, a 4D deep learning model designed to capture mitochondrial morphological changes across time and treatments.
 
