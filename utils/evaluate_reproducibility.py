@@ -21,7 +21,7 @@ from umap import UMAP
 from data_aug.dataset_utils import get_mitospace_data_loaders
 from data_aug.mitospace_dataset import *
 from simclr.conv3d_lstm import *
-from simclr.model import Lightweight3DResNet
+from simclr.model import MitoSpace4D
 from train_simclr import SimCLRRunner
 from utils.utils import *
 from utils.vis_original import plot_cm
@@ -699,7 +699,7 @@ if __name__ == "__main__":
 
     else:
         print("Generating embeddings...")
-        model = Lightweight3DResNet(
+        model = MitoSpace4D(
             embedding_size=2048,
             cfg=cfg,
             # cfg_aug=cfg['data_params']['transforms'],

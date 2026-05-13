@@ -1,11 +1,3 @@
-"""
-Adding custom coloring by time and instance + tvn support
-
-To-Do's
-- Filter legends so only conditions plotted are shown.
-- Move image path and time handling to make_mitospace?
-"""
-
 import argparse
 import os
 import os.path as osp
@@ -27,16 +19,9 @@ import yaml
 from sklearn.decomposition import PCA
 from umap import UMAP
 
-# from utils.colormaps import create_colormap # TODO: set up color map generation
-from data_aug.dataset_utils import get_mitospace_data_loaders
-from simclr.model import Lightweight3DResNet  # newly trained model (some dict changes)
-from train_simclr import SimCLRRunner
+from data.dataset_utils import get_mitospace_data_loaders
+from utils.utils import load_config
 
-# from simclr.models import MitoSpace4DConvLSTM
-# from simclr.models_simple_attn import Lightweight3DResNet
-from utils.tvn import *
-from utils.utils import get_fpaths, load_config, normalize
-from utils.vis_original import make_mitospace
 
 # from cuml.manifold import UMAP
 # from cuml.metrics import trustworthiness
@@ -191,79 +176,6 @@ def get_label_colormap(proj_dir):
             else:
                 print("Invalid line format:", line)
     return colors
-
-
-def get_temporal_colormap(embeddings_dir):
-    print("Loading temporal colormap")
-    # colors = np.load(f"{embeddings_dir}/temporal_colormap.npy")
-    colors = np.load(f"{embeddings_dir}/cmap_temporal.npy")
-    return colors
-
-
-def get_region_colormap(embeddings_dir):
-    print("Loading region colormap")
-    colors = np.load(f"{embeddings_dir}/cmap_region.npy")
-    return colors
-
-
-def get_dataset_colormap(embeddings_dir):
-    print("Loading dataset colormap")
-    colors = np.load(f"{embeddings_dir}/cmap_dataset.npy")
-    return colors
-
-
-def get_tmrm_colormap(embeddings_dir):
-    print("Loading TMRM colormap")
-    colors = np.load(f"{embeddings_dir}/cmap_tmrm.npy")
-
-    # set up a viridis colormap for visualization from the normalized intensities
-    cmap = plt.get_cmap("viridis")
-    colors = cmap(colors)[:, :3]  # get RGB values only, 0-1 range
-    return colors
-
-
-def perform_tvn(
-    embeddings,
-    labels,
-    img_names,
-    label_names,
-    control_label="wt_cal27",
-    scope="global",
-    eps=1e-6,
-):
-    assert scope in ["global", "batch"], "Scope must be 'global' or 'batch'"
-    # Setting up dataframe for metadata
-    plates = [x.split("/")[-2].split("-")[0] for x in img_names]
-    print("Unique plates:", np.unique(plates))
-    df_data = pd.DataFrame()
-    df_data["img_name"] = img_names
-    df_data["plate"] = plates
-    df_data["label"] = labels
-    df_data["condition"] = [label_names[int(x)] for x in labels]
-
-    control_mask_arr = np.array(df_data["condition"] == control_label)
-
-    # Run TVN
-    if scope == "global":
-        print(
-            f"Performing global TVN using {control_mask_arr.sum()} control samples ({control_label})..."
-        )
-        normalized_embeddings = tvn_global(
-            X=embeddings, controls_mask=control_mask_arr, eps=eps, ledoit_wolf=True
-        )
-    else:  # per-batch
-        print(
-            f"Performing per-batch TVN using {control_mask_arr.sum()} control samples ({control_label})..."
-        )
-        normalized_embeddings = tvn_per_batch(
-            X=embeddings,
-            meta=df_data,
-            batch_col="plate",
-            controls_mask=control_mask_arr,
-            eps=eps,
-            ledoit_wolf=True,
-        )
-    return normalized_embeddings
 
 
 def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
@@ -471,124 +383,16 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
             )
 
         pcd.points = o3d.utility.Vector3dVector(np.stack(df[emb_col].values, axis=0))
-        # pcd.colors = o3d.utility.Vector3dVector(df[f'cmap_{cmap}'].values)
         pcd.colors = o3d.utility.Vector3dVector(pcd_colors)
 
         vis = o3d.visualization.VisualizerWithEditing()
-
-        # # Version 1 settings (No MitoQ)
-        # view_settings = {
-        #     "class_name" : "ViewTrajectory",
-        #     "interval" : 29,
-        #     "is_loop" : False,
-        #     "trajectory" :
-        #     [
-        #         {
-        #             "boundingbox_max" : [ 13.349390983581543, 16.563358306884766, 12.732342720031738 ],
-        #             "boundingbox_min" : [ -2.1124546527862549, 1.7005351781845093, -2.5108659267425537 ],
-        #             "field_of_view" : 60.0,
-        #             "front" : [ 0.7249904070854607, -0.60510244668787072, -0.32899838699666994 ],
-        #             "lookat" : [ 5.7109875652176552, 9.6804352795640085, 4.3058223579510999 ],
-        #             "up" : [ 0.25531324753115814, 0.67974065399300365, -0.68758111444705727 ],
-        #             "zoom" : 0.748
-        #         }
-        #     ],
-        #     "version_major" : 1,
-        #     "version_minor" : 0
-        # }
-
-        # Primary View:
-        view_settings = {
-            "class_name": "ViewTrajectory",
-            "interval": 29,
-            "is_loop": False,
-            "trajectory": [
-                {
-                    "boundingbox_max": [
-                        13.517541885375977,
-                        14.242159843444824,
-                        11.07502555847168,
-                    ],
-                    "boundingbox_min": [
-                        -1.9380201101303101,
-                        -0.025698546320199966,
-                        -0.80660021305084229,
-                    ],
-                    "field_of_view": 60.0,
-                    "front": [
-                        0.7444397985260699,
-                        -0.45955620314434353,
-                        -0.48437328840680238,
-                    ],
-                    "lookat": [
-                        6.1598237907218474,
-                        8.8594884777273268,
-                        5.3204565994598756,
-                    ],
-                    "up": [
-                        -0.49595742200525028,
-                        0.10510396429809259,
-                        -0.86196252369040471,
-                    ],
-                    "zoom": 0.60399999999999987,
-                }
-            ],
-            "version_major": 1,
-            "version_minor": 0,
-        }
-        # view_settings = {
-        #     "class_name": "ViewTrajectory",
-        #     "interval": 29,
-        #     "is_loop": False,
-        #     "trajectory":
-        #         [
-        #             {
-        #                 "boundingbox_max": [12.298705101013184, 10.189139366149902, 11.095714569091797],
-        #                 "boundingbox_min": [-3.3375027179718018, -4.794776439666748, -0.70041495561599731],
-        #                 "field_of_view": 60.0,
-        #                 "front": [-0.85437784832090224, 0.32421673283920027, 0.4061059005304159],
-        #                 "lookat": [4.3323994161030832, 0.63288715950816143, 4.8459046331213971],
-        #                 "up": [0.42598863060186132, -0.010595206575898967, 0.90466647345613815],
-        #                 "zoom": 0.64399999999999991
-        #             }
-        #         ],
-        #     "version_major": 1,
-        #     "version_minor": 0
-        # }
-
-        # ORIGINAL
-        # vis.create_window()
-        # vis.add_geometry(pcd)
-        # # vis.add_geometry(line_set) if with_lines and lines else None
-        #
-        # # Set up the camera
-        # print(f"Number of Points: {len(pcd.points)}")
-        # vis.get_render_option().point_size = 5.0
-        #
-        # # vis.get_render_option().background_color = np.asarray([0, 0, 0])  # black
-        #
-        # vis.run()  # user picks points
-
-        # >>> Experiment
         vis.create_window()
         vis.add_geometry(pcd)
-        # vis.add_geometry(line_set) if with_lines and lines else None
-
-        # Set up the camera
-        ctr = vis.get_view_control()
-        cam_params = view_settings["trajectory"][0]
-        ctr.set_front(cam_params["front"])
-        ctr.set_lookat(cam_params["lookat"])
-        ctr.set_up(cam_params["up"])
-        ctr.set_zoom(cam_params["zoom"])
 
         print(f"Number of Points: {len(pcd.points)}")
         vis.get_render_option().point_size = 5.0
 
-        # vis.get_render_option().background_color = np.asarray([0, 0, 0])  # black
-
-        vis.run()  # user picks points
-        # <<< Experiment
+        vis.run()
 
         idxs = vis.get_picked_points()
 
@@ -676,72 +480,6 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
     while True:
         _pick_points()
 
-
-def add_moa_cmap(df):
-    cmap_dict_open3d = {
-        0: {"color": (0.298, 0.447, 0.690), "moa": "Control"},
-        1: {"color": (0.298, 0.447, 0.690), "moa": "Mitochondrial Fission Inhibitor"},
-        2: {"color": (0.298, 0.447, 0.690), "moa": "Mitochondrial Fusion Inhibitor"},
-        3: {"color": (0.298, 0.447, 0.690), "moa": "Mitochondrial Fusion Inhibitor"},
-        4: {"color": (0.769, 0.306, 0.322), "moa": "Direct ROS Inducer"},
-        5: {"color": (0.561, 0.075, 0.286), "moa": "Direct ROS Inducer"},
-        6: {"color": (0.298, 0.447, 0.690), "moa": "Antioxidant"},
-        7: {"color": (0.298, 0.447, 0.690), "moa": "Antioxidant"},
-        8: {"color": (0.298, 0.447, 0.690), "moa": "Complex II Inhibitor"},
-        9: {
-            "color": (0.882, 0.506, 0.173),
-            "moa": "Complex V Inhibitor / Secondary ROS Inducer",
-        },
-        10: {
-            "color": (0.298, 0.447, 0.690),
-            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
-        },
-        11: {
-            "color": (0.298, 0.447, 0.690),
-            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
-        },
-        12: {
-            "color": (0.298, 0.447, 0.690),
-            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
-        },
-        13: {
-            "color": (0.882, 0.506, 0.173),
-            "moa": "DNA Crosslinker / Secondary ROS Inducer",
-        },
-        14: {"color": (0.298, 0.447, 0.690), "moa": "Actin Depolarizer"},
-        15: {"color": (0.298, 0.447, 0.690), "moa": "Actin Depolarizer"},
-        16: {"color": (0.298, 0.447, 0.690), "moa": "Mitochondrial Fission Inhibitor"},
-        17: {"color": (0.298, 0.447, 0.690), "moa": "Microtubule Depolarizer"},
-        18: {"color": (0.298, 0.447, 0.690), "moa": "Microtubule Depolarizer"},
-        19: {
-            "color": (0.882, 0.506, 0.173),
-            "moa": "Complex III Inhibitor / Secondary ROS Inducer",
-        },
-        20: {"color": (0.298, 0.447, 0.690), "moa": "Antioxidant"},
-        21: {
-            "color": (0.882, 0.506, 0.173),
-            "moa": "DNA Crosslinker / Secondary ROS Inducer",
-        },
-        22: {
-            "color": (0.298, 0.447, 0.690),
-            "moa": "Complex I Inhibitor / Microtubule Depolarizer",
-        },
-        23: {
-            "color": (0.298, 0.447, 0.690),
-            "moa": "Ionophore/MMP Modulator/Secondary ROS Inducer",
-        },
-        24: {
-            "color": (0.882, 0.506, 0.173),
-            "moa": "Complex IV Inhibitor / Secondary ROS Inducer",
-        },
-        25: {"color": (0.769, 0.306, 0.322), "moa": "Direct ROS Inducer"},
-    }
-
-    df["labels_moa"] = df["labels"].map(lambda x: cmap_dict_open3d[x]["moa"])
-    df["cmap_moa"] = df["labels"].map(lambda x: cmap_dict_open3d[x]["color"])
-    return df
-
-
 def create_datafile(embeddings_dir, outfile="embeddings+metadata_vis.parquet"):
     intensities_infile = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/2024v3_channel_intensities.parquet"
     embeddings = np.load(osp.join(embeddings_dir, "embeddings.npy"))
@@ -780,13 +518,10 @@ if __name__ == "__main__":
     cfg.update(vars(args))
 
     proj_dir = "/home/earkfeld/Projects/MitoSpace4D/"
-    # proj_dir = "/Volumes/ALPHA/4dms_2024v3_manuscript-v2_project/"
     save_dir = f"{proj_dir}/runs/"
 
     pick_labels = None
     args.load_reducer = False
-
-    # args.cmap = "tmrm_intensities"
 
     embeddings_root = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/"
 
@@ -837,10 +572,8 @@ if __name__ == "__main__":
         embeddings = np.stack(df["embeddings"].values)
         if embeddings.ndim == 3:
             embeddings = embeddings[:, -1, :]
-            # target_vals = target_vals[:, -1]
         elif embeddings.ndim == 2 and isinstance(embeddings[0, -1], (list, np.ndarray)):
             embeddings = np.stack([emb[-1] for emb in embeddings])
-            # target_vals = np.array([tgt[-1] for tgt in target_vals])
 
         # convert to list for easier handling in the dataframe
         df["embeddings"] = list(embeddings)
@@ -855,11 +588,8 @@ if __name__ == "__main__":
 
     df = df.reset_index(drop=True)
 
-    # Add color maps
     df["cmap_label"] = df["labels"].map(get_label_colormap(proj_dir))
-    df = add_moa_cmap(df)
 
-    # Filter marked entries
     df_filter = pd.read_parquet(filter_infile)
     n_init = len(df)
     df_data = df[~df["image_paths"].isin(df_filter["image_paths"])].reset_index(

@@ -4,13 +4,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from model import MitoSpace3DAutoencoder
+from model import MitoSpace3DAutoencoder, load_model
 from tqdm import tqdm
 
 
 @torch.no_grad()
 def normalize_channel(tensor: torch.Tensor):
-    """Normalize tensor to [0, 1] range."""
     return (tensor - tensor.min()) / (tensor.max() - tensor.min() + 1e-9)
 
 

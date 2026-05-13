@@ -1,0 +1,31 @@
+[project]
+name = "mitospace4d"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "einops",
+    "ipykernel>=7.2.0",
+    "joblib",
+    "kornia",
+    "lightning",
+    "napari",
+    "numpy",
+    "open3d",
+    "opencv-python",
+    "pandas",
+    "pandas-stubs~=3.0.0",
+    "scikit-image",
+    "scikit-learn",
+    "scipy",
+    "scipy-stubs>=1.17.0.2",
+    "torch",
+    "torchsummary",
+    "torchvision",
+    "pytorch_msssim",
+    "umap-learn",
+    "matplotlib",
+    "seaborn",
+    "huggingface_hub",
+    "safetensors",
+]

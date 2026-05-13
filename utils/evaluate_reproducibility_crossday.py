@@ -21,7 +21,7 @@ from umap import UMAP
 from data_aug.dataset_utils import get_mitospace_data_loaders
 from data_aug.mitospace_dataset import *
 from simclr.conv3d_lstm import *
-from simclr.model import Lightweight3DResNet
+from simclr.model import MitoSpace4D
 from train_simclr import SimCLRRunner
 from utils.utils import *
 from utils.vis_original import plot_cm
@@ -1113,7 +1113,7 @@ if __name__ == "__main__":
     else:
         # Single-fold model-extraction path (unchanged) — runs when embeddings aren't cached.
         print("Generating embeddings...")
-        model = Lightweight3DResNet(embedding_size=2048, cfg=cfg, apply_aug=False)
+        model = MitoSpace4D(embedding_size=2048, cfg=cfg, apply_aug=False)
         checkpoint_path = None
         dataset_name = cfg["evaluate"]["dataset"]
         model = SimCLRRunner.load_from_checkpoint(checkpoint_path, model=model, cfg=cfg)

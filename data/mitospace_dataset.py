@@ -13,13 +13,6 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataset import ConcatDataset
 from torchvision.transforms import Compose
 
-from utils.utils import (
-    agressive_sigmoid,
-    idxs_to_keep,
-    minus_one_to_one_normalization,
-    normalize,
-)
-
 
 class MitoSpaceDataModule(pl.LightningDataModule):
     def __init__(
@@ -250,12 +243,6 @@ class MitoSpaceDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
         img_name = self.filenames[idx]
         image = np.load(img_name, mmap_mode="r").astype(np.float32)
-
-        # normalize if loading the processed_data (not encoded).
-        # don't normalize if loading the encoded data (because then its already normalized)
-        # image[:, 0] = np.clip(image[:, 0], 0, 25000)/25000.
-        # image[:, 1] = np.clip(image[:, 1], 0, 10000)/10000.
-
         label = self.labels[idx]
 
         return {"images": image, "classes": label, "image_paths": img_name}

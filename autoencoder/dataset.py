@@ -33,27 +33,21 @@ class AutoencoderDataset(Dataset):
         except Exception as e:
             raise RuntimeError(f"Failed to load {path}: {e}")
 
-        # Normalize
         if self.normalize:
             data = self.normalize_channel(data)
 
-        # pick a random timestep if multiple are present
         data = data[np.random.randint(0, data.shape[0])]
 
         if data.ndim == 3:
-            # Add channel dimension: (D, H, W) -> (1, D, H, W)
+            # (D, H, W) -> (1, D, H, W)
             data = data[np.newaxis, ...]
 
-        # pad to 64 if needed
         if data.shape[1] < 64:
-            # pad the depth dimension starting from the end to keep the original data at the front
             pad_width = ((0, 0), (0, 64 - data.shape[1]), (0, 0), (0, 0))
             data = np.pad(data, pad_width, mode="constant", constant_values=0)
 
-        # Convert to tensor
         data = torch.from_numpy(data).float()
 
-        # Transform
         if self.transform:
             data = self.transform(data)
 
@@ -81,28 +75,14 @@ def get_dataloaders(
         val_transform (callable): Transforms for the validation set (usually None)
         channel_index (int, optional): The specific channel index to train on.
     """
-    # Check if manifest_path is actually an array of paths (backward compatibility)
-    # if isinstance(manifest_path, (list, np.ndarray)):
-    #     Legacy mode: array of file paths
-    # df = pd.DataFrame({'sample_path': manifest_path})
-    # else:
-    # New mode: Load from parquet manifest
-    # df = pd.read_parquet(manifest_path)
-
-    # 3. Optional Subsampling (for debugging)
-    # if num_samples is not None and num_samples < len(df):
-    #     df = df.sample(n=num_samples, random_state=seed)
 
     files = glob(data_root + "2024*/*-0-1.npy")
     df = pd.DataFrame({"sample_path": files})
 
-    # 2. Split (Train / Val)
-    # This ensures no data leakage between train and val
     df_train, df_val = train_test_split(df, test_size=val_split, random_state=seed)
 
     print(f"Dataset Split: {len(df_train)} Training, {len(df_val)} Validation")
 
-    # 4. Create Datasets with specific transforms and channel selection
     train_ds = AutoencoderDataset(
         df_train, transform=train_transform, normalize=True, channel_index=channel_index
     )
@@ -110,7 +90,6 @@ def get_dataloaders(
         df_val, transform=val_transform, normalize=True, channel_index=channel_index
     )
 
-    # 5. Create Loaders
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
