@@ -1,4 +1,4 @@
-# MitoSpace4D
+# MitoSpace
 
 [![Website](https://img.shields.io/badge/demo-mitospace.ai-1f6feb)](https://mitospace.ai)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
@@ -6,7 +6,7 @@
 [![Model](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-schoeneberglab%2Fmitospace-yellow)](https://huggingface.co/schoeneberglab/mitospace)
 [![License](https://img.shields.io/badge/license-Review-lightgrey)](./LICENSE)
 
-**MitoSpace4D** is a 4D self-supervised model that learns continuous representations of mitochondrial morphology across **space (3D), time, and treatment**. It is trained on volumetric live-cell microscopy with a contrastive (SimCLR) objective on top of a 3D convolutional autoencoder, and powers the interactive atlas at **[mitospace.ai](https://mitospace.ai)**.
+**MitoSpace** is a 4D self-supervised model that learns continuous representations of mitochondrial morphology across **space (3D), time, and treatment**. It is trained on volumetric live-cell microscopy with a contrastive (SimCLR) objective on top of a 3D convolutional autoencoder, and powers the interactive atlas at **[mitospace.ai](https://mitospace.ai)**.
 
 ![MitoSpace](data/mitospace.gif)
 
@@ -104,7 +104,7 @@ python autoencoder/encode_data.py \
 
 Outputs are written to `<data_root>/../encoded_data/` mirroring the input directory tree.
 
-### 3. Train MitoSpace4D (SimCLR stage)
+### 3. Train MitoSpace (SimCLR stage)
 
 Configure paths and hyperparameters in `simclr/config.yaml` — in particular `data_params.data_path` (point at the encoded data from step 2) and the `distributed` block (number of nodes / GPUs).
 
