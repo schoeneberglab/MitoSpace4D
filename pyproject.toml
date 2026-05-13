@@ -27,4 +27,5 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "huggingface_hub",
+    "safetensors",
 ]
