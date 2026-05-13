@@ -16,6 +16,7 @@ Research codebase and training pipeline for **MitoSpace4D**: self-supervised 4D 
 - [Repository layout](#repository-layout)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Data](#data)
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Distributed training](#distributed-training)
@@ -95,21 +96,28 @@ pip install -e .
 
 Dependencies are declared in `pyproject.toml`. A legacy `environment.yml` may exist locally but is not the canonical dependency specification.
 
-## Usage
+## Data
 
-### 1. Train the 3D autoencoder
+The processed-data manifest is a Parquet table of sample metadata and relative paths used across the pipeline (autoencoder training, SimCLR training, evaluation). Point `data.manifest_path` in `autoencoder/config.yaml` (and the corresponding field in `simclr/config.yaml`) at the local file after download.
 
-Point `data.manifest_path` in `autoencoder/config.yaml` at your processed `.npy` volumes, then:
-
-**Download the public manifest**
-
-- **S3**: `s3://mitospace4d/processed_data/manifest.parquet`
+**S3**
 
 ```bash
 aws s3 cp s3://mitospace4d/processed_data/manifest.parquet manifest.parquet
 ```
 
-The manifest is a Parquet table of sample metadata/paths used to index processed volumes.
+**Hugging Face** (`schoeneberglab/mitospace`; needs `HF_TOKEN` with read access while the repo is private)
+
+```bash
+export HF_TOKEN=<read_token>
+python utils/hf_checkpoint.py download --filename processed_data/manifest.parquet
+```
+
+## Usage
+
+### 1. Train the 3D autoencoder
+
+Point `data.manifest_path` in `autoencoder/config.yaml` at your processed `.npy` volumes (see [Data](#data) for the public manifest), then:
 
 ```bash
 cd autoencoder
@@ -185,14 +193,7 @@ The reference public checkpoint was trained at **SDSC** on 15 nodes × 4 NVIDIA 
 
 ## Model weights
 
-Public weights and model card live on Hugging Face: **[schoeneberglab/mitospace](https://huggingface.co/schoeneberglab/mitospace)** (private during review; token with read access required).
-
-**Download the manifest (processed data index)**
-
-```bash
-export HF_TOKEN=<read_token>
-python utils/hf_checkpoint.py download --filename processed_data/manifest.parquet
-```
+Public weights and model card live on Hugging Face: **[schoeneberglab/mitospace](https://huggingface.co/schoeneberglab/mitospace)** (private during review; token with read access required). The processed-data manifest is also hosted there — see [Data](#data).
 
 **Download weights**
 
