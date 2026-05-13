@@ -14,16 +14,18 @@
 
 ## Pipeline overview
 
-Training is a two-stage pipeline. Both stages are config-driven (YAML); paths and hyperparameters are not hard-coded.
+Training is a **two-stage** pipeline (autoencoder → SimCLR). Both stages are config-driven (YAML); paths and hyperparameters are not hard-coded.
 
-```
-raw 3D+t volumes ──▶  [1] 3D Autoencoder (autoencoder/)         ──▶  encoded volumes
-                                                                          │
-                                                                          ▼
-                       [2] SimCLR 4D contrastive model (simclr/)  ──▶  4D embeddings
-                                                                          │
-                                                                          ▼
-                       [3] Evaluation & visualization (evaluate.py, vis.py)
+```mermaid
+flowchart TB
+    A(["Processed 3D+t volumes<br/>(.npy)"])
+    B(["① Train 3D autoencoder<br/><code>autoencoder/train.py</code><br/><code>autoencoder/config.yaml</code>"])
+    C(["② Encode to latents<br/><code>autoencoder/encode_data.py</code>"])
+    D(["③ SimCLR — MitoSpace4D<br/><code>train_simclr.py</code> · <code>simclr/</code><br/><code>simclr/config.yaml</code>"])
+    E(["2048-d embeddings<br/>per timestep"])
+    F(["④ Evaluate · visualize<br/><code>evaluate.py</code> · <code>vis.py</code><br/>mitospace.ai"])
+
+    A --> B --> C --> D --> E --> F
 ```
 
 | Stage | Entry point | Config |
