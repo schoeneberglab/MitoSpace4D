@@ -1,70 +1,91 @@
-# MitoSpace
+# MitoSpace4D
 
-[![Website](https://img.shields.io/badge/demo-mitospace.ai-1f6feb)](https://mitospace.ai)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-Lightning-792ee5)](https://lightning.ai/)
-[![Model](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-schoeneberglab%2Fmitospace-yellow)](https://huggingface.co/schoeneberglab/mitospace)
-[![License](https://img.shields.io/badge/license-Review-lightgrey)](./LICENSE)
+[![Demo](https://img.shields.io/badge/Demo-mitospace.ai-0366d6)](https://mitospace.ai)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![PyTorch Lightning](https://img.shields.io/badge/PyTorch-Lightning-792EE5)](https://lightning.ai/)
+[![Weights](https://img.shields.io/badge/Weights-Hugging%20Face-FFD21E)](https://huggingface.co/schoeneberglab/mitospace)
+[![License](https://img.shields.io/badge/License-Review-6A737D)](./LICENSE)
 
-**MitoSpace** is a 4D self-supervised model that learns continuous representations of mitochondrial morphology across **space (3D), time, and treatment**. It is trained on volumetric live-cell microscopy with a contrastive (SimCLR) objective on top of a 3D convolutional autoencoder, and powers the interactive atlas at **[mitospace.ai](https://mitospace.ai)**.
+Research codebase and training pipeline for **MitoSpace4D**: self-supervised 4D representations of mitochondrial morphology from volumetric live-cell microscopy (3D + time), trained with a 3D convolutional autoencoder followed by SimCLR-style contrastive learning. The public atlas is hosted at **[mitospace.ai](https://mitospace.ai)**.
 
-![MitoSpace](data/mitospace.gif)
+![MitoSpace4D atlas preview](data/mitospace.gif)
 
----
+## Table of contents
 
-## Pipeline overview
+- [Architecture](#architecture)
+- [Repository layout](#repository-layout)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Distributed training](#distributed-training)
+- [Model weights](#model-weights)
+- [Citation](#citation)
+- [License](#license)
+- [Support](#support)
 
-Training is a **two-stage** pipeline (autoencoder → SimCLR). Both stages are config-driven (YAML); paths and hyperparameters are not hard-coded.
+## Architecture
+
+Training is **two-stage** and **configuration-driven** (YAML): a 3D autoencoder compresses volumes, then a spatiotemporal encoder is trained with SimCLR (InfoNCE) on latent or processed stacks.
 
 ```mermaid
 flowchart TB
-    A(["Processed 3D+t volumes<br/>(.npy)"])
-    B(["① Train 3D autoencoder<br/><code>autoencoder/train.py</code><br/><code>autoencoder/config.yaml</code>"])
-    C(["② Encode to latents<br/><code>autoencoder/encode_data.py</code>"])
-    D(["③ SimCLR — MitoSpace4D<br/><code>train_simclr.py</code> · <code>simclr/</code><br/><code>simclr/config.yaml</code>"])
-    E(["2048-d embeddings"])
-    F(["④ Evaluate · visualize<br/><code>evaluate.py</code> · <code>vis.py</code><br/>mitospace.ai"])
+    subgraph stage1["Stage 1 — Volume compression"]
+        direction TB
+        A["Processed 3D+t volumes<br/>(NumPy, morphology channel)"]
+        B["Train 3D autoencoder<br/><code>autoencoder/train.py</code>"]
+        C["Encode to latents<br/><code>autoencoder/encode_data.py</code>"]
+        A --> B --> C
+    end
 
-    A --> B --> C --> D --> E --> F
+    subgraph stage2["Stage 2 — Contrastive embedding"]
+        direction TB
+        D["SimCLR training<br/><code>train_simclr.py</code> · <code>simclr/</code>"]
+        E["2048-dimensional<br/>per-timestep embeddings"]
+        D --> E
+    end
+
+    subgraph downstream["Downstream"]
+        F["Evaluation and visualization<br/><code>evaluate.py</code> · <code>vis.py</code> · mitospace.ai"]
+    end
+
+    C --> D
+    E --> F
 ```
 
-| Stage | Entry point | Config |
-| --- | --- | --- |
-| 1. 3D autoencoder pre-training | `autoencoder/train.py` | `autoencoder/config.yaml` |
-| 1b. Encode dataset to latents  | `autoencoder/encode_data.py` | — (CLI flags) |
-| 2. SimCLR contrastive training | `train_simclr.py` | `simclr/config.yaml` |
-| 3. Embedding generation + k-NN evaluation | `evaluate.py` | `simclr/config.yaml` |
-| 3b. UMAP / 3D visualization | `vis.py` | `simclr/config.yaml` |
-| Release model to Hugging Face | `utils/hf_checkpoint.py` | — (CLI flags) |
-
----
+| Step | Component | Entry point | Configuration |
+| --- | --- | --- | --- |
+| 1 | 3D autoencoder | `autoencoder/train.py` | `autoencoder/config.yaml` |
+| 2 | Latent encoding | `autoencoder/encode_data.py` | CLI flags |
+| 3 | SimCLR / MitoSpace4D | `train_simclr.py` | `simclr/config.yaml` |
+| 4 | Embedding generation and k-NN evaluation | `evaluate.py` | `simclr/config.yaml` |
+| 5 | UMAP / 3D visualization | `vis.py` | `simclr/config.yaml` |
+| — | Hub release (maintainers) | `utils/hf_checkpoint.py` | CLI flags; see script docstring |
 
 ## Repository layout
 
-```
-.
-├── autoencoder/                3D conv autoencoder (pre-training + dataset encoding)
-├── simclr/                     SimCLR runner, 4D backbone (3D-ResNet + BiLSTM), augmentations, losses
-├── data/                       Dataset classes and contrastive dataloaders
-├── data_aug/                   Augmentation helpers
-├── extraction_utils/           Raw data extraction, drug → label mapping
-├── metadata/                   Drug labels, colors, frames for visualization
-├── utils/                      Evaluation, regression, HF release tooling, helpers
-├── adaptors/                   Downstream adaptors (cancer / drug classifiers, etc.)
-├── interpretability/           4D feature analysis, MitoTNT correlation
-├── application/                Application-side scripts (embedding generation, batch correction)
-├── paper/                      Scripts used to produce manuscript figures
-├── train_simclr.py             Stage-2 training entry point
-├── evaluate.py                 Embedding generation + nearest-neighbor evaluation
-├── vis.py                      UMAP / Open3D visualization
-└── pyproject.toml              Dependencies (Python ≥ 3.11)
-```
+| Path | Role |
+| --- | --- |
+| `autoencoder/` | 3D autoencoder training and dataset encoding |
+| `simclr/` | Contrastive training: model, losses, augmentations, Lightning runner |
+| `data/` | Dataset classes and contrastive dataloaders |
+| `data_aug/` | Augmentation helpers |
+| `extraction_utils/` | Data extraction utilities and label maps |
+| `metadata/` | Visualization metadata (labels, colors, frames) |
+| `utils/` | Evaluation, reproducibility, Hugging Face release helpers |
+| `adaptors/` | Optional downstream tasks (e.g. classifiers) |
+| `interpretability/` | Analysis and correlation scripts |
+| `application/` | Application-oriented utilities |
+| `paper/` | Manuscript figure scripts |
+| `train_simclr.py`, `evaluate.py`, `vis.py` | Top-level training and analysis entry points |
+| `pyproject.toml` | Package metadata and dependencies |
 
----
+## Requirements
+
+- **Python** 3.11 or later (`pyproject.toml`).
+- **CUDA** GPU for training and for inference with the released PyTorch module (the model attaches its augmentation pipeline on CUDA at initialization).
 
 ## Installation
-
-**Requirements**: Python ≥ 3.11, CUDA-capable GPU (training and inference both require CUDA — the SimCLR model moves its augmentation pipeline to CUDA at construction time).
 
 ```bash
 git clone https://github.com/schoeneberglab/MitoSpace4D.git
@@ -72,30 +93,23 @@ cd MitoSpace4D
 pip install -e .
 ```
 
-This installs all dependencies declared in `pyproject.toml` (PyTorch, Lightning, Kornia, Open3D, scikit-image, UMAP, Hugging Face Hub, safetensors, etc.).
+Dependencies are declared in `pyproject.toml`. A legacy `environment.yml` may exist locally but is not the canonical dependency specification.
 
-> **Note.** A legacy `environment.yml` is included for reference, but `pyproject.toml` is the source of truth.
+## Usage
 
----
+### 1. Train the 3D autoencoder
 
-## Quick start
-
-### 1. Pre-train the 3D autoencoder
-
-Edit `autoencoder/config.yaml` to point `data.manifest_path` at your processed `.npy` volumes, then:
+Point `data.manifest_path` in `autoencoder/config.yaml` at your processed `.npy` volumes, then:
 
 ```bash
 cd autoencoder
 python train.py --config config.yaml
-# resume from a checkpoint:
-python train.py --config config.yaml --resume runs/<run_name>/latest.pt
+python train.py --config config.yaml --resume runs/<run_name>/latest.pt   # optional resume
 ```
 
-Logging is to Weights & Biases (project: `mitospace-ae`); set `WANDB_API_KEY` in your environment.
+Training logs to **Weights & Biases** (`wandb_project` in config). Set `WANDB_API_KEY` in the environment.
 
-### 2. Encode the dataset
-
-Project raw volumes through the trained encoder once to produce compact latents that Stage 2 trains on:
+### 2. Encode volumes to latents
 
 ```bash
 python autoencoder/encode_data.py \
@@ -104,105 +118,89 @@ python autoencoder/encode_data.py \
     --pattern    "2024*/*-0-1.npy"
 ```
 
-Outputs are written to `<data_root>/../encoded_data/` mirroring the input directory tree.
+Encoded arrays are written under `<data_root>/../encoded_data/`, preserving relative paths.
 
-### 3. Train MitoSpace (SimCLR stage)
+### 3. Train MitoSpace4D (SimCLR)
 
-Configure paths and hyperparameters in `simclr/config.yaml` — in particular `data_params.data_path` (point at the encoded data from step 2) and the `distributed` block (number of nodes / GPUs).
+Set `data_params.data_path` in `simclr/config.yaml` to encoded (or processed) data and adjust `distributed` for your cluster. Then:
 
 ```bash
 python -m train_simclr --config simclr/config.yaml
 ```
 
-Checkpoints and TensorBoard logs are written under `logging_params.save_path`.
+Checkpoints and TensorBoard logs follow `logging_params.save_path` in the same YAML file.
 
 ### 4. Generate embeddings and evaluate
 
 ```bash
 python evaluate.py \
     --config          simclr/config.yaml \
-    --checkpoint_path /path/to/ms4d.ckpt \
+    --checkpoint_path /path/to/checkpoint.ckpt \
     --data_path       /path/to/dataset \
     --evaluate_set    test \
     --dist_metric     cosine
 ```
 
-This writes `embeddings.npy`, `labels.npy`, and a confusion matrix to the directory configured in `evaluate.py`, then runs a weighted k-NN classifier reporting Top-1 / Top-3 per-class accuracy.
+The script writes embedding arrays and runs k-nearest-neighbor evaluation (e.g. Top-1 / Top-3). Some paths in `evaluate.py` may still default to lab-specific locations; override via CLI arguments where supported.
 
-### 5. Visualize the embedding space
+### 5. Visualize embeddings
 
 ```bash
-python vis.py --config simclr/config.yaml --checkpoint_path /path/to/ms4d.ckpt
+python vis.py --config simclr/config.yaml --checkpoint_path /path/to/checkpoint.ckpt
 ```
 
-Renders UMAP projections and (optionally) an interactive Open3D point cloud — the same view that backs the [mitospace.ai](https://mitospace.ai) atlas.
-
----
+Supports UMAP projections and optional Open3D visualization, consistent with the mitospace.ai workflow.
 
 ## Configuration
 
-All training behaviour lives in two YAML files:
-
-- **`autoencoder/config.yaml`** — input shape, latent dim, batch / grad-accum, W&B project.
-- **`simclr/config.yaml`** — data root, timesteps × z-stacks, augmentation pipeline, model arch (ResNet-3D + BiLSTM), loss (InfoNCE / SupCon), distributed strategy.
-
-Before launching a run, update at minimum:
-
-| Key | What it controls |
+| File | Contents |
 | --- | --- |
-| `data_params.data_path` | Path to encoded (or processed) volumes |
-| `logging_params.save_path` | Where checkpoints & TB logs go |
-| `distributed.num_nodes`, `distributed.num_gpus` | Multi-node / multi-GPU setup |
+| `autoencoder/config.yaml` | Data manifest, splits, batching, W&B logging, training schedule |
+| `simclr/config.yaml` | Data roots, time and Z extent, augmentations, backbone and loss, distributed settings |
+
+Minimum fields to review before a run:
+
+| Key | Purpose |
+| --- | --- |
+| `data_params.data_path` | Root directory for training volumes |
+| `logging_params.save_path` | Checkpoint and TensorBoard output directory |
+| `distributed.num_nodes`, `distributed.num_gpus`, `distributed.strategy` | Multi-node / multi-GPU layout |
 | `training.batch_size`, `training.lr`, `training.max_epochs` | Optimization |
 
----
+## Distributed training
 
-## Multi-GPU / SLURM training
+`train_simclr.py` configures PyTorch Lightning from `simclr/config.yaml` (default strategy `ddp`). For SLURM, submit a job that invokes `python -m train_simclr --config simclr/config.yaml` and align `--gres=gpu:<n>` and task counts with `distributed.num_gpus` and `distributed.num_nodes`.
 
-The Lightning trainer in `train_simclr.py` reads `distributed.num_nodes`, `distributed.num_gpus`, and `distributed.strategy` directly from `simclr/config.yaml` (default `ddp`). To launch on a SLURM cluster, wrap `python -m train_simclr --config simclr/config.yaml` in a sbatch script and make sure `--ntasks-per-node` and `--gres=gpu:<n>` match `num_gpus`.
+The reference public checkpoint was trained at **SDSC** on 15 nodes × 4 NVIDIA V100 GPUs (effective batch 120), 300 epochs, on the order of three days wall time.
 
-The released checkpoint was trained on the **SDSC** cluster: 15 × 4 V100 GPUs (effective batch = 120), 300 epochs, ≈ 3 days wall-clock.
+## Model weights
 
----
+Public weights and model card live on Hugging Face: **[schoeneberglab/mitospace](https://huggingface.co/schoeneberglab/mitospace)** (private during review; token with read access required).
 
-## Pretrained weights (Hugging Face)
-
-Pretrained weights are published to **[schoeneberglab/mitospace](https://huggingface.co/schoeneberglab/mitospace)**.
-
-Download:
+**Download weights**
 
 ```bash
-export HF_TOKEN=<token-with-read-access>
+export HF_TOKEN=<read_token>
 python utils/hf_checkpoint.py download --filename model.safetensors
 ```
 
-Maintainers can build and publish a fresh release bundle (safetensors + `config.json` + `LICENSE` + Hub `README.md`, with a CUDA forward-pass sanity check) via:
+**Maintainers — publish a release bundle**
 
 ```bash
-export HF_TOKEN=<write-scoped token>
-python utils/hf_checkpoint.py release --ckpt path/to/ms4d.ckpt
+export HF_TOKEN=<write_token>
+python utils/hf_checkpoint.py release --ckpt /path/to/ms4d.ckpt
 ```
 
-If `MODEL_CARD.md` is absent (default), the script reuses `README.md` from the same Hub repo (`HF_TOKEN` required for private repos). Override with `--model-card /path/to/card.md` if needed.
-
-See the docstring at the top of `utils/hf_checkpoint.py` for the full CLI.
-
----
+This builds `model.safetensors`, `config.json`, copies `LICENSE`, stages the Hub `README.md`, and can run a CUDA sanity check before upload. If `MODEL_CARD.md` is not present in the clone (it is gitignored), the tool pulls `README.md` from the same Hub repository; override with `--model-card /path/to/README.md` when needed. Full options are documented in `utils/hf_checkpoint.py`.
 
 ## Citation
 
-If you use MitoSpace4D in your research, please cite the associated manuscript (currently under review at *Cell*). A BibTeX entry will be added here on publication.
-
----
+If you use this software or the associated model, please cite the manuscript when it is available (currently under review at *Cell*). A BibTeX entry will be added here after publication.
 
 ## License
 
-This project is released under the terms in [`LICENSE`](./LICENSE). The current license is a **Review License**: the code and model weights are made available for the purpose of evaluating the associated manuscript submitted to *Cell*, and may be downloaded, run, and inspected for review purposes only. Other use, redistribution, modification, or derivative works are not permitted under this license. On publication, the materials will be re-released under terms supporting academic citation and research use.
+Use of this repository and of the linked model weights is governed by the **[Review License](./LICENSE)** in this repository: materials are provided for evaluation of the associated *Cell* submission; uses outside those terms are not permitted until re-release after publication. Copyright © 2026 The Regents of the University of California.
 
-Copyright © 2026 The Regents of the University of California. All rights reserved.
+## Support
 
----
-
-## Contact
-
-For questions about the model, dataset, or atlas, please open an issue on this repository or contact the [Schoeneberg Lab](https://github.com/schoeneberglab).
+Bug reports and feature requests: **[open an issue](https://github.com/schoeneberglab/MitoSpace4D/issues)**. Lab contact: **[Schoeneberg Lab](https://github.com/schoeneberglab)** on GitHub.

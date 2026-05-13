@@ -1,7 +1,7 @@
 [project]
 name = "mitospace4d"
 version = "0.1.0"
-description = "Add your description here"
+description = "Training code for MitoSpace4D: self-supervised 4D mitochondrial morphology embeddings from volumetric microscopy."
 requires-python = ">=3.11"
 dependencies = [
     "einops",
