@@ -101,6 +101,16 @@ Dependencies are declared in `pyproject.toml`. A legacy `environment.yml` may ex
 
 Point `data.manifest_path` in `autoencoder/config.yaml` at your processed `.npy` volumes, then:
 
+**Download the public manifest**
+
+- **S3**: `s3://mitospace4d/processed_data/manifest.parquet`
+
+```bash
+aws s3 cp s3://mitospace4d/processed_data/manifest.parquet manifest.parquet
+```
+
+The manifest is a Parquet table of sample metadata/paths used to index processed volumes.
+
 ```bash
 cd autoencoder
 python train.py --config config.yaml
@@ -177,6 +187,13 @@ The reference public checkpoint was trained at **SDSC** on 15 nodes × 4 NVIDIA 
 
 Public weights and model card live on Hugging Face: **[schoeneberglab/mitospace](https://huggingface.co/schoeneberglab/mitospace)** (private during review; token with read access required).
 
+**Download the manifest (processed data index)**
+
+```bash
+export HF_TOKEN=<read_token>
+python utils/hf_checkpoint.py download --filename processed_data/manifest.parquet
+```
+
 **Download weights**
 
 ```bash
@@ -189,6 +206,15 @@ python utils/hf_checkpoint.py download --filename model.safetensors
 ```bash
 export HF_TOKEN=<write_token>
 python utils/hf_checkpoint.py release --ckpt /path/to/ms4d.ckpt
+```
+
+**Maintainers — upload the manifest**
+
+```bash
+export HF_TOKEN=<write_token>
+python utils/hf_checkpoint.py upload \
+  --ckpt /path/to/manifest.parquet \
+  --path-in-repo processed_data/manifest.parquet
 ```
 
 This builds `model.safetensors`, `config.json`, copies `LICENSE`, stages the Hub `README.md`, and can run a CUDA sanity check before upload. If `MODEL_CARD.md` is not present in the clone (it is gitignored), the tool pulls `README.md` from the same Hub repository; override with `--model-card /path/to/README.md` when needed. Full options are documented in `utils/hf_checkpoint.py`.
