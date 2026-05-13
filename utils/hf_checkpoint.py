@@ -6,6 +6,10 @@ repos under an organization require the user be a member of that org.
 
 Default target: schoeneberglab/mitospace (private model repo).
 
+Model card: by default looks for ``MODEL_CARD.md`` at the repo root (optional;
+gitignored). If that file is missing, ``release`` pulls ``README.md`` from the
+same Hub repo (requires ``HF_TOKEN``), or pass ``--model-card /path/to/card.md``.
+
 CLI:
     python utils/hf_checkpoint.py upload   --ckpt ms4d.ckpt
     python utils/hf_checkpoint.py download --filename model.safetensors
@@ -32,6 +36,32 @@ DEFAULT_OUTPUT_DIR = osp.join(PROJECT_ROOT, "manuscript_v2", "cleaned_ckpts", "h
 DEFAULT_LICENSE = osp.join(PROJECT_ROOT, "LICENSE")
 DEFAULT_MODEL_CARD = osp.join(PROJECT_ROOT, "MODEL_CARD.md")
 DEFAULT_CONFIG_YAML = osp.join(PROJECT_ROOT, "simclr", "config.yaml")
+
+
+def resolve_model_card_path(model_card_path, repo_id=DEFAULT_REPO_ID, token=None):
+    """Return an absolute path to a model card with YAML frontmatter.
+
+    If ``model_card_path`` exists, use it. If it is the default ``MODEL_CARD.md``
+    and is absent, download ``README.md`` from the Hub (needs ``token`` for
+    private repos).
+    """
+    if osp.isfile(model_card_path):
+        return osp.abspath(model_card_path)
+    if model_card_path != DEFAULT_MODEL_CARD:
+        raise FileNotFoundError(f"Model card not found: {model_card_path}")
+    if not token:
+        raise FileNotFoundError(
+            "No model card at MODEL_CARD.md. Create it locally (gitignored), pass "
+            "--model-card /path/to/README.md, or set HF_TOKEN to pull README.md "
+            f"from {repo_id}."
+        )
+    print(f"No local MODEL_CARD.md; using README.md from {repo_id} …")
+    return hf_hub_download(
+        repo_id=repo_id,
+        filename="README.md",
+        repo_type=DEFAULT_REPO_TYPE,
+        token=token,
+    )
 
 
 def upload_checkpoint(ckpt_path, repo_id=DEFAULT_REPO_ID, private=True,
@@ -146,21 +176,25 @@ def preflight_checks(license_path=DEFAULT_LICENSE,
         errors.append(f"LICENSE is empty (0 bytes): {license_path}")
 
     if not osp.exists(model_card_path):
-        errors.append(f"MODEL_CARD.md not found: {model_card_path}")
+        errors.append(f"Model card not found: {model_card_path}")
     else:
         with open(model_card_path) as f:
             content = f.read()
         if not content.startswith("---\n"):
-            errors.append(f"MODEL_CARD.md missing YAML frontmatter (must start with `---`): {model_card_path}")
+            errors.append(
+                f"Model card missing YAML frontmatter (must start with `---`): {model_card_path}"
+            )
         else:
             try:
                 _, fm, _ = content.split("---\n", 2)
                 if "pipeline_tag:" not in fm:
-                    errors.append("MODEL_CARD.md YAML frontmatter missing `pipeline_tag`")
+                    errors.append("Model card YAML frontmatter missing `pipeline_tag`")
                 if "license:" not in fm:
-                    errors.append("MODEL_CARD.md YAML frontmatter missing `license`")
+                    errors.append("Model card YAML frontmatter missing `license`")
             except ValueError:
-                errors.append("MODEL_CARD.md YAML frontmatter not closed (need a second `---` line)")
+                errors.append(
+                    "Model card YAML frontmatter not closed (need a second `---` line)"
+                )
 
     if not osp.exists(cfg_yaml_path):
         errors.append(f"config.yaml not found: {cfg_yaml_path}")
@@ -227,10 +261,15 @@ def build_release_bundle(ckpt_path=DEFAULT_CKPT,
                          cfg_yaml_path=DEFAULT_CONFIG_YAML,
                          license_path=DEFAULT_LICENSE,
                          model_card_path=DEFAULT_MODEL_CARD,
+                         repo_id=DEFAULT_REPO_ID,
+                         hf_token=None,
                          verify=True):
     """Stage every HF release artifact under `output_dir`."""
+    resolved_card = resolve_model_card_path(
+        model_card_path, repo_id=repo_id, token=hf_token
+    )
     preflight_checks(license_path=license_path,
-                     model_card_path=model_card_path,
+                     model_card_path=resolved_card,
                      cfg_yaml_path=cfg_yaml_path)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -242,7 +281,7 @@ def build_release_bundle(ckpt_path=DEFAULT_CKPT,
 
     convert_ckpt_to_safetensors(ckpt_path, safetensors_path)
     build_config_json(cfg_yaml_path, config_path)
-    shutil.copy(model_card_path, readme_path)
+    shutil.copy(resolved_card, readme_path)
     shutil.copy(license_path, license_dest)
 
     with open(gitattr_path, "w") as f:
@@ -316,7 +355,11 @@ def _parse_args():
     rel.add_argument("--ckpt", default=DEFAULT_CKPT)
     rel.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     rel.add_argument("--license", default=DEFAULT_LICENSE)
-    rel.add_argument("--model-card", default=DEFAULT_MODEL_CARD)
+    rel.add_argument(
+        "--model-card",
+        default=DEFAULT_MODEL_CARD,
+        help="HF README source: default MODEL_CARD.md if present, else README from hub (needs HF_TOKEN).",
+    )
     rel.add_argument("--config", default=DEFAULT_CONFIG_YAML)
     rel.add_argument("--repo-id", default=DEFAULT_REPO_ID)
     rel.add_argument("--skip-verify", action="store_true",
@@ -356,6 +399,8 @@ def main():
             cfg_yaml_path=args.config,
             license_path=args.license,
             model_card_path=args.model_card,
+            repo_id=args.repo_id,
+            hf_token=token,
             verify=not args.skip_verify,
         )
         if not args.skip_upload:

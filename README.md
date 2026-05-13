@@ -176,11 +176,14 @@ export HF_TOKEN=<token-with-read-access>
 python utils/hf_checkpoint.py download --filename model.safetensors
 ```
 
-Maintainers can build and publish a fresh release bundle (safetensors + `config.json` + `LICENSE` + model card, with a CUDA forward-pass sanity check) via:
+Maintainers can build and publish a fresh release bundle (safetensors + `config.json` + `LICENSE` + Hub `README.md`, with a CUDA forward-pass sanity check) via:
 
 ```bash
+export HF_TOKEN=<write-scoped token>
 python utils/hf_checkpoint.py release --ckpt path/to/ms4d.ckpt
 ```
+
+If `MODEL_CARD.md` is absent (default), the script reuses `README.md` from the same Hub repo (`HF_TOKEN` required for private repos). Override with `--model-card /path/to/card.md` if needed.
 
 See the docstring at the top of `utils/hf_checkpoint.py` for the full CLI.
 

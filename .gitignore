@@ -9,6 +9,9 @@ data_old/
 *.ckpt
 .env
 
+# Optional local HF model card (canonical README lives on the Hub)
+MODEL_CARD.md
+
 # IDE / OS
 .idea/
 *.iml
