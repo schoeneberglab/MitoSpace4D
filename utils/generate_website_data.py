@@ -1,17 +1,18 @@
+import atexit
+import glob
+import json
+import multiprocessing as mp
 import os
 import os.path as osp
+
+import imageio
 import numpy as np
 import pandas as pd
 import pyvista as pv
-import imageio
-import atexit
+from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image
 from PIL.ImageOps import grayscale
-from matplotlib.colors import LinearSegmentedColormap
-import json
-import glob
 from tqdm import tqdm
-import multiprocessing as mp
 
 # Number of parallel rendering processes. Each worker holds a PyVista off-screen
 # GL context, so don't set this higher than ~ (CPU cores) / 2 in practice.
@@ -31,13 +32,22 @@ np.random.seed(42)
 _WORKER_STATE = {}
 
 
-def _init_worker(embeddings, labels, label_names_per_row, image_paths,
-                 colors, video_save_dir, points_dir):
+def _init_worker(
+    embeddings,
+    labels,
+    label_names_per_row,
+    image_paths,
+    colors,
+    video_save_dir,
+    points_dir,
+):
     os.environ["PYVISTA_OFF_SCREEN"] = "true"
     pv.OFF_SCREEN = True
 
     pv.set_plot_theme("document")
-    pv.global_theme.multi_samples = 4  # disable MSAA so frames compress like the old runs
+    pv.global_theme.multi_samples = (
+        4  # disable MSAA so frames compress like the old runs
+    )
     plotter = pv.Plotter(off_screen=True, window_size=(512, 512))
     plotter.image_scale = 1
     plotter.set_background("white")
@@ -68,6 +78,7 @@ def _write_point_sidecar(points_dir, i, point):
         json.dump(point, f, indent=2)
     os.replace(tmp, target)
 
+
 # Function to select uniform indices
 def uniform_choose_indices(labels, num):
     """Pick row indices, capped at `num` per label (None = take all).
@@ -93,9 +104,9 @@ def get_rgb(image, cmap):
     img_gray = grayscale(Image.fromarray(img))
     img_gray = np.array(img_gray)
 
-    if cmap == 'green':
+    if cmap == "green":
         rgb_vol[..., 1] = img_gray
-    elif cmap == 'magenta':
+    elif cmap == "magenta":
         rgb_vol[..., 0] = img_gray
         rgb_vol[..., 2] = img_gray
 
@@ -108,8 +119,9 @@ def save_3d_surface_video(volume, cmap, out_path, plotter, fps=10):
 
     movie = volume
 
-    writer = imageio.get_writer(out_path, format='FFMPEG', mode='I',
-                                fps=fps, codec='libx264', quality=8)
+    writer = imageio.get_writer(
+        out_path, format="FFMPEG", mode="I", fps=fps, codec="libx264", quality=8
+    )
 
     num_frames = movie.shape[0]
 
@@ -118,23 +130,31 @@ def save_3d_surface_video(volume, cmap, out_path, plotter, fps=10):
         for t in range(num_frames):
             vol = movie[t].astype(np.float32)
             vol_range = np.ptp(vol)
-            vol = (vol - vol.min()) / (vol_range if vol_range > 0 else 1.0)  # Normalize the volume
+            vol = (vol - vol.min()) / (
+                vol_range if vol_range > 0 else 1.0
+            )  # Normalize the volume
 
             grid = pv.wrap(vol)
 
             plotter.clear()
             plotter.add_volume(
                 grid,
-                cmap='gray',
+                cmap="gray",
                 opacity="linear",
                 shade=True,
             )
             plotter.remove_scalar_bar()
 
             if t == 0:
-                for angle in np.linspace(0, 360, 30):  # Rotate the volume 360 degrees over 60 steps
-                    plotter.view_vector([np.cos(np.radians(angle)), np.sin(np.radians(angle)), 0])
-                    img = plotter.screenshot(transparent_background=False, return_img=True)
+                for angle in np.linspace(
+                    0, 360, 30
+                ):  # Rotate the volume 360 degrees over 60 steps
+                    plotter.view_vector(
+                        [np.cos(np.radians(angle)), np.sin(np.radians(angle)), 0]
+                    )
+                    img = plotter.screenshot(
+                        transparent_background=False, return_img=True
+                    )
                     img = get_rgb(img, cmap=cmap)  # Apply your colormap
                     writer.append_data(img)
 
@@ -153,13 +173,13 @@ def videos_exist(video_save_dir, idx):
 # Function to process a single image for metadata generation
 def process_single(i):
     try:
-        embeddings = _WORKER_STATE['embeddings']
-        labels = _WORKER_STATE['labels']
-        label_names_per_row = _WORKER_STATE['label_names_per_row']
-        image_paths = _WORKER_STATE['image_paths']
-        colors = _WORKER_STATE['colors']
-        video_save_dir = _WORKER_STATE['video_save_dir']
-        points_dir = _WORKER_STATE['points_dir']
+        embeddings = _WORKER_STATE["embeddings"]
+        labels = _WORKER_STATE["labels"]
+        label_names_per_row = _WORKER_STATE["label_names_per_row"]
+        image_paths = _WORKER_STATE["image_paths"]
+        colors = _WORKER_STATE["colors"]
+        video_save_dir = _WORKER_STATE["video_save_dir"]
+        points_dir = _WORKER_STATE["points_dir"]
 
         sidecar_path = _point_sidecar_path(points_dir, i)
         vid_name = f"{str(i).zfill(6)}.mp4"
@@ -171,10 +191,13 @@ def process_single(i):
 
         if not osp.exists(out_path):
             img = np.load(image_paths[i])
-            save_3d_surface_video(img, cmap="green", out_path=out_path,
-                                  plotter=_WORKER_STATE['plotter'])
+            save_3d_surface_video(
+                img, cmap="green", out_path=out_path, plotter=_WORKER_STATE["plotter"]
+            )
 
-        img_url_mito = f"https://mitospace4d.s3.us-east-2.amazonaws.com/v3/mtg_{vid_name}"
+        img_url_mito = (
+            f"https://mitospace4d.s3.us-east-2.amazonaws.com/v3/mtg_{vid_name}"
+        )
 
         lbl = labels[i]
         label_name = label_names_per_row[i]
@@ -187,18 +210,14 @@ def process_single(i):
             "z": float(embeddings[i][2]),
             "phenotype": label_name,
             "color": {"r": r, "g": g, "b": b},
-            "treatment": {
-                "drug": label_name,
-                "dose": "10 nM",
-                "time": "1h"
-            },
+            "treatment": {"drug": label_name, "dose": "10 nM", "time": "1h"},
             "images": [img_url_mito],
             "metadata": {
                 "cellLine": "Cal27",
                 "experimentDate": "2025-03-15",
                 "sampleId": f"MS{i}",
-                "quality": 100
-            }
+                "quality": 100,
+            },
         }
         _write_point_sidecar(points_dir, i, point)
         return i
@@ -231,7 +250,10 @@ def main():
                 parts = line.strip().split()
                 if len(parts) == 6:
                     _, _, index, r, g, b = parts
-                    color = [float(v) / 255 if float(v) > 1.0 else float(v) for v in (r, g, b)]
+                    color = [
+                        float(v) / 255 if float(v) > 1.0 else float(v)
+                        for v in (r, g, b)
+                    ]
                     color_dict[int(index)] = color
         return color_dict
 
@@ -242,20 +264,24 @@ def main():
 
     df_filter = pd.read_parquet(filter_infile)
     n_init = len(df)
-    df = df[~df['image_paths'].isin(df_filter['image_paths'])].reset_index(drop=True)
-    print(f"Filtered out {n_init - len(df)} samples based on {osp.basename(filter_infile)}.")
+    df = df[~df["image_paths"].isin(df_filter["image_paths"])].reset_index(drop=True)
+    print(
+        f"Filtered out {n_init - len(df)} samples based on {osp.basename(filter_infile)}."
+    )
 
     # Persist the filtered parquet so video filenames / sidecars can be joined
     # back to it externally. Row index in this file == the integer used in
     # mtg_NNNNNN.mp4 / pNNNNNN.json filenames.
-    filtered_parquet_path = osp.join(save_dir, "embeddings+metadata_vis_joined_filtered.parquet")
+    filtered_parquet_path = osp.join(
+        save_dir, "embeddings+metadata_vis_joined_filtered.parquet"
+    )
     df.to_parquet(filtered_parquet_path, index=False)
     print(f"Saved filtered parquet ({len(df)} rows) to {filtered_parquet_path}")
 
-    embeddings = np.stack(df['embeddings_umap'].values)
-    labels = df['labels'].to_numpy()
-    label_names_per_row = df['label_names'].to_numpy()
-    image_paths = df['image_paths'].tolist()
+    embeddings = np.stack(df["embeddings_umap"].values)
+    labels = df["labels"].to_numpy()
+    label_names_per_row = df["label_names"].to_numpy()
+    image_paths = df["image_paths"].tolist()
 
     umap_outpath = osp.join(save_dir, "embeddings_umap.npy")
     np.save(umap_outpath, embeddings)
@@ -264,19 +290,30 @@ def main():
     # Keep the full filtered arrays — process_single is called with indices that
     # refer to rows in the filtered parquet, so video/sidecar filenames line up
     # with that file's row order.
-    chosen_idxs = [int(x) for x in uniform_choose_indices(labels, SAMPLES_PER_CONDITION)]
+    chosen_idxs = [
+        int(x) for x in uniform_choose_indices(labels, SAMPLES_PER_CONDITION)
+    ]
 
     incomplete_idxs = [i for i in chosen_idxs if not videos_exist(video_save_dir, i)]
-    print(f"Selected {len(chosen_idxs)} cells; {len(incomplete_idxs)} still need rendering.")
+    print(
+        f"Selected {len(chosen_idxs)} cells; {len(incomplete_idxs)} still need rendering."
+    )
 
-    init_args = (embeddings, labels, label_names_per_row, image_paths,
-                 colors, video_save_dir, points_dir)
+    init_args = (
+        embeddings,
+        labels,
+        label_names_per_row,
+        image_paths,
+        colors,
+        video_save_dir,
+        points_dir,
+    )
 
     print(f"Launching {NUM_PROCESSES} worker processes...")
-    ctx = mp.get_context('spawn')  # spawn avoids fork issues with Qt/OpenGL state
-    with ctx.Pool(processes=NUM_PROCESSES,
-                  initializer=_init_worker,
-                  initargs=init_args) as pool:
+    ctx = mp.get_context("spawn")  # spawn avoids fork issues with Qt/OpenGL state
+    with ctx.Pool(
+        processes=NUM_PROCESSES, initializer=_init_worker, initargs=init_args
+    ) as pool:
         for _ in tqdm(
             pool.imap_unordered(process_single, chosen_idxs, chunksize=1),
             total=len(chosen_idxs),
@@ -292,11 +329,13 @@ def main():
             points.append(json.load(f))
 
     metadata = {"points": points}
-    with open(osp.join(save_dir, "metadata.json"), 'w') as f:
+    with open(osp.join(save_dir, "metadata.json"), "w") as f:
         json.dump(metadata, f, indent=4)
 
-    print(f"Aggregated {len(points)} point sidecars into "
-          f"{osp.join(save_dir, 'metadata.json')}")
+    print(
+        f"Aggregated {len(points)} point sidecars into "
+        f"{osp.join(save_dir, 'metadata.json')}"
+    )
 
 
 if __name__ == "__main__":

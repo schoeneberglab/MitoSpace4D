@@ -32,7 +32,9 @@ DEFAULT_REPO_TYPE = "model"
 
 PROJECT_ROOT = osp.dirname(osp.dirname(osp.abspath(__file__)))
 DEFAULT_CKPT = osp.join(PROJECT_ROOT, "manuscript_v2", "cleaned_ckpts", "ms4d.ckpt")
-DEFAULT_OUTPUT_DIR = osp.join(PROJECT_ROOT, "manuscript_v2", "cleaned_ckpts", "hf_release")
+DEFAULT_OUTPUT_DIR = osp.join(
+    PROJECT_ROOT, "manuscript_v2", "cleaned_ckpts", "hf_release"
+)
 DEFAULT_LICENSE = osp.join(PROJECT_ROOT, "LICENSE")
 DEFAULT_MODEL_CARD = osp.join(PROJECT_ROOT, "MODEL_CARD.md")
 DEFAULT_CONFIG_YAML = osp.join(PROJECT_ROOT, "simclr", "config.yaml")
@@ -64,15 +66,22 @@ def resolve_model_card_path(model_card_path, repo_id=DEFAULT_REPO_ID, token=None
     )
 
 
-def upload_checkpoint(ckpt_path, repo_id=DEFAULT_REPO_ID, private=True,
-                      path_in_repo=None, commit_message=None, token=None):
+def upload_checkpoint(
+    ckpt_path,
+    repo_id=DEFAULT_REPO_ID,
+    private=True,
+    path_in_repo=None,
+    commit_message=None,
+    token=None,
+):
     """Create the repo if missing and upload a single checkpoint file."""
     if not osp.exists(ckpt_path):
         raise FileNotFoundError(ckpt_path)
 
     api = HfApi(token=token)
-    api.create_repo(repo_id=repo_id, repo_type=DEFAULT_REPO_TYPE,
-                    private=private, exist_ok=True)
+    api.create_repo(
+        repo_id=repo_id, repo_type=DEFAULT_REPO_TYPE, private=private, exist_ok=True
+    )
 
     target_name = path_in_repo or osp.basename(ckpt_path)
     commit_message = commit_message or f"Upload {target_name}"
@@ -90,8 +99,9 @@ def upload_checkpoint(ckpt_path, repo_id=DEFAULT_REPO_ID, private=True,
     return url
 
 
-def download_checkpoint(filename, repo_id=DEFAULT_REPO_ID, revision="main",
-                        cache_dir=None, token=None):
+def download_checkpoint(
+    filename, repo_id=DEFAULT_REPO_ID, revision="main", cache_dir=None, token=None
+):
     """Download a single file from the model repo and return its local path."""
     local_path = hf_hub_download(
         repo_id=repo_id,
@@ -123,21 +133,24 @@ def convert_ckpt_to_safetensors(ckpt_path, out_path, strip_prefix="model."):
         if not isinstance(v, torch.Tensor):
             skipped += 1
             continue
-        new_k = k[len(strip_prefix):] if k.startswith(strip_prefix) else k
+        new_k = k[len(strip_prefix) :] if k.startswith(strip_prefix) else k
         # safetensors requires contiguous, non-shared storage.
         cleaned[new_k] = v.detach().contiguous().clone()
 
     os.makedirs(osp.dirname(out_path) or ".", exist_ok=True)
     save_file(cleaned, out_path)
 
-    size_mb = osp.getsize(out_path) / 1024 ** 2
-    print(f"Converted {len(cleaned)} tensors → {out_path} ({size_mb:.1f} MB)"
-          + (f"; skipped {skipped} non-tensor entries" if skipped else ""))
+    size_mb = osp.getsize(out_path) / 1024**2
+    print(
+        f"Converted {len(cleaned)} tensors → {out_path} ({size_mb:.1f} MB)"
+        + (f"; skipped {skipped} non-tensor entries" if skipped else "")
+    )
     return cleaned
 
 
-def build_config_json(cfg_yaml_path, out_path, embedding_size=2048,
-                      architecture="MitoSpace4D"):
+def build_config_json(
+    cfg_yaml_path, out_path, embedding_size=2048, architecture="MitoSpace4D"
+):
     """Emit a minimal config.json describing the model's input contract."""
     with open(cfg_yaml_path) as f:
         cfg = yaml.safe_load(f)
@@ -153,7 +166,12 @@ def build_config_json(cfg_yaml_path, out_path, embedding_size=2048,
         "timesteps": mp["timesteps"],
         "bidirectional": mp["bidirectional"],
         "expected_input_shape": [
-            "batch", mp["timesteps"], mp["in_channels"], mp["num_z"], 256, 256
+            "batch",
+            mp["timesteps"],
+            mp["in_channels"],
+            mp["num_z"],
+            256,
+            256,
         ],
     }
 
@@ -164,9 +182,11 @@ def build_config_json(cfg_yaml_path, out_path, embedding_size=2048,
     return config
 
 
-def preflight_checks(license_path=DEFAULT_LICENSE,
-                     model_card_path=DEFAULT_MODEL_CARD,
-                     cfg_yaml_path=DEFAULT_CONFIG_YAML):
+def preflight_checks(
+    license_path=DEFAULT_LICENSE,
+    model_card_path=DEFAULT_MODEL_CARD,
+    cfg_yaml_path=DEFAULT_CONFIG_YAML,
+):
     """Validate release prerequisites; raise RuntimeError listing all failures."""
     errors = []
 
@@ -203,7 +223,9 @@ def preflight_checks(license_path=DEFAULT_LICENSE,
             cfg = yaml.safe_load(f)
         in_channels = cfg.get("model_params", {}).get("in_channels")
         if in_channels != 1:
-            errors.append(f"config.yaml model_params.in_channels != 1 (got {in_channels})")
+            errors.append(
+                f"config.yaml model_params.in_channels != 1 (got {in_channels})"
+            )
 
     if errors:
         raise RuntimeError("Preflight checks failed:\n  - " + "\n  - ".join(errors))
@@ -217,30 +239,43 @@ def verify_safetensors(safetensors_path, cfg_yaml_path=DEFAULT_CONFIG_YAML):
     pipeline to cuda, so CPU-only verification isn't supported.
     """
     import sys
+
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
     from simclr.model import MitoSpace4D
     from utils.utils import load_config
 
     if not torch.cuda.is_available():
-        raise RuntimeError("verify_safetensors requires CUDA (model __init__ moves "
-                           "augmentation pipeline to cuda unconditionally).")
+        raise RuntimeError(
+            "verify_safetensors requires CUDA (model __init__ moves "
+            "augmentation pipeline to cuda unconditionally)."
+        )
 
     cfg = load_config(cfg_yaml_path)
-    model = MitoSpace4D(
-        embedding_size=2048,
-        cfg=cfg,
-        apply_aug=False,
-        decoder_checkpoint_path=None,
-    ).cuda().eval()
+    model = (
+        MitoSpace4D(
+            embedding_size=2048,
+            cfg=cfg,
+            apply_aug=False,
+            decoder_checkpoint_path=None,
+        )
+        .cuda()
+        .eval()
+    )
 
     state_dict = load_file(safetensors_path)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if missing:
-        raise RuntimeError(f"Missing keys: {missing[:5]} (and {max(0, len(missing) - 5)} more)")
+        raise RuntimeError(
+            f"Missing keys: {missing[:5]} (and {max(0, len(missing) - 5)} more)"
+        )
     if unexpected:
-        raise RuntimeError(f"Unexpected keys: {unexpected[:5]} (and {max(0, len(unexpected) - 5)} more)")
-    print(f"Loaded {len(state_dict)} tensors into MitoSpace4D; no missing/unexpected keys.")
+        raise RuntimeError(
+            f"Unexpected keys: {unexpected[:5]} (and {max(0, len(unexpected) - 5)} more)"
+        )
+    print(
+        f"Loaded {len(state_dict)} tensors into MitoSpace4D; no missing/unexpected keys."
+    )
 
     # Move the int32 channel-index tensor onto cuda so fancy-indexing works.
     model._channels = model._channels.cuda()
@@ -250,27 +285,37 @@ def verify_safetensors(safetensors_path, cfg_yaml_path=DEFAULT_CONFIG_YAML):
         feats, resnet_feats, proj = model(dummy, get_resnet_feats=True)
 
     assert feats.shape == (1, 20, 2048), f"features shape {feats.shape} ≠ (1, 20, 2048)"
-    assert resnet_feats.shape == (1, 20, 512), f"resnet shape {resnet_feats.shape} ≠ (1, 20, 512)"
+    assert resnet_feats.shape == (
+        1,
+        20,
+        512,
+    ), f"resnet shape {resnet_feats.shape} ≠ (1, 20, 512)"
     assert proj.shape == (20, 512), f"proj shape {proj.shape} ≠ (20, 512)"
     assert torch.isfinite(feats).all(), "features contain non-finite values"
-    print("Verification PASSED: shapes (1, 20, 2048) / (1, 20, 512) / (20, 512); all finite.")
+    print(
+        "Verification PASSED: shapes (1, 20, 2048) / (1, 20, 512) / (20, 512); all finite."
+    )
 
 
-def build_release_bundle(ckpt_path=DEFAULT_CKPT,
-                         output_dir=DEFAULT_OUTPUT_DIR,
-                         cfg_yaml_path=DEFAULT_CONFIG_YAML,
-                         license_path=DEFAULT_LICENSE,
-                         model_card_path=DEFAULT_MODEL_CARD,
-                         repo_id=DEFAULT_REPO_ID,
-                         hf_token=None,
-                         verify=True):
+def build_release_bundle(
+    ckpt_path=DEFAULT_CKPT,
+    output_dir=DEFAULT_OUTPUT_DIR,
+    cfg_yaml_path=DEFAULT_CONFIG_YAML,
+    license_path=DEFAULT_LICENSE,
+    model_card_path=DEFAULT_MODEL_CARD,
+    repo_id=DEFAULT_REPO_ID,
+    hf_token=None,
+    verify=True,
+):
     """Stage every HF release artifact under `output_dir`."""
     resolved_card = resolve_model_card_path(
         model_card_path, repo_id=repo_id, token=hf_token
     )
-    preflight_checks(license_path=license_path,
-                     model_card_path=resolved_card,
-                     cfg_yaml_path=cfg_yaml_path)
+    preflight_checks(
+        license_path=license_path,
+        model_card_path=resolved_card,
+        cfg_yaml_path=cfg_yaml_path,
+    )
 
     os.makedirs(output_dir, exist_ok=True)
     safetensors_path = osp.join(output_dir, "model.safetensors")
@@ -298,15 +343,22 @@ def build_release_bundle(ckpt_path=DEFAULT_CKPT,
     return output_dir
 
 
-def release_to_hf(bundle_dir, repo_id=DEFAULT_REPO_ID, token=None,
-                  delete_legacy_ckpt="ms4d.ckpt",
-                  commit_message=None):
+def release_to_hf(
+    bundle_dir,
+    repo_id=DEFAULT_REPO_ID,
+    token=None,
+    delete_legacy_ckpt="ms4d.ckpt",
+    commit_message=None,
+):
     """Upload the bundle and delete the legacy `.ckpt` from the repo."""
     api = HfApi(token=token)
-    api.create_repo(repo_id=repo_id, repo_type=DEFAULT_REPO_TYPE,
-                    private=True, exist_ok=True)
+    api.create_repo(
+        repo_id=repo_id, repo_type=DEFAULT_REPO_TYPE, private=True, exist_ok=True
+    )
 
-    commit_message = commit_message or "Release MitoSpace4D bundle (safetensors + model card)"
+    commit_message = (
+        commit_message or "Release MitoSpace4D bundle (safetensors + model card)"
+    )
     api.upload_folder(
         folder_path=bundle_dir,
         repo_id=repo_id,
@@ -327,21 +379,30 @@ def release_to_hf(bundle_dir, repo_id=DEFAULT_REPO_ID, token=None,
             )
             print(f"Deleted legacy {delete_legacy_ckpt} from {repo_id}.")
         except Exception as e:
-            print(f"(Legacy {delete_legacy_ckpt} not deleted — already absent? {type(e).__name__}: {e})")
+            print(
+                f"(Legacy {delete_legacy_ckpt} not deleted — already absent? {type(e).__name__}: {e})"
+            )
 
 
 def _parse_args():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     up = sub.add_parser("upload", help="Publish a single file to the HF hub.")
     up.add_argument("--ckpt", required=True, help="Local path to the file to upload.")
     up.add_argument("--repo-id", default=DEFAULT_REPO_ID)
-    up.add_argument("--public", action="store_true",
-                    help="Create the repo public (default: private).")
-    up.add_argument("--path-in-repo", default=None,
-                    help="Filename in the repo (default: basename of --ckpt).")
+    up.add_argument(
+        "--public",
+        action="store_true",
+        help="Create the repo public (default: private).",
+    )
+    up.add_argument(
+        "--path-in-repo",
+        default=None,
+        help="Filename in the repo (default: basename of --ckpt).",
+    )
     up.add_argument("--commit-message", default=None)
 
     dn = sub.add_parser("download", help="Fetch a single file from the HF hub.")
@@ -350,8 +411,7 @@ def _parse_args():
     dn.add_argument("--revision", default="main")
     dn.add_argument("--cache-dir", default=None)
 
-    rel = sub.add_parser("release",
-                         help="Build the full release bundle and upload it.")
+    rel = sub.add_parser("release", help="Build the full release bundle and upload it.")
     rel.add_argument("--ckpt", default=DEFAULT_CKPT)
     rel.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     rel.add_argument("--license", default=DEFAULT_LICENSE)
@@ -362,10 +422,16 @@ def _parse_args():
     )
     rel.add_argument("--config", default=DEFAULT_CONFIG_YAML)
     rel.add_argument("--repo-id", default=DEFAULT_REPO_ID)
-    rel.add_argument("--skip-verify", action="store_true",
-                     help="Skip the dummy-forward verification.")
-    rel.add_argument("--skip-upload", action="store_true",
-                     help="Build the bundle but don't push to HF.")
+    rel.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="Skip the dummy-forward verification.",
+    )
+    rel.add_argument(
+        "--skip-upload",
+        action="store_true",
+        help="Build the bundle but don't push to HF.",
+    )
     rel.add_argument("--commit-message", default=None)
 
     return parser.parse_args()
