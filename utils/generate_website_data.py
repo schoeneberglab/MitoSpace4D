@@ -9,7 +9,6 @@ import imageio
 import numpy as np
 import pandas as pd
 import pyvista as pv
-from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image
 from PIL.ImageOps import grayscale
 from tqdm import tqdm
