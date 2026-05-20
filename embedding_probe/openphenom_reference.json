@@ -1,0 +1,32 @@
+{
+  "source": "https://github.com/drv-agwl/what-does-openphenom-learn (reference run: 2,400 wells, 300 treatments, 10 shards)",
+  "E1_geometry": {
+    "embedding_dim": 384,
+    "effective_rank_participation_ratio": 1.8,
+    "top1_eigenvalue_share": 0.74,
+    "pairwise_sim_mean": 0.94
+  },
+  "E2_trained_vs_random": {
+    "spearman_pairwise_sim_rankings_ca_mae_twin": -0.03,
+    "spearman_pairwise_sim_rankings_vanilla_vit": 0.36,
+    "trained_gap": 0.022,
+    "trained_auroc_between_within": 0.68,
+    "trained_vs_vit_auroc_edge_pp": 1.9
+  },
+  "E4_discriminability": {
+    "raw_map": 0.021,
+    "post_pca_centerscale_map": 0.03,
+    "random_floor_map": 0.007,
+    "random_vit_concat_map": 0.033
+  },
+  "E10_cossim_by_condition": {
+    "effect_sizes": {
+      "Trained OpenPhenom": {"gap": 0.022, "cohen_d": 0.33, "auc": 0.68},
+      "Vanilla random ViT-S/16 (concat)": {"gap": null, "cohen_d": null, "auc": 0.656}
+    }
+  },
+  "E11_phenotype_vs_gap": {
+    "spearman_pixel_unusualness_vs_gap": 0.04,
+    "note": "Not significant at 300 treatments"
+  }
+}
