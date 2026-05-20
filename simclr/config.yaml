@@ -81,6 +81,7 @@ training:
     save_top_k: 3
     save_last: True
   checkpoint_path: None
+  continue_from_ckpt_wo_opt: None
   continue_with_optimizer: True
   lr: 0.0003
   weight_decay: 0.00001

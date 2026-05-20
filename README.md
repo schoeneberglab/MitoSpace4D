@@ -91,6 +91,8 @@ flowchart TB
 ```bash
 git clone https://github.com/schoeneberglab/MitoSpace4D.git
 cd MitoSpace4D
+conda create -n mitospace python=3.11
+conda activate mitospace
 pip install -e .
 ```
 

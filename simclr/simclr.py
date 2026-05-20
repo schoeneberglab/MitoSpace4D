@@ -182,7 +182,10 @@ class SimCLRRunner(pl.LightningModule):
             )
         elif self.loss == "SupConLoss":
             loss, acc = self.criterion(
-                out, labels=classes, bs=self.cfg["training"]["batch_size"]
+                out,
+                bs=self.cfg["training"]["batch_size"],
+                n_views=self.cfg["training"]["n_views"],
+                labels=classes,
             )
             cross_entropy = self.cross_entropy_2d(
                 features.detach().cpu(),
