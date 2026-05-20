@@ -22,7 +22,6 @@ from umap import UMAP
 from data.dataset_utils import get_mitospace_data_loaders
 from utils.utils import load_config
 
-
 # from cuml.manifold import UMAP
 # from cuml.metrics import trustworthiness
 
@@ -479,6 +478,7 @@ def pick_points(df, reducer="umap", cmap="label", decoder=None, is_4d=False):
 
     while True:
         _pick_points()
+
 
 def create_datafile(embeddings_dir, outfile="embeddings+metadata_vis.parquet"):
     intensities_infile = "/home/earkfeld/Projects/MitoSpace4D/manuscript_v2/data/2024v3_channel_intensities.parquet"

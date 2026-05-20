@@ -87,10 +87,7 @@ def main():
         persistent_workers=cfg["training"]["persistent_workers"],
     )
 
-
-    model = MitoSpace4D(
-        embedding_size=2048, cfg=cfg, apply_aug=True
-    )
+    model = MitoSpace4D(embedding_size=2048, cfg=cfg, apply_aug=True)
 
     for param in model.augment_pipeline.parameters():
         param.requires_grad = False
