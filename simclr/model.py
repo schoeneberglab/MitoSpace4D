@@ -71,7 +71,7 @@ class MitoSpace4D(nn.Module):
         self._channels = torch.tensor(self._channels).to(torch.int32)
 
         if decoder_checkpoint_path:
-            self.with_decoder = True
+            self._with_decoder = True
 
             ae_model = load_model(decoder_checkpoint_path, device="cuda")
             self.decoder = ae_model.decoder
