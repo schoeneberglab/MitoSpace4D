@@ -42,6 +42,39 @@ model.
 | `label_names.npy`, `args.yaml`, `config.yaml` | run provenance |
 | `crossval_perday/` | leave-one-**day**-out folds, predicting **drug** |
 | `crossval_perdrug/` | leave-one-**drug**-out folds, predicting **day** |
+| `label_checks/` | verification of the folder → drug assignment |
+
+## Label verification
+
+Drug labels come from `metadata/drugs_to_labels.txt`, which assigns by folder suffix and
+assumes the **same imaging order on every day** (-1 control, -2 nocodazole, -3
+oligomycin). No other provenance for these acquisitions exists on disk — the
+`processed_data/metadata.csv` shipped with the data has no drug column. Since the imaging
+order could have rotated between days, `verify_3dms_reproducibility_labels.py` runs three
+independent checks; outputs land in `label_checks/`. All three pass:
+
+1. **Cross-day consistency** — each folder's cells classified by k=100 kNN against *only
+   the other days* of its dye batch. **18/18 folders** match their assigned label. A day
+   whose order rotated would conflict with the other two days; none does.
+2. **Identity anchor** — check 1 proves the six days agree with each other but not what
+   the labels *are*, so all six one-to-one mappings of {suffix} → {drug} were scored
+   against 2024v3 drug centroids (separate 2024 acquisitions, same checkpoint). The
+   assumed mapping is the top-scoring one in **both** batches (deepred 1.861 vs 1.662
+   runner-up; mitobright 2.029 vs 1.795).
+3. **Model-free morphometry** — 40 raw cells per folder, Otsu-thresholded, no model
+   involved. Each suffix shows the same distinctive signature on **all six days**:
+
+   | Metric | Extreme folder (all six days) |
+   |---|---|
+   | spatial spread (rms distance from centroid) | highest in `-2` nocodazole (per-day AUC 0.77–0.91) |
+   | largest-fragment fraction (network connectedness) | highest in `-1` control |
+   | fragment count | highest in `-3` oligomycin (per-day AUC 0.85–0.96) |
+   | mean fragment volume | lowest in `-3` oligomycin |
+
+**Caveat.** Checks 1 and 3 rule out a day-to-day change in imaging order, which was the
+specific risk. Check 2 supports the global identity of the three labels but rests on the
+2024v3 labels being correct. A relabeling applied identically to all six days *and*
+consistent with 2024v3 would not be detectable from this data alone.
 
 ## Cross-day evaluation (predict drug, hold out a day)
 
