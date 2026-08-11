@@ -10,11 +10,12 @@ MitoSpace-**3D** embeddings and cross-day k-NN evaluation for the reproducibilit
 | Model definition | `archive/models_simple_3d_2024v3.py::Lightweight3DResNet` |
 | Data | `/mnt/aquila/ssd_processing/Others/MitoSpace4D/reproducibility/processed_data` |
 | Samples | 12,481 movies, `(T=20, Z=60, Y=256, X=256)` uint16, single (morphology) channel |
-| Scripts | `generate_3dms_reproducibility_embeddings.py`, `evaluate_3dms_reproducibility_crossday.py` |
+| Scripts | `generate_3dms_reproducibility_embeddings.py`, `evaluate_3dms_reproducibility_crossday.py`, `evaluate_3dms_reproducibility_crossdrug.py` |
 
 ```bash
-python generate_3dms_reproducibility_embeddings.py --embeddings_dir 3dms_reproducibility
-python evaluate_3dms_reproducibility_crossday.py   --embeddings_dir 3dms_reproducibility
+python generate_3dms_reproducibility_embeddings.py  --embeddings_dir 3dms_reproducibility
+python evaluate_3dms_reproducibility_crossday.py    --embeddings_dir 3dms_reproducibility
+python evaluate_3dms_reproducibility_crossdrug.py   --embeddings_dir 3dms_reproducibility
 ```
 
 **Last frame only.** The 3D model embeds one volume per movie. In training it received
@@ -39,9 +40,10 @@ model.
 | `image_paths.csv` | source `.npy` path, one per row, same order as the arrays |
 | `metadata.csv` | path, label, drug name, acquisition date, replicate — the `date` column defines the folds |
 | `label_names.npy`, `args.yaml`, `config.yaml` | run provenance |
-| `crossval_perday/` | k-NN results and confusion matrices |
+| `crossval_perday/` | leave-one-**day**-out folds, predicting **drug** |
+| `crossval_perdrug/` | leave-one-**drug**-out folds, predicting **day** |
 
-## Cross-day evaluation
+## Cross-day evaluation (predict drug, hold out a day)
 
 The dataset is **two dye batches of three days each**, each batch containing the same
 three conditions, so 3-fold leave-one-day-out is run once per batch:
@@ -98,3 +100,51 @@ same class).
 | `<batch>/cm_top1-sum_across_folds_counts.png` | all three folds pooled, raw counts |
 | `<batch>/cm_top1-sum_across_folds.npy` | the pooled count matrix |
 | `<batch>/cm_top1-class_order.txt` | row/column order of the saved matrices |
+
+## Cross-drug evaluation (predict day, hold out a drug)
+
+The transpose of the analysis above, in `crossval_perdrug/`: folds are stratified by drug
+(one drug held out at a time) and the label being classified is the **acquisition day**.
+It asks how much day-of-acquisition (batch) signal the embedding carries that generalizes
+to a drug the neighbour set never contains. Distance, voting rule, k=100 and the
+batch-independence are unchanged; chance is 33.3% with three days.
+
+Day counts are balanced **within each drug** (seed 1123), so both the held-out drug and
+the two-drug training set carry an equal number of cells per day.
+
+### Top-1 day accuracy (k=100, chance 33.3%)
+
+| Batch | held out control | held out oligomycin | held out nocodazole | mean ± sd |
+|---|---|---|---|---|
+| deepred | 44.29% | 49.53% | 43.63% | **45.82 ± 3.23%** |
+| mitobright | 56.63% | 55.69% | 45.64% | **52.65 ± 6.09%** |
+
+### Per-day top-1 (micro-averaged over the three folds)
+
+| Batch | day 1 | day 2 | day 3 |
+|---|---|---|---|
+| deepred | 52.98% (0330) | 50.33% (0331) | 33.47% (0401) |
+| mitobright | 18.75% (0407) | 72.69% (0408) | 64.71% (0409) |
+
+Day is recoverable well above chance but far less reliably than drug (45.8% / 52.7% vs
+80.6% / 83.8%), so acquisition day is a real but secondary axis of the embedding. The
+per-day spread is the informative part: on MitoBright, 20260407 cells are recovered only
+18.8% of the time — they are absorbed by the other two days rather than forming their own
+neighbourhood — while 20260408 and 20260409 are recovered ~65–73%. Per-day standard
+deviations across folds are large (up to 29 points), i.e. how well a day is recovered
+depends strongly on which drug was held out.
+
+### Result files in `crossval_perdrug/`
+
+| File | Contents |
+|---|---|
+| `knn_accuracy_per_fold.csv` | accuracy per batch × held-out drug × top-N |
+| `knn_accuracy_mean_across_folds.csv` | mean ± sd across the three folds |
+| `knn_accuracy_per_day_per_fold.csv` | per-day accuracy for every fold |
+| `knn_accuracy_per_day_mean_across_folds.csv` | per-day macro mean and micro (pooled) accuracy |
+| `<batch>/cm_top1-heldout_drug=<drug>.png` | row-normalized top-1 day confusion matrix for one fold |
+| `<batch>/cm_top1_counts-heldout_drug=<drug>.png` | same fold, raw counts |
+| `<batch>/cm_top1-mean_across_folds_normalized.png` | all three folds pooled, row-normalized |
+| `<batch>/cm_top1-sum_across_folds_counts.png` | all three folds pooled, raw counts |
+| `<batch>/cm_top1-sum_across_folds.npy` | the pooled count matrix |
+| `<batch>/cm_top1-class_order.txt` | row/column order (day index → date) |
